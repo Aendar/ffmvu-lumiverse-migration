@@ -12,7 +12,13 @@ class MockUserStorage implements UserStorageApi {
   key(userId: string | undefined, path: string) { return `${userId ?? 'owner'}:${path}`; }
   async getJson<T>(path: string, options?: { fallback?: T; userId?: string }): Promise<T> { const key = this.key(options?.userId, path); return (this.files.has(key) ? structuredClone(this.files.get(key)) : structuredClone(options?.fallback)) as T; }
   async setJson(path: string, value: unknown, options?: { indent?: number; userId?: string }): Promise<void> { this.files.set(this.key(options?.userId, path), structuredClone(value)); }
-  async list(prefix = '', userId?: string): Promise<string[]> { const head = `${userId ?? 'owner'}:`; return [...this.files.keys()].filter(k => k.startsWith(head + prefix)).map(k => k.slice(head.length)); }
+  async list(prefix = '', userId?: string): Promise<string[]> {
+    const head = `${userId ?? 'owner'}:`;
+    const fullPrefix = head + prefix;
+    return [...this.files.keys()]
+      .filter(k => k.startsWith(fullPrefix))
+      .map(k => k.slice(fullPrefix.length).replace(/^\/+/, ''));
+  }
   async exists(path: string, userId?: string): Promise<boolean> { return this.files.has(this.key(userId, path)); }
   async mkdir(): Promise<void> {}
   async delete(path: string, userId?: string): Promise<void> { this.files.delete(this.key(userId, path)); }
@@ -52,6 +58,10 @@ async function main() {
   await a.setJson('x.json', { n: 1 }); await b.setJson('x.json', { n: 2 });
   assert((await a.getJson<{n:number}>('x.json'))?.n === 1 && (await b.getJson<{n:number}>('x.json'))?.n === 2, 'userStorage adapter remains per-user isolated');
   assert(await a.getJson('missing.json') === null, 'missing JSON maps to null without stat/move dependency');
+  await a.setJson('chats/c/store-revisions/rev_1.json', { ok: true });
+  const rebased = await a.list('chats/c/store-revisions/');
+  assert(rebased.length === 1 && rebased[0] === 'chats/c/store-revisions/rev_1.json', 'adapter rebases Lumi list(prefix) entries to storage-root-relative paths');
+  assert((await a.getJson<{ok:boolean}>(rebased[0]))?.ok === true, 'rebased list result is directly readable through JsonStoragePort');
   console.log(`phase4 bridge tests passed: ${passed}`);
 }
 main();
