@@ -16,7 +16,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.4.2';
+const BRIDGE_VERSION = '0.4.3';
 const PROMPT_PROTOCOL_VERSION = 'ffmvu-model-state-v1';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
