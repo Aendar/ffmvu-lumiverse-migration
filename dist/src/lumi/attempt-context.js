@@ -34,4 +34,27 @@ export class AttemptContextRegistry {
     }
     list() { return [...this.byScope.values()].map(item => structuredClone(item)); }
 }
-//# sourceMappingURL=attempt-context.js.map
+export class EarlyGenerationRegistry {
+    byChat = new Map();
+    remember(value) {
+        this.byChat.set(String(value.chatId), structuredClone(value));
+    }
+    peek(chatId) {
+        const value = this.byChat.get(String(chatId));
+        return value ? structuredClone(value) : null;
+    }
+    take(chatId) {
+        const key = String(chatId);
+        const value = this.byChat.get(key);
+        if (!value)
+            return null;
+        this.byChat.delete(key);
+        return structuredClone(value);
+    }
+    forgetGeneration(generationId) {
+        for (const [chatId, value] of this.byChat) {
+            if (value.generationId === generationId)
+                this.byChat.delete(chatId);
+        }
+    }
+}
