@@ -16,3 +16,13 @@ export function swipeObservations(message: LumiChatMessage): Array<{ text: strin
   const values = Array.isArray(message.swipes) && message.swipes.length ? message.swipes : [message.content];
   return values.map((text, index) => ({ text: String(text ?? ''), ...(message.swipe_dates?.[index] !== undefined ? { swipeDate: String(message.swipe_dates[index]) } : {}) }));
 }
+
+
+export function filterTranscriptForGeneration(
+  messages: LumiChatMessage[],
+  generationType: string,
+  targetMessageId?: string,
+): LumiChatMessage[] {
+  if (generationType !== 'normal' || !targetMessageId) return messages;
+  return messages.filter(message => String(message.id) !== String(targetMessageId));
+}
