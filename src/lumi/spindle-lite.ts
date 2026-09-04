@@ -35,7 +35,7 @@ export interface InterceptorContext {
   activatedWorldInfo: unknown[];
 }
 
-export interface GenerationStartedPayload { generationId: string; chatId: string; model: string; targetMessageId?: string; characterId?: string; characterName?: string }
+export interface GenerationStartedPayload { generationId: string; chatId: string; model: string; targetMessageId?: string; targetSwipeId?: number; characterId?: string; characterName?: string; generationType?: string }
 export interface GenerationEndedPayload { generationId: string; chatId: string; messageId?: string; content?: string; error?: string }
 export interface GenerationStoppedPayload { generationId: string; chatId: string; content: string }
 
