@@ -1,0 +1,335 @@
+{
+  "sourceFile": "legacy-reference/preset.json",
+  "topLevelKeyCount": 47,
+  "items": [
+    {
+      "sourceKey": "temperature",
+      "valueType": "float",
+      "sourceValue": 0.9,
+      "sourceHash": "8139b33952401b3ee0e2ca84651cb9a1d7f66d442bf908f9cf1f53ea746e5801",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "frequency_penalty",
+      "valueType": "int",
+      "sourceValue": 0,
+      "sourceHash": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "presence_penalty",
+      "valueType": "int",
+      "sourceValue": 0,
+      "sourceHash": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "top_p",
+      "valueType": "float",
+      "sourceValue": 0.95,
+      "sourceHash": "22fa3ce4995af8d96fcd771f0e1f5d74d8a98f36c3eec8e95bdf7524926b0141",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "top_k",
+      "valueType": "int",
+      "sourceValue": 0,
+      "sourceHash": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "top_a",
+      "valueType": "int",
+      "sourceValue": 0,
+      "sourceHash": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "min_p",
+      "valueType": "int",
+      "sourceValue": 0,
+      "sourceHash": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "repetition_penalty",
+      "valueType": "int",
+      "sourceValue": 1,
+      "sourceHash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "max_context_unlocked",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "tool_reasoning_mode",
+      "valueType": "str",
+      "sourceValue": "disabled",
+      "sourceHash": "f693b9deb860600fb93d749df324c55991afe7eba6300113ab381339b23d12d5",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "openai_max_context",
+      "valueType": "int",
+      "sourceValue": 2000000,
+      "sourceHash": "dd80d7a873341d491936c851964a9793195f37e646f6809dd546e2946f46d283",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "openai_max_tokens",
+      "valueType": "int",
+      "sourceValue": 40960,
+      "sourceHash": "7d8e67064ff51e8745b0f448a92d07766531c16efc5b9ae9baf2673ab430acb0",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "names_behavior",
+      "valueType": "int",
+      "sourceValue": -1,
+      "sourceHash": "1bad6b8cf97131fceab8543e81f7757195fbb1d36b376ee994ad1cf17699c464",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "send_if_empty",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "impersonation_prompt",
+      "valueType": "str",
+      "sourceValue": "[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don't write as {{char}} or system. Don't describe actions of {{char}}.]",
+      "sourceHash": "e2da86303208cf0c29b145f1cc67360929ae6f835629b12ec79a52edb290849f",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "new_chat_prompt",
+      "valueType": "str",
+      "sourceValue": "[Start a new Chat]",
+      "sourceHash": "94fa07df7a1608c2b5cd607071a304e4d1cb00e355561fd57aeb39bf391b6f2e",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "new_group_chat_prompt",
+      "valueType": "str",
+      "sourceValue": "[Start a new group chat. Group members: {{group}}]",
+      "sourceHash": "39eca47a54dc9aee5351fcf524be4e43756d90600b73b35815e6af22758a0664",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "new_example_chat_prompt",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "continue_nudge_prompt",
+      "valueType": "str",
+      "sourceValue": "[Continue your last message without repeating its original content.]",
+      "sourceHash": "86b3bf159f6bffb83ead6b872b1e0c71e8f41b7ba5956498d579ec9f6dde2f43",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "bias_preset_selected",
+      "valueType": "str",
+      "sourceValue": "Default (none)",
+      "sourceHash": "7b6038c57bda26b981c408d269b7314227eaebb0c153b00a4c65709921ad1672",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "wi_format",
+      "valueType": "str",
+      "sourceValue": "{0}",
+      "sourceHash": "7a27d02b0086fcdf560c5159d6f6a1de1006d9d231e047a45cfb215dd5818a5f",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "scenario_format",
+      "valueType": "str",
+      "sourceValue": "{{scenario}}",
+      "sourceHash": "ad65b6d25b5302af87641aefe4a4a352e924237eae2464e176646e59a11eb088",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "personality_format",
+      "valueType": "str",
+      "sourceValue": "{{personality}}",
+      "sourceHash": "5dbec6751d8eef938149a4faa54370a88968cce38a04be9b4254895e677508af",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "group_nudge_prompt",
+      "valueType": "str",
+      "sourceValue": "[Write the next reply only as {{char}}.]",
+      "sourceHash": "9d3e0d5297893974e42539f901583577acad05cea409a42157bdbc4d722d6274",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "stream_openai",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "prompts",
+      "valueType": "list",
+      "sourceValue": null,
+      "sourceHash": "21c1503899b8292ffb726591e5b35d2cbc96ee25f9d4cb77e7a64b53afe15b02",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "prompt_order",
+      "valueType": "list",
+      "sourceValue": null,
+      "sourceHash": "ee4bb5bad95e00062cf4320f4a71ba78356b2981a1da62b6d19c999cbb62fbf6",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "assistant_prefill",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "assistant_impersonation",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "use_sysprompt",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "squash_system_messages",
+      "valueType": "bool",
+      "sourceValue": false,
+      "sourceHash": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "media_inlining",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "inline_image_quality",
+      "valueType": "str",
+      "sourceValue": "auto",
+      "sourceHash": "634635a2166efa2ae765abd31d4ae807082287e329a8a7fff42b1fb30f65087e",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "continue_prefill",
+      "valueType": "bool",
+      "sourceValue": false,
+      "sourceHash": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "continue_postfix",
+      "valueType": "str",
+      "sourceValue": "\n\n",
+      "sourceHash": "98be486a01834c7bb83b3c7353edc3e046ca30fe710141f939aaec11f15c6407",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "function_calling",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "tool_call_recurse_limit",
+      "valueType": "int",
+      "sourceValue": 10,
+      "sourceHash": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "show_thoughts",
+      "valueType": "bool",
+      "sourceValue": true,
+      "sourceHash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "reasoning_effort",
+      "valueType": "str",
+      "sourceValue": "auto",
+      "sourceHash": "634635a2166efa2ae765abd31d4ae807082287e329a8a7fff42b1fb30f65087e",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "verbosity",
+      "valueType": "str",
+      "sourceValue": "low",
+      "sourceHash": "364bb7082249ee9fbc5247ee49735c4246f271b82c2745a35107ddda0d7cabcc",
+      "migrationAction": "map-to-lumi-equivalent"
+    },
+    {
+      "sourceKey": "enable_web_search",
+      "valueType": "bool",
+      "sourceValue": false,
+      "sourceHash": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "seed",
+      "valueType": "int",
+      "sourceValue": -1,
+      "sourceHash": "1bad6b8cf97131fceab8543e81f7757195fbb1d36b376ee994ad1cf17699c464",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "n",
+      "valueType": "int",
+      "sourceValue": 1,
+      "sourceHash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "request_images",
+      "valueType": "bool",
+      "sourceValue": false,
+      "sourceHash": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "request_image_aspect_ratio",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "request_image_resolution",
+      "valueType": "str",
+      "sourceValue": "",
+      "sourceHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "migrationAction": "VERIFY"
+    },
+    {
+      "sourceKey": "extensions",
+      "valueType": "dict",
+      "sourceValue": null,
+      "sourceHash": "8076f923501b7e07424e7a19733fbbf874b3715aea965ff04c4b849869d59f76",
+      "migrationAction": "VERIFY"
+    }
+  ]
+}

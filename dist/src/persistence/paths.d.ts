@@ -1,0 +1,12 @@
+import type { StateScope } from './types.js';
+export declare function scopeRoot(scope: StateScope): string;
+export declare const basePath: (scope: StateScope, id: string) => string;
+export declare const commitPath: (scope: StateScope, id: string) => string;
+export declare const revisionPath: (scope: StateScope, id: string) => string;
+export declare const checkpointPath: (scope: StateScope, id: string) => string;
+export declare const anchorPath: (scope: StateScope, variantId: string) => string;
+export declare const rootAnchorPath: (scope: StateScope) => string;
+export declare const attemptPath: (scope: StateScope, attemptId: string) => string;
+export declare const attemptPrefix: (scope: StateScope) => string;
+export declare const variantIndexPath: (scope: StateScope, messageId: string) => string;
+export declare const materializedTipPath: (scope: StateScope) => string;

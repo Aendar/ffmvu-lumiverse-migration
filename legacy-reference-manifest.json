@@ -1,0 +1,58 @@
+{
+  "formatVersion": "1",
+  "contractVersion": "FFMVU_Lumiverse_Migration_Agent_Spec_v2.4",
+  "frozenAt": "2026-09-04",
+  "identityRule": "logicalRole is authoritative identity; OS download suffixes are not version identity",
+  "files": [
+    {
+      "logicalRole": "core",
+      "internalVersion": "1.5.8",
+      "originalFilename": "tavern_helper_script-FF + MVU Core v1.5.8 · Verified GUI Commit(6).json",
+      "canonicalPath": "legacy-reference/core.json",
+      "sha256": "3c045299193017f874b6ddd8a34c5dcf771aab9be60656bd53d620cbb4d934e7",
+      "sizeBytes": 71185
+    },
+    {
+      "logicalRole": "gamestart",
+      "internalVersion": "1.4",
+      "originalFilename": "tavern_helper_script-FF + MVU GameStart v1.4(5).json",
+      "canonicalPath": "legacy-reference/gamestart.json",
+      "sha256": "10189a9bf33787660fcfedd733f82fb60de97f187c2d909f366a9654b1010d68",
+      "sizeBytes": 21224
+    },
+    {
+      "logicalRole": "statusmenu",
+      "internalVersion": "2.8.1",
+      "originalFilename": "regex-statusmenu_ff_+_mvu_v2_8_1_·_verified_atomic_wardrobe(3).json",
+      "canonicalPath": "legacy-reference/statusmenu.json",
+      "sha256": "859cd5db345867dabf3f223b21146b28c637cc8ac93a1dde0c2ce99c3ab42c26",
+      "sizeBytes": 253950
+    },
+    {
+      "logicalRole": "preset",
+      "internalVersion": "0.4.7.3",
+      "originalFilename": "FF5.2_MAX_MVU_v0.4.7.3(4).json",
+      "canonicalPath": "legacy-reference/preset.json",
+      "sha256": "af0ee91fd590cac0560085ce2ea7155e2c4a3c614643bd5a0f77e1abcfb2290b",
+      "sizeBytes": 213350
+    },
+    {
+      "logicalRole": "charmaker",
+      "internalVersion": "5.1-alpha",
+      "originalFilename": "CharMaker-v5.1-alpha.md",
+      "canonicalPath": "legacy-reference/charmaker.md",
+      "sha256": "f82cc5ef48af664fff754a0886fd159a261d7b4d67b6c5472b07ad78bcb5613f",
+      "sizeBytes": 37856
+    }
+  ],
+  "auditNotes": [
+    {
+      "id": "core-export-metadata-version-drift",
+      "severity": "note",
+      "logicalRole": "core",
+      "sourceTruth": "Executable source declares VERSION = FFMVU-1.5.8 and filename/name identify v1.5.8.",
+      "observed": "Export data.version is 1.5.6.",
+      "policy": "Do not mutate frozen source. Treat runtime/source version 1.5.8 as internalVersion and retain discrepancy as provenance."
+    }
+  ]
+}

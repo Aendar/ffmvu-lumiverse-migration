@@ -1,0 +1,11 @@
+import type { MutableRecord } from '../state-schema.js';
+export declare function clone<T>(value: T): T;
+export declare function isRecord(value: unknown): value is MutableRecord;
+export declare function asRecord(value: unknown): MutableRecord;
+export declare function asArray(value: unknown): unknown[];
+export declare function text(value: unknown): string;
+export declare function lower(value: unknown): string;
+export declare function clamp(value: unknown, min: number, max: number): number;
+export declare function tupleValue(value: unknown): unknown;
+export declare function uniqueStrings(values: unknown): string[];
+export declare function isLabeledTuple(value: unknown): value is [unknown, string];
