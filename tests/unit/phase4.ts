@@ -35,8 +35,8 @@ async function main() {
 
   const contexts = new AttemptContextRegistry();
   const scope = { userId: 'u', chatId: 'c' };
-  const pending = contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', projectionView: {}, promptViewHash: 'v' });
-  let collision = false; try { contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', projectionView: {}, promptViewHash: 'v' }); } catch { collision = true; }
+  const pending = contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
+  let collision = false; try { contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } }); } catch { collision = true; }
   assert(collision, 'one pending non-dryRun generation per scope');
   assert(contexts.bindGeneration('c', 'g1')?.attemptId === pending.attemptId, 'generation id binds to frozen context');
   contexts.release(pending); assert(contexts.getByGeneration('g1') === null, 'release clears correlation');
@@ -52,7 +52,8 @@ async function main() {
   ];
   const normalFiltered = filterTranscriptForGeneration(transcript, 'normal', 'staged');
   assert(normalFiltered.length === 1 && normalFiltered[0].id === 'u1', 'normal generation excludes transient staged assistant from authoritative transcript');
-  assert(filterTranscriptForGeneration(transcript, 'swipe', 'staged').length === 2, 'non-normal generation does not blindly remove target assistant');
+  assert(filterTranscriptForGeneration(transcript, 'swipe', 'staged').length === 1, 'swipe generation resolves from state before target assistant');
+  assert(filterTranscriptForGeneration(transcript, 'continue', 'staged').length === 2, 'continue keeps the existing assistant lineage as its base');
 
   const raw = new MockUserStorage(); const a = new UserStorageJsonAdapter(raw, 'alice'); const b = new UserStorageJsonAdapter(raw, 'bob');
   await a.setJson('x.json', { n: 1 }); await b.setJson('x.json', { n: 2 });

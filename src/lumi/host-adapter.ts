@@ -23,6 +23,7 @@ export function filterTranscriptForGeneration(
   generationType: string,
   targetMessageId?: string,
 ): LumiChatMessage[] {
-  if (generationType !== 'normal' || !targetMessageId) return messages;
+  if (!targetMessageId) return messages;
+  if (!['normal', 'regenerate', 'swipe'].includes(generationType)) return messages;
   return messages.filter(message => String(message.id) !== String(targetMessageId));
 }

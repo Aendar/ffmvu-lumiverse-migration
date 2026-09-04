@@ -1,4 +1,5 @@
 import type { StateScope } from '../persistence/types.js';
+import type { ModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { createId, isoNow } from '../persistence/ids.js';
 
 export interface FrozenAttemptContext {
@@ -7,10 +8,17 @@ export interface FrozenAttemptContext {
   generationType: string;
   baseNodeId: string;
   baseStateHash: string;
+  projectionSourceKind: 'node' | 'base-seed';
+  projectionSourceNodeId?: string;
+  projectionSourceStateHash?: string;
+  projectionSourceBaseId?: string;
   projectionVersion: string;
   promptProtocolVersion: string;
+  reducerVersion: string;
   projectionView: Record<string, unknown>;
   promptViewHash: string;
+  frozenAuthorization: ModelPatchAuthorizationView;
+  presetVersion?: string;
   createdAt: string;
   generationId?: string;
   targetMessageId?: string;
