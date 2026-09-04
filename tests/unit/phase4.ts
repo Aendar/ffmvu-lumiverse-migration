@@ -1,6 +1,7 @@
-import { AttemptContextRegistry } from '../../src/lumi/attempt-context.js';
+import { AttemptContextRegistry, EarlyGenerationRegistry } from '../../src/lumi/attempt-context.js';
 import { injectFrozenModelState } from '../../src/lumi/model-state-injector.js';
 import { UserStorageJsonAdapter } from '../../src/lumi/user-storage-adapter.js';
+import { filterTranscriptForGeneration } from '../../src/lumi/host-adapter.js';
 import type { UserStorageApi } from '../../src/lumi/spindle-lite.js';
 
 let passed = 0;
@@ -33,6 +34,19 @@ async function main() {
   assert(collision, 'one pending non-dryRun generation per scope');
   assert(contexts.bindGeneration('c', 'g1')?.attemptId === pending.attemptId, 'generation id binds to frozen context');
   contexts.release(pending); assert(contexts.getByGeneration('g1') === null, 'release clears correlation');
+
+  const early = new EarlyGenerationRegistry();
+  early.remember({ chatId: 'c', generationId: 'g-early', targetMessageId: 'staged' });
+  assert(early.peek('c')?.generationId === 'g-early', 'early generation start is cached before context freeze');
+  assert(early.take('c')?.targetMessageId === 'staged' && early.peek('c') === null, 'early generation start is consumed exactly once');
+
+  const transcript = [
+    { id: 'u1', role: 'user' as const, content: 'hello', swipe_id: 0, swipes: ['hello'], swipe_dates: [] },
+    { id: 'staged', role: 'assistant' as const, content: '', swipe_id: 0, swipes: [''], swipe_dates: [] },
+  ];
+  const normalFiltered = filterTranscriptForGeneration(transcript, 'normal', 'staged');
+  assert(normalFiltered.length === 1 && normalFiltered[0].id === 'u1', 'normal generation excludes transient staged assistant from authoritative transcript');
+  assert(filterTranscriptForGeneration(transcript, 'swipe', 'staged').length === 2, 'non-normal generation does not blindly remove target assistant');
 
   const raw = new MockUserStorage(); const a = new UserStorageJsonAdapter(raw, 'alice'); const b = new UserStorageJsonAdapter(raw, 'bob');
   await a.setJson('x.json', { n: 1 }); await b.setJson('x.json', { n: 2 });
