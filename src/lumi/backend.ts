@@ -8,15 +8,15 @@ import { LEGACY_PROJECTION_VERSION } from '../shared/state-schema.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
-import { AttemptContextRegistry } from './attempt-context.js';
-import { swipeObservations, toHostTranscript } from './host-adapter.js';
+import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
+import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import type { GenerationEndedPayload, GenerationStartedPayload, GenerationStoppedPayload, LumiChatMessage, SpindleApiLite } from './spindle-lite.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.4.1';
+const BRIDGE_VERSION = '0.4.2';
 const PROMPT_PROTOCOL_VERSION = 'ffmvu-model-state-v1';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -31,6 +31,7 @@ interface UserRuntime {
 
 const runtimes = new Map<string, UserRuntime>();
 const contexts = new AttemptContextRegistry();
+const earlyGenerations = new EarlyGenerationRegistry();
 const knownScopeByChat = new Map<string, StateScope>();
 const lastStatusByUser = new Map<string, Record<string, unknown>>();
 const knownFrontendUsers = new Set<string>();
@@ -94,12 +95,13 @@ async function ensureBootstrap(scope: StateScope, messages: LumiChatMessage[]): 
   return genesis.nodeId;
 }
 
-async function prepareGeneration(context: { userId: string; chatId: string; generationType: string }): Promise<{ ok: true } | { ok: false; reason: string }> {
+async function prepareGeneration(context: { userId: string; chatId: string; generationType: string }, targetMessageId?: string): Promise<{ ok: true } | { ok: false; reason: string }> {
   const scope: StateScope = { userId: context.userId, chatId: context.chatId };
   knownScopeByChat.set(context.chatId, scope);
   if (contexts.getForScope(scope)) return { ok: false, reason: 'pending_generation_exists' };
   const rt = runtime(context.userId);
-  const raw = await spindle.chat.getMessages(context.chatId);
+  const rawAll = await spindle.chat.getMessages(context.chatId);
+  const raw = filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
   const baseId = await ensureBootstrap(scope, raw);
   const head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
   if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
@@ -197,7 +199,7 @@ async function finalizeProbe(payload: GenerationEndedPayload): Promise<void> {
       messageId: saved.id,
       variantId,
       injectionMode: pending.injectionMode ?? 'interceptor_missed',
-      note: 'Lifecycle correlation captured. Model state commit is intentionally disabled in v0.4; next stateful generation fails closed.',
+      note: 'Lifecycle correlation captured. Model state commit is intentionally disabled in v0.4.2; next stateful generation fails closed.',
     });
   } catch (error) {
     spindle.log.error('[FFMVU] probe finalization failed', error);
@@ -224,10 +226,25 @@ const contextHandler = async (context: import('./spindle-lite.js').ContextHandle
     return { ...context, cancelGeneration: true };
   }
   try {
-    const prepared = await prepareGeneration(context);
+    const early = earlyGenerations.peek(context.chatId);
+    const prepared = await prepareGeneration(context, early?.targetMessageId);
     if (!prepared.ok) {
-      publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: prepared.reason });
+      publish(context.userId, { phase: 'blocked', chatId: context.chatId, generationId: early?.generationId ?? null, reason: prepared.reason });
       return { ...context, cancelGeneration: true };
+    }
+    if (early) {
+      const pending = contexts.bindGeneration(context.chatId, early.generationId, early.targetMessageId);
+      if (pending) {
+        earlyGenerations.take(context.chatId);
+        publish(context.userId, {
+          phase: 'generation_started',
+          chatId: context.chatId,
+          generationId: early.generationId,
+          targetMessageId: early.targetMessageId ?? null,
+          lifecycleOrder: 'generation_started_before_context_handler',
+          injectionMode: pending.injectionMode ?? 'not_observed',
+        });
+      }
     }
     return { ...context, ffmvuFrozenAttempt: true };
   } catch (error) {
@@ -279,15 +296,31 @@ function tryRegisterGenerationEvents(): void {
   add(spindle.on('GENERATION_STARTED', (payload: GenerationStartedPayload) => {
     const pending = contexts.bindGeneration(payload.chatId, payload.generationId, payload.targetMessageId);
     if (!pending) {
+      earlyGenerations.remember({
+        generationId: payload.generationId,
+        chatId: payload.chatId,
+        ...(payload.targetMessageId ? { targetMessageId: payload.targetMessageId } : {}),
+        ...(payload.generationType ? { generationType: payload.generationType } : {}),
+      });
       for (const userId of knownFrontendUsers) {
-        publish(userId, { phase: 'generation_started_unmatched', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, reason: 'GENERATION_STARTED observed but no frozen AttemptContext exists' });
+        publish(userId, {
+          phase: 'generation_waiting_context',
+          chatId: payload.chatId,
+          generationId: payload.generationId,
+          targetMessageId: payload.targetMessageId ?? null,
+          note: 'Lumiverse emitted GENERATION_STARTED before the Context Handler; cached for exact later correlation.',
+        });
       }
       return;
     }
     publish(pending.scope.userId, { phase: 'generation_started', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, injectionMode: pending.injectionMode ?? 'not_observed' });
   }));
-  add(spindle.on('GENERATION_ENDED', (payload: GenerationEndedPayload) => finalizeProbe(payload)));
+  add(spindle.on('GENERATION_ENDED', async (payload: GenerationEndedPayload) => {
+    earlyGenerations.forgetGeneration(payload.generationId);
+    await finalizeProbe(payload);
+  }));
   add(spindle.on('GENERATION_STOPPED', (payload: GenerationStoppedPayload) => {
+    earlyGenerations.forgetGeneration(payload.generationId);
     const pending = contexts.getByGeneration(payload.generationId);
     if (!pending) return;
     publish(pending.scope.userId, { phase: 'stopped', chatId: payload.chatId, generationId: payload.generationId, partialContentHashPending: true, note: 'No state commit. Durable stopped output, if saved by host, will fail closed as unreconciled.' });
