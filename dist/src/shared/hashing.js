@@ -17,7 +17,9 @@ export function canonicalStringify(value) {
 }
 export async function sha256Hex(value) {
     const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    const owned = new Uint8Array(bytes.byteLength);
+    owned.set(bytes);
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', owned.buffer);
     return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 export async function canonicalHash(value) {
