@@ -1,11 +1,11 @@
 {
-  "version": "0.4.2",
+  "version": "0.4.3",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "Development bridge for migrating FF+MVU state semantics to Lumiverse. v0.4.2 is a live lifecycle/projection probe and intentionally does not commit model-authored state patches.",
+  "description": "Development bridge for migrating FF+MVU state semantics to Lumiverse. v0.4.3 is a live lifecycle/projection probe and intentionally does not commit model-authored state patches.",
   "permissions": [
     "context_handler",
     "interceptor",
