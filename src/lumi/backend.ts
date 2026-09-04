@@ -16,7 +16,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.4.0';
+const BRIDGE_VERSION = '0.4.1';
 const PROMPT_PROTOCOL_VERSION = 'ffmvu-model-state-v1';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -33,6 +33,7 @@ const runtimes = new Map<string, UserRuntime>();
 const contexts = new AttemptContextRegistry();
 const knownScopeByChat = new Map<string, StateScope>();
 const lastStatusByUser = new Map<string, Record<string, unknown>>();
+const knownFrontendUsers = new Set<string>();
 
 function runtime(userId: string): UserRuntime {
   let found = runtimes.get(userId);
@@ -52,8 +53,25 @@ async function config(userId: string): Promise<BridgeConfig> {
 }
 async function setConfig(userId: string, value: BridgeConfig): Promise<void> { await spindle.userStorage.setJson(CONFIG_PATH, value, { userId }); }
 
+function registrationSnapshot(): Record<string, unknown> {
+  return {
+    contract: spindle.contracts?.preAssemblyGenerationContext ?? 0,
+    permissions: {
+      context_handler: spindle.permissions.has('context_handler'),
+      interceptor: spindle.permissions.has('interceptor'),
+      generation: spindle.permissions.has('generation'),
+      chat_mutation: spindle.permissions.has('chat_mutation'),
+    },
+    registrations: {
+      context: contextRegistered,
+      interceptor: interceptorRegistered,
+      generation: generationUnsubs.length > 0,
+    },
+  };
+}
+
 function publish(userId: string, status: Record<string, unknown>): void {
-  const value = { bridgeVersion: BRIDGE_VERSION, at: isoNow(), ...status };
+  const value = { bridgeVersion: BRIDGE_VERSION, at: isoNow(), ...registrationSnapshot(), ...status };
   lastStatusByUser.set(userId, value);
   spindle.sendToFrontend({ type: 'ffmvu_status', status: value }, userId);
 }
@@ -260,7 +278,12 @@ function tryRegisterGenerationEvents(): void {
   const add = (value: (() => void) | void) => { if (typeof value === 'function') generationUnsubs.push(value); };
   add(spindle.on('GENERATION_STARTED', (payload: GenerationStartedPayload) => {
     const pending = contexts.bindGeneration(payload.chatId, payload.generationId, payload.targetMessageId);
-    if (!pending) return;
+    if (!pending) {
+      for (const userId of knownFrontendUsers) {
+        publish(userId, { phase: 'generation_started_unmatched', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, reason: 'GENERATION_STARTED observed but no frozen AttemptContext exists' });
+      }
+      return;
+    }
     publish(pending.scope.userId, { phase: 'generation_started', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, injectionMode: pending.injectionMode ?? 'not_observed' });
   }));
   add(spindle.on('GENERATION_ENDED', (payload: GenerationEndedPayload) => finalizeProbe(payload)));
@@ -273,9 +296,13 @@ function tryRegisterGenerationEvents(): void {
   spindle.log.info('[FFMVU] Generation lifecycle subscriptions registered.');
 }
 
-tryRegisterContext();
-tryRegisterInterceptor();
-tryRegisterGenerationEvents();
+function ensureRegistrations(): void {
+  tryRegisterContext();
+  tryRegisterInterceptor();
+  tryRegisterGenerationEvents();
+}
+
+ensureRegistrations();
 spindle.permissions.onChanged(({ permission, granted }) => {
   if (permission === 'context_handler' && granted) tryRegisterContext();
   if (permission === 'interceptor' && granted) tryRegisterInterceptor();
@@ -289,14 +316,17 @@ spindle.on('MESSAGE_SWIPED', (payload, userId) => reconcileSwipePayload(payload,
 spindle.on('SWIPE_EDITED', (payload, userId) => reconcileSwipePayload(payload, userId));
 
 spindle.onFrontendMessage(async (payload: any, userId) => {
+  knownFrontendUsers.add(userId);
+  ensureRegistrations();
   if (payload?.type === 'ffmvu_get_status') {
     const cfg = await config(userId);
-    spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, enabled: cfg.enabled, ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }) } }, userId);
+    spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, enabled: cfg.enabled, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }) } }, userId);
     return;
   }
   if (payload?.type === 'ffmvu_set_enabled') {
     const enabled = payload.enabled === true;
     await setConfig(userId, { enabled });
+    ensureRegistrations();
     publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, note: enabled ? 'Live P0 probe armed. Writes from model output remain disabled.' : 'Bridge will not touch generations.' });
   }
 });
