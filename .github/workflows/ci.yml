@@ -26,3 +26,9 @@ jobs:
 
       - name: Validate manifest, build, and test
         run: npm test
+
+      - name: Upload compiled dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
