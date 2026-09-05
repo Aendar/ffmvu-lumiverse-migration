@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-09-05T00:15:44.401Z",
+  "bridgeVersion": "0.5.0",
+  "presetVersion": "FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity",
+  "phase": "commit_complete",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "generationId": "fc93c55e-9c00-4fb1-9988-e1a1ccd73aa1",
+  "messageId": "edf06477-b791-4153-a058-0c04419d6e1c",
+  "variantId": "variant_656a3354-a97e-4ba1-9259-12209dcc4295",
+  "status": "committed",
+  "modelCommitId": "node_65e10a68-cb15-4d0f-8b7e-73db93393d30",
+  "systemCommitId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+  "transactionId": "tx_3e7b2c02-218c-48e1-af5e-878facc41e0c",
+  "committedNodeIds": [
+    "node_65e10a68-cb15-4d0f-8b7e-73db93393d30",
+    "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88"
+  ],
+  "finalNodeId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+  "finalStateHash": "801aa66e051361f563b12596d93fd34b1dcc059d5779e231d4379c9cc14d9fa2",
+  "deliveredPromptViewHash": "1b1b47724f5a752e1341d4b3450db1399e6bcbd3dd941997079f8255653286ca",
+  "nextPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253",
+  "injectionMode": "sentinel",
+  "operationCount": 17,
+  "notes": "First successful live v0.5 state-writing commit. P1 + C2 committed in one ChatStoreRevision."
+}
