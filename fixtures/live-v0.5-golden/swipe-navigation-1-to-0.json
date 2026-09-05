@@ -1,0 +1,26 @@
+{
+  "bridgeVersion": "0.5.1",
+  "at": "2026-09-05T06:14:38.000Z",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "phase": "swipe_navigated",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "messageId": "4381e23b-e6fd-4a1f-9e34-3792c0612da0",
+  "swipeId": 0,
+  "previousSwipeId": 1,
+  "variantId": "variant_d9f65bde-4b9e-44d0-89c5-9bdb3a6acf41",
+  "headHealth": "ok",
+  "headNodeId": "node_96cc9886-46e4-4afc-9487-5492a01819ca",
+  "headStateHash": "8220e956c1922a85b8e9012b8d37debd40bbf48d5b547aeb3f53e27e74df59c3",
+  "noStateTransaction": true
+}

@@ -1,0 +1,33 @@
+{
+  "bridgeVersion": "0.5.0",
+  "at": "2026-09-05T06:06:16.415Z",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "phase": "commit_complete",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "generationId": "d5990884-08c4-4b3b-9243-7b3f60140e02",
+  "messageId": "4381e23b-e6fd-4a1f-9e34-3792c0612da0",
+  "variantId": "variant_dbedb303-ed2b-4b6c-b089-6036dba8e5bb",
+  "status": "committed",
+  "modelCommitId": "node_f2a2850d-b204-477a-bbb5-caa219b74669",
+  "systemCommitId": null,
+  "transactionId": "tx_f24d24aa-b270-4831-a9c9-78954534de3e",
+  "committedNodeIds": [
+    "node_f2a2850d-b204-477a-bbb5-caa219b74669"
+  ],
+  "finalNodeId": "node_f2a2850d-b204-477a-bbb5-caa219b74669",
+  "finalStateHash": "9689460b5ad76cd90b1eb53d9ad7947709fa9e3c0487dea828be99a6d765fc62",
+  "deliveredPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253",
+  "nextPromptViewHash": "4c880988f18b48afb9015b082b0e21f45354560bfa5d54f71499e35b8ee5e113",
+  "injectionMode": "sentinel"
+}

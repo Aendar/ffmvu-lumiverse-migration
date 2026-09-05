@@ -23,3 +23,14 @@ Files:
 - `chain-proof.json` — explicit cross-turn projection continuity assertion
 
 Do not rewrite fixture values for readability; changes should be treated as fixture versioning.
+
+## Regenerate / swipe topology evidence
+
+Additional live files:
+- `swipe-generated-jsonpatch.json`
+- `swipe-generated-runtime-status.json`
+- `swipe-navigation-0-to-1.json`
+- `swipe-navigation-1-to-0.json`
+- `regenerate-vs-swipe-topology.json`
+
+These prove that Regenerate replaced the host assistant message, while later swipes were variants inside that replacement message. Existing-swipe navigation switched resolved semantic heads without creating a transaction.
