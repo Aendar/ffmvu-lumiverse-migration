@@ -13,8 +13,7 @@ import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-conte
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.4.3';
-const PROMPT_PROTOCOL_VERSION = 'ffmvu-model-state-v1';
+const BRIDGE_VERSION = '0.5.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();

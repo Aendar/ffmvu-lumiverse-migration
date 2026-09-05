@@ -8,7 +8,7 @@ export function setup(ctx) {
     .ffmvu-status { white-space: pre-wrap; word-break: break-word; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 320px; overflow:auto; }
     .ffmvu-button { border:1px solid var(--lumiverse-border); background:var(--lumiverse-fill); color:var(--lumiverse-text); border-radius:var(--lumiverse-radius); padding:7px 10px; cursor:pointer; }
   `);
-    const tab = ctx.ui.registerDrawerTab({ id: 'ffmvu-migration', title: 'FFMVU Migration', shortName: 'FFMVU', headerTitle: 'FFMVU', description: 'Live migration diagnostics for the FF+MVU Lumiverse bridge', keywords: ['mvu', 'ffmvu', 'migration', 'state'] });
+    const tab = ctx.ui.registerDrawerTab({ id: 'ffmvu-migration', title: 'FFMVU Migration', shortName: 'FFMVU', headerTitle: 'FFMVU', description: 'FF+MVU Lumiverse model commit pipeline diagnostics', keywords: ['mvu', 'ffmvu', 'migration', 'state'] });
     const root = document.createElement('div');
     root.className = 'ffmvu-bridge';
     const controls = document.createElement('div');
@@ -16,7 +16,7 @@ export function setup(ctx) {
     const row = document.createElement('div');
     row.className = 'ffmvu-row';
     const title = document.createElement('div');
-    title.innerHTML = '<div class="ffmvu-title">P0 live bridge</div><div class="ffmvu-muted">Disabled by default. When armed, it freezes and injects MODEL_STATE for one diagnostic generation. Model patch commits remain disabled.</div>';
+    title.innerHTML = '<div class="ffmvu-title">v0.5 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization, then commits a valid final JSONPatch as P1 with optional backend C2 consumption. Invalid or stale-parent patches fail closed.</div>';
     const button = document.createElement('button');
     button.className = 'ffmvu-button';
     button.textContent = 'Loading…';
@@ -38,9 +38,9 @@ export function setup(ctx) {
     function render(value) {
         enabled = value?.enabled === true;
         button.disabled = false;
-        button.textContent = enabled ? 'Disarm bridge' : 'Arm bridge';
+        button.textContent = enabled ? 'Disarm commits' : 'Arm commits';
         status.textContent = JSON.stringify(value ?? {}, null, 2);
-        tab.setBadge(value?.phase === 'blocked' || value?.phase === 'unreconciled' || value?.phase === 'probe_error' ? '!' : enabled ? 'DEV' : null);
+        tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : enabled ? 'DEV' : null);
     }
     button.addEventListener('click', () => { button.disabled = true; ctx.sendToBackend({ type: 'ffmvu_set_enabled', enabled: !enabled }); });
     const unsub = ctx.onBackendMessage((payload) => { if (payload?.type === 'ffmvu_status')
