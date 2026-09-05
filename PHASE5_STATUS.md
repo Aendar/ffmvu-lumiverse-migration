@@ -1,6 +1,6 @@
 # Phase 5 / Model Commit Pipeline Status — v0.5.1
 
-Status: **LIVE NORMAL-GENERATION + REGENERATE/RIGHT-EDGE SIBLING BRANCHING PROVEN; explicit existing-swipe navigation observability added in v0.5.1.**
+Status: **LIVE NORMAL-GENERATION, REGENERATE REPLACEMENT-BRANCH, RIGHT-EDGE SWIPE GENERATION, AND EXISTING-SWIPE NAVIGATION PARITY PROVEN.**
 
 ## Parity order
 
@@ -47,4 +47,16 @@ The first manual "swipe right" at the end of the swipe list triggered a new mode
 
 v0.5.1 now publishes `phase: swipe_navigated` for a true existing-swipe navigation event, including `variantId`, `headNodeId`, `headStateHash`, `headHealth`, and `noStateTransaction: true`. This makes navigation-only head changes directly observable without requiring another generation.
 
-Still open: live back-and-forth existing-swipe navigation proof on v0.5.1, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.
+### Existing-swipe navigation
+- v0.5.1 live navigation from swipe 0 -> 1 selected `variant_dbed...` / `node_f2a...` with `headHealth = ok` and `noStateTransaction = true`.
+- Navigation back 1 -> 0 selected `variant_d9f...` / `node_96cc...` with the same guarantees.
+- No generation/commit identifiers were created by navigation.
+
+### Regenerate vs swipe topology
+- Live evidence shows Regenerate replaced the assistant host message: original P2 used `messageId 4c226...`; regenerated P2b used `messageId 4381...`.
+- Later swipes live inside the regenerated replacement message `4381...`.
+- Therefore semantic siblings can span different host message identities. A semantic sibling is not necessarily a UI swipe sibling.
+- The replaced original P2 branch remains durable in the semantic DAG even though the current Lumi swipe UI does not expose a route back to it in this observation.
+- See `docs/LUMIVERSE_TRANSCRIPT_TOPOLOGY.md`.
+
+Still open: no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.

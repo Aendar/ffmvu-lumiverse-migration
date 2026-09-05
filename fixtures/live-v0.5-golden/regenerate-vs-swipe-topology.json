@@ -1,0 +1,37 @@
+{
+  "observation": "Lumiverse regenerate and swipe navigation are distinct transcript operations.",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "semanticParent": {
+    "nodeId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+    "promptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253"
+  },
+  "originalTurn2": {
+    "messageId": "4c226806-7527-457f-90ae-f1075326dba4",
+    "variantId": "variant_34ef1d17-228c-4727-8408-56fd1c166cb7",
+    "nodeId": "node_3cf2071b-e1c7-4f90-a177-81834367437a",
+    "uiReachabilityAfterRegenerate": "not reachable through the regenerated message swipe set in this live observation"
+  },
+  "regeneratedReplacementMessage": {
+    "messageId": "4381e23b-e6fd-4a1f-9e34-3792c0612da0",
+    "swipes": [
+      {
+        "swipeId": 0,
+        "variantId": "variant_d9f65bde-4b9e-44d0-89c5-9bdb3a6acf41",
+        "nodeId": "node_96cc9886-46e4-4afc-9487-5492a01819ca"
+      },
+      {
+        "swipeId": 1,
+        "variantId": "variant_dbedb303-ed2b-4b6c-b089-6036dba8e5bb",
+        "nodeId": "node_f2a2850d-b204-477a-bbb5-caa219b74669"
+      }
+    ]
+  },
+  "assertions": {
+    "regenerateChangedMessageId": true,
+    "regenerateBranchedFromPreMessageSemanticParent": true,
+    "rightEdgeSwipeGenerationStayedInsideReplacementMessage": true,
+    "existingSwipeNavigationChangedResolvedSemanticHead": true,
+    "existingSwipeNavigationCreatedNoStateTransaction": true,
+    "semanticSiblingDoesNotImplySameUiSwipeContainer": true
+  }
+}
