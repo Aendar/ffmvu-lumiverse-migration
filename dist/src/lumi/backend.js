@@ -13,7 +13,7 @@ import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-conte
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.5.0';
+const BRIDGE_VERSION = '0.5.1';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -239,12 +239,50 @@ async function reconcileSwipePayload(payload, callbackUserId) {
     if (!scope || !payload?.message)
         return;
     try {
-        const result = await runtime(scope.userId).variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
-        if (result.status === 'ambiguous')
+        const rt = runtime(scope.userId);
+        const result = await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
+        if (result.status === 'ambiguous') {
             publish(scope.userId, { phase: 'variant_ambiguous', chatId: scope.chatId, messageId: payload.message.id, reason: result.reason });
+            return;
+        }
+        if (payload.action !== 'navigated' || !result.index)
+            return;
+        const swipeId = Number.isInteger(payload.swipeId) ? Number(payload.swipeId) :
+            Number.isInteger(payload.message.swipe_id) ? payload.message.swipe_id : 0;
+        const variantId = result.index.bySwipeIndex[swipeId] ?? null;
+        const root = await rt.anchors.readRoot(scope);
+        if (!root) {
+            publish(scope.userId, {
+                phase: 'swipe_navigation_unreconciled',
+                chatId: scope.chatId,
+                messageId: payload.message.id,
+                swipeId,
+                previousSwipeId: Number.isInteger(payload.previousSwipeId) ? payload.previousSwipeId : null,
+                variantId,
+                reason: 'root anchor missing',
+                noStateTransaction: true,
+            });
+            return;
+        }
+        const messages = await spindle.chat.getMessages(scope.chatId);
+        const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
+        publish(scope.userId, {
+            phase: 'swipe_navigated',
+            chatId: scope.chatId,
+            messageId: payload.message.id,
+            swipeId,
+            previousSwipeId: Number.isInteger(payload.previousSwipeId) ? payload.previousSwipeId : null,
+            variantId,
+            headHealth: head.health,
+            headNodeId: head.nodeId,
+            headStateHash: head.stateHash,
+            ...(head.reason ? { reason: head.reason } : {}),
+            noStateTransaction: true,
+        });
     }
     catch (error) {
         spindle.log.warn('[FFMVU] swipe reconciliation failed', error);
+        publish(scope.userId, { phase: 'swipe_navigation_error', chatId: scope.chatId, messageId: payload.message.id, error: String(error), noStateTransaction: true });
     }
 }
 const contextHandler = async (context) => {
@@ -407,5 +445,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5 model commit pipeline).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.1 model commit + swipe navigation diagnostics).`);
 //# sourceMappingURL=backend.js.map

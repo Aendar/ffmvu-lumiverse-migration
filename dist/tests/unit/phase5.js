@@ -23,25 +23,15 @@ async function main() {
     const genesis = await state.createGenesis(scope);
     const frozen = await state.getProjectionForNode(scope, genesis.nodeId);
     const authorization = buildModelPatchAuthorizationView(frozen.view);
-    const liveShapeOutput = `<gametxt>fixture</gametxt>
-<JSONPatch>
-[
-  {"op":"replace","path":"/World/Time/0","value":"09:17"},
-  {"op":"add","path":"/World_Calc/Locations/market_square","value":{"Status":"active","Summary":"live fixture shape"}},
-  {"op":"add","path":"/Mainchar/Outfit/Worn/travel_cloak","value":{"Name":"Travel Cloak","Type":"Clothing","Slot":"Torso","Layer":"Outerwear","Color":"brown","Material":"wool","Appearance":"","Condition":"good","Arrangement":"worn"}},
-  {"op":"add","path":"/Narrative/NPCs/npc_0001","value":{"DisplayName":"Evelyn","Location":"market_square","Status":"active","IsPresent":true}},
-  {"op":"replace","path":"/Narrative/NextNpcId","value":2},
-  {"op":"replace","path":"/Narrative/Scene/LocationKey","value":"market_square"},
-  {"op":"replace","path":"/Narrative/Scene/Changed","value":true}
-]
-</JSONPatch>`;
-    const extracted = extractLastJsonPatch(liveShapeOutput);
-    assert(extracted?.operations.length === 7, 'last model JSONPatch is extracted');
-    const evidence = resolveFinalJsonPatchEvidence(liveShapeOutput, liveShapeOutput.replace(/\n\s+/g, '\n'));
-    assert(evidence.selected?.canonicalPayload === extracted.canonicalPayload, 'raw/stored JSONPatch evidence tolerates serialization whitespace only');
+    const liveGoldenOutput = `<UpdateVariable><UpdateAnalysis>State updated.</UpdateAnalysis><JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":1},{"op":"replace","path":"/World/Location/0","value":"Дорога у городка Вязовый Брод"},{"op":"replace","path":"/Mainchar/Outfit/Initialized","value":true},{"op":"add","path":"/Mainchar/Outfit/Worn/shlyapa","value":{"Name":"Большая нависающая колдовская шляпа","Type":"Clothing","Slot":"Head","Layer":"Base","Placement":"на голове","Color":"тёплый оливковый с жёлтым узором","Material":"плотный войлок","Appearance":"широкие поля нависают над лицом, по тулье вышитый жёлтый ветвистый узор","Condition":"целая, слегка потёртая от дороги","Arrangement":"надета, слегка сдвинута вперёд"}},{"op":"add","path":"/Mainchar/Outfit/Worn/plashch","value":{"Name":"Согревающий плащ-накидка","Type":"Clothing","Slot":"Torso","Layer":"Outerwear","Placement":"на плечах, до середины бедра","Color":"тёмно-синий с вышивкой созвездий","Material":"плотная шерсть с магической пропиткой","Appearance":"плотная дорожная накидка, вышитые серебристые созвездия","Condition":"добротная","Arrangement":"застёгнута у горла"}},{"op":"add","path":"/Mainchar/Outfit/Worn/platye","value":{"Name":"Дорожное платье","Type":"Clothing","Slot":"Torso","Layer":"Base","Placement":"корпус","Color":"тёмно-оливковый","Material":"лёгкая, но плотная дорожная ткань","Appearance":"простое практичное платье для дороги","Condition":"чистое, выношенное","Arrangement":"подпоясано широким кожаным ремнём"}},{"op":"add","path":"/Mainchar/Outfit/Worn/sapogi","value":{"Name":"Высокие чёрные кожаные сапоги","Type":"Clothing","Slot":"Feet","Layer":"Base","Placement":"ноги до середины бедра","Color":"чёрный","Material":"гладкая кожа","Appearance":"высокие, выше середины бедра","Condition":"ухоженные","Arrangement":"надеты поверх чулок"}},{"op":"add","path":"/Mainchar/Outfit/Worn/chulki_bandelety","value":{"Name":"Чулки и бандалетки","Type":"Clothing","Slot":"Legs","Layer":"Underwear","Placement":"ноги под сапогами","Color":"приглушённый","Material":"тонкая ткань","Appearance":"дорожные чулки и бандалетки","Condition":"целые","Arrangement":"под сапогами"}},{"op":"add","path":"/Mainchar/Inventory/sumka","value":{"Name":"Кожаная сумка через плечо","Type":"Bag","Qty":1,"Desc":"Прочная дорожная сумка, носится через плечо."}},{"op":"add","path":"/Mainchar/Inventory/zapisnaya_knizhka","value":{"Name":"Записная книжка в кожаном чехле","Type":"Item","Qty":1,"Desc":"Увесистая записная книжка; чехол крепится на ремень."}},{"op":"add","path":"/Mainchar/Inventory/sergi","value":{"Name":"Изумрудные серьги","Type":"Accessory","Qty":1,"Desc":"Бабушкин подарок; надеты."}},{"op":"add","path":"/Mainchar/Inventory/kulon","value":{"Name":"Золотой кулон-дуб с изумрудными листьями","Type":"Accessory","Qty":1,"Desc":"Надет на шее."}},{"op":"add","path":"/Mainchar/Inventory/mednye_monety","value":{"Name":"Медные монеты","Type":"Money","Qty":85,"Desc":"Монеты в мешочке."}},{"op":"add","path":"/Mainchar/Inventory/serebryanye_monety","value":{"Name":"Серебряные монеты","Type":"Money","Qty":15,"Desc":"Монеты в мешочке."}},{"op":"replace","path":"/Narrative/Scene/LocationKey","value":"doroga_u_vyazovogo_broda"},{"op":"replace","path":"/Narrative/Scene/Focus","value":"Утренняя дорога у городка Вязовый Брод: открытые ворота, доска объявлений, равнодушная стража"},{"op":"replace","path":"/Narrative/Scene/LastBeat","value":"Эвелин стоит на дороге перед открытыми воротами городка; утренняя жизнь идёт мимо, никто к ней не обращается, дорога открыта в обе стороны"}]</JSONPatch></UpdateVariable>`;
+    const extracted = extractLastJsonPatch(liveGoldenOutput);
+    assert(extracted?.operations.length === 17, 'exact live v0.5 JSONPatch is extracted');
+    const canonicalStoredOutput = `<JSONPatch>${extracted.canonicalPayload}</JSONPatch>`;
+    const evidence = resolveFinalJsonPatchEvidence(liveGoldenOutput, canonicalStoredOutput);
+    assert(evidence.selected?.canonicalPayload === extracted.canonicalPayload, 'exact live raw wrapper matches canonical host-stored JSONPatch');
     let evidenceMismatch = false;
     try {
-        resolveFinalJsonPatchEvidence(liveShapeOutput, liveShapeOutput.replace('"09:17"', '"09:18"'));
+        resolveFinalJsonPatchEvidence(liveGoldenOutput, canonicalStoredOutput.replace('Дорога у городка Вязовый Брод', 'Другая дорога'));
     }
     catch {
         evidenceMismatch = true;
