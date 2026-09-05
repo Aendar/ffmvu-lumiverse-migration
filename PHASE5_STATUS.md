@@ -1,6 +1,6 @@
 # Phase 5 / Model Commit Pipeline Status — v0.5.0
 
-Status: **LIVE NORMAL-GENERATION CHAIN PROVEN; regenerate/swipe/Continue still require dedicated live parity probes.**
+Status: **LIVE NORMAL-GENERATION + REGENERATE SIBLING-BRANCH PARITY PROVEN; swipe/Continue and fault probes remain open.**
 
 ## Parity order
 
@@ -37,4 +37,10 @@ Frozen authorization -> final JSONPatch -> model P1 -> Vnext from P1 before cons
 This closes live parity for the basic normal-generation chain:
 `generation -> P1 -> optional C2 -> next-generation projection restore -> next model commit`.
 
-Still open: regenerate/swipe branch independence, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.
+### Regenerate sibling branch
+- Regenerate of the second assistant turn produced a new `variantId`, `messageId`, and model commit.
+- Its `deliveredPromptViewHash` was exactly `cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253`, the Turn 1 / C2 Vnext hash.
+- It did **not** receive the original P2 projection `de5fe2007e433f7e0cf149ff314aafda24473887c4bbf2c157a953f1bf81e179`.
+- Therefore regenerate is live-proven to create a sibling semantic branch from the state before the regenerated assistant message, not a child of the discarded P2.
+
+Still open: explicit swipe navigation back-and-forth between committed siblings, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.

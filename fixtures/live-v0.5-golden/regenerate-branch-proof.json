@@ -1,0 +1,29 @@
+{
+  "proof": "regenerate_sibling_branch_from_pre_message_state",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "commonBase": {
+    "turn1FinalNodeId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+    "turn1NextPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253"
+  },
+  "originalTurn2": {
+    "variantId": "variant_34ef1d17-228c-4727-8408-56fd1c166cb7",
+    "messageId": "4c226806-7527-457f-90ae-f1075326dba4",
+    "modelCommitId": "node_3cf2071b-e1c7-4f90-a177-81834367437a",
+    "deliveredPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253",
+    "nextPromptViewHash": "de5fe2007e433f7e0cf149ff314aafda24473887c4bbf2c157a953f1bf81e179"
+  },
+  "regeneratedTurn2": {
+    "variantId": "variant_d9f65bde-4b9e-44d0-89c5-9bdb3a6acf41",
+    "messageId": "4381e23b-e6fd-4a1f-9e34-3792c0612da0",
+    "modelCommitId": "node_96cc9886-46e4-4afc-9487-5492a01819ca",
+    "deliveredPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253",
+    "nextPromptViewHash": "1c05860434dc7e1ce48452a427c598d686a90f5c3ac20c6406cffa2b1d266e7a"
+  },
+  "assertions": {
+    "regenerateDeliveredEqualsCommonBase": true,
+    "regenerateDidNotUseOriginalP2Projection": true,
+    "variantIdChanged": true,
+    "modelCommitIdChanged": true,
+    "branchOutputsDiverged": true
+  }
+}
