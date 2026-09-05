@@ -1,6 +1,6 @@
 # Phase 5 / Model Commit Pipeline Status — v0.5.0
 
-Status: **DEV COMMIT PIPELINE — normal/regenerate/swipe finalization enabled; Continue remains fail-closed.**
+Status: **LIVE NORMAL-GENERATION CHAIN PROVEN; regenerate/swipe/Continue still require dedicated live parity probes.**
 
 ## Parity order
 
@@ -19,6 +19,22 @@ Frozen authorization -> final JSONPatch -> model P1 -> Vnext from P1 before cons
 - Materialized-tip cache failure after a durable ChatStoreRevision is non-fatal; the journal remains authoritative.
 - Continue remains blocked until append/fingerprint semantics are proven live.
 
-## Live fixture
+## Live parity evidence
 
-The exact v0.4.3 P0 JSONPatch bytes are not present in repository history. Tests encode only its verified operation shape (World / World_Calc / Outfit / NPC / NextNpcId / Scene). Exact bytes must be added verbatim later rather than invented.
+### Turn 1
+- `commit_complete`
+- P1 + C2 committed in one transaction.
+- `finalNodeId === systemCommitId`.
+- Exact 17-operation patch is stored under `fixtures/live-v0.5-golden/`.
+
+### Turn 2
+- Same chat, ordinary next generation.
+- `deliveredPromptViewHash = cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253`.
+- Turn 1 `nextPromptViewHash` is exactly the same hash.
+- Therefore the C2 one-shot projection binding survived head resolution/restart and delivered the exact pre-consumption P1/Vnext projection to the next generation.
+- Turn 2 committed one direct model node with `systemCommitId = null`, as expected because no backend consumption patch was required.
+
+This closes live parity for the basic normal-generation chain:
+`generation -> P1 -> optional C2 -> next-generation projection restore -> next model commit`.
+
+Still open: regenerate/swipe branch independence, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.

@@ -1,0 +1,22 @@
+{
+  "proof": "c2_one_shot_projection_continuity",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "turn1": {
+    "modelCommitId": "node_65e10a68-cb15-4d0f-8b7e-73db93393d30",
+    "systemCommitId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+    "finalNodeId": "node_5bab9a0d-ada5-4c7b-a72b-6db2118c9a88",
+    "nextPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253"
+  },
+  "turn2": {
+    "deliveredPromptViewHash": "cc9940ef37cd95226607a00b1ff7578c69b1ed3075591d20f99156a2f023c253",
+    "modelCommitId": "node_3cf2071b-e1c7-4f90-a177-81834367437a",
+    "systemCommitId": null,
+    "finalNodeId": "node_3cf2071b-e1c7-4f90-a177-81834367437a",
+    "nextPromptViewHash": "de5fe2007e433f7e0cf149ff314aafda24473887c4bbf2c157a953f1bf81e179"
+  },
+  "assertions": {
+    "turn2DeliveredEqualsTurn1Next": true,
+    "turn1FinalHeadWasConsumptionNode": true,
+    "turn2CommittedDirectlyWithoutConsumption": true
+  }
+}
