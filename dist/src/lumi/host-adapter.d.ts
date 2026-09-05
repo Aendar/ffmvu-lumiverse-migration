@@ -5,3 +5,4 @@ export declare function swipeObservations(message: LumiChatMessage): Array<{
     text: string;
     swipeDate?: string;
 }>;
+export declare function filterTranscriptForGeneration(messages: LumiChatMessage[], generationType: string, targetMessageId?: string): LumiChatMessage[];

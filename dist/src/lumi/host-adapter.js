@@ -13,7 +13,10 @@ export function swipeObservations(message) {
     return values.map((text, index) => ({ text: String(text ?? ''), ...(message.swipe_dates?.[index] !== undefined ? { swipeDate: String(message.swipe_dates[index]) } : {}) }));
 }
 export function filterTranscriptForGeneration(messages, generationType, targetMessageId) {
-    if (generationType !== 'normal' || !targetMessageId)
+    if (!targetMessageId)
+        return messages;
+    if (!['normal', 'regenerate', 'swipe'].includes(generationType))
         return messages;
     return messages.filter(message => String(message.id) !== String(targetMessageId));
 }
+//# sourceMappingURL=host-adapter.js.map

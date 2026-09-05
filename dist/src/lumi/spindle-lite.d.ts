@@ -36,8 +36,10 @@ export interface GenerationStartedPayload {
     chatId: string;
     model: string;
     targetMessageId?: string;
+    targetSwipeId?: number;
     characterId?: string;
     characterName?: string;
+    generationType?: string;
 }
 export interface GenerationEndedPayload {
     generationId: string;

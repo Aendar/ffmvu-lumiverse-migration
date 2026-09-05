@@ -21,3 +21,4 @@ export class UserStorageJsonAdapter {
     delete(path) { return this.api.delete(path, this.userId); }
     mkdir(path) { return this.api.mkdir(path, this.userId); }
 }
+//# sourceMappingURL=user-storage-adapter.js.map

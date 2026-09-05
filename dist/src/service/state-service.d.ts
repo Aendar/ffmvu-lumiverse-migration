@@ -1,4 +1,5 @@
 import { type JsonPatchOperation } from '../shared/json-patch.js';
+import { type ModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import type { ProjectionRegistry } from '../shared/projection-registry.js';
 import type { ReducerRegistry } from '../shared/reducer-registry.js';
 import { AnchorStore } from '../persistence/anchor-store.js';
@@ -19,6 +20,29 @@ export interface CommitPatchInput {
     requestId?: string;
     note?: string;
 }
+export interface FinalizeModelAttemptInput {
+    expectedParentNodeId: string;
+    expectedParentStateHash: string;
+    patch: JsonPatchOperation[] | null;
+    authorization: ModelPatchAuthorizationView;
+    projectionVersion: string;
+    promptProtocolVersion: string;
+    anchor: CommitAnchor;
+    requestId: string;
+    rawGenerationHash?: string;
+    rawPatchPayloadHash?: string;
+    storedMessageTextHash?: string;
+    presetVersion?: string;
+}
+export interface FinalizeModelAttemptResult extends MaterializedState {
+    status: 'committed' | 'no_patch';
+    modelCommitId: string | null;
+    systemCommitId: string | null;
+    transactionId: string | null;
+    committedNodeIds: string[];
+    nextPromptViewHash: string;
+    canonicalPatchHash?: string;
+}
 export declare class StateService {
     private readonly storage;
     private readonly reducers;
@@ -30,10 +54,18 @@ export declare class StateService {
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
     createGenesis(scope: StateScope, input?: CreateGenesisInput): Promise<MaterializedState>;
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
+    finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;
     readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null>;
     getProjectionForNode(scope: StateScope, nodeId: string): Promise<{
         nodeId: string;
         stateHash: string;
+        reducerVersion: string;
+        sourceKind: 'node' | 'base-seed';
+        sourceNodeId?: string;
+        sourceStateHash?: string;
+        sourceBaseId?: string;
+        projectionVersion: string;
+        promptProtocolVersion: string;
         view: Record<string, unknown>;
         viewHash: string;
     }>;
