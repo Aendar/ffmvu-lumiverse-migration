@@ -4,7 +4,6 @@ import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type AnchorRecord, type StateScope, 
 import { HeadResolver } from '../head-resolver.js';
 import { StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
-import { LEGACY_PROJECTION_VERSION } from '../shared/state-schema.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { extractLastJsonPatch } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
@@ -18,8 +17,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.4.3';
-const PROMPT_PROTOCOL_VERSION = 'ffmvu-model-state-v1';
+const BRIDGE_VERSION = '0.5.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }

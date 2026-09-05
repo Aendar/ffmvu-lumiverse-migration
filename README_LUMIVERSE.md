@@ -1,68 +1,77 @@
-# FFMVU -> Lumiverse Migration Bridge v0.4.0
+# FFMVU -> Lumiverse Migration Bridge v0.5.0
 
-This is the **first real Lumiverse/Spindle extension scaffold** for the migration. It is a live diagnostic bridge, not yet the production replacement for the SillyTavern Core.
+This is the first **state-writing** Lumiverse/Spindle development bridge for FF+MVU. P0 lifecycle correlation was proven on Lumiverse with v0.4.3; v0.5 enables model commit finalization for normal/regenerate/swipe generations.
 
-## Before installing
-
-`spindle.json` contains a placeholder repository URL:
+## Current pipeline
 
 ```text
-https://github.com/CHANGE-ME/ffmvu-lumiverse-migration
+frozen semantic parent + exact MODEL_STATE
+        ↓
+frozen patch authorization
+        ↓
+final GENERATION_ENDED output
+        ↓
+last <JSONPatch>
+        ↓
+re-check exact compatible parent
+        ↓
+P1 model commit
+        ↓
+Vnext built from P1 BEFORE consumption
+        ↓
+optional C2 projection-consumption
+(or no-patch projection-refresh when needed)
+        ↓
+ONE ChatStoreRevision
+        ↓
+immutable TranscriptAttempt + AnchorRecord
 ```
 
-Replace both `github` and `homepage` after you create your repository.
+The model never patches against a newly rebuilt/current projection. Authorization is frozen from the projection actually delivered to that attempt.
 
-## Build / verify locally
+## Safety gates
 
-Requirements: Node.js for the migration test suite. Lumiverse itself uses Bun to run/build extensions.
+- No silent rebase. A changed compatible parent produces `model_commit_conflict`.
+- Malformed, unauthorized or invalid patches become `failed_patch`; no semantic state write is adopted.
+- Cold existing entities omitted from MODEL_STATE are not writable by that attempt.
+- New NPC ids must allocate from frozen `Narrative.NextNpcId` and advance it atomically.
+- `ProjectionMeta`, routing labels, audit fields and archives remain backend-owned.
+- Model ops are limited to `add`, `replace`, and `remove`.
+- Continue is intentionally blocked in v0.5 until append/fingerprint semantics are proven live.
+- Stopped/error generations do not bind or commit next state.
+
+## Build / verify
 
 ```bash
 npm install
 npm test
 ```
 
-The checked-in `dist/` is already generated, so Lumiverse does not need to compile TypeScript just to run this snapshot.
+The repository keeps a compiled `dist/`. Lumiverse runs:
 
-## Install in Lumiverse
+- backend: `dist/src/lumi/backend.js`
+- frontend: `dist/src/lumi/frontend.js`
 
-Lumiverse's documented extension flow is GitHub-based.
+## Live v0.5 test
 
-1. Put this directory in a GitHub repository.
-2. Make sure `spindle.json` is at the repository root.
-3. In Lumiverse open **Extensions** and install the repository.
-4. Grant these four permissions:
-   - `context_handler`
-   - `interceptor`
-   - `generation`
-   - `chat_mutation`
-5. Open the new **FFMVU** drawer tab.
-6. Press **Arm bridge**.
-7. Use a disposable/fresh test chat with the FF+MVU preset containing `__FFMVU_LIVE_STATE__` or a `<MODEL_STATE>` block.
-8. Send one ordinary RP message.
+Use a disposable/fresh chat first.
 
-## Expected diagnostic sequence
+1. Update/reload the extension so the drawer reports `bridgeVersion: "0.5.0"`.
+2. Arm commits in the FFMVU drawer.
+3. Send one ordinary stateful turn that produces a valid final `<JSONPatch>`.
+4. Expected terminal phase: `commit_complete`.
+5. Inspect:
+   - `modelCommitId`
+   - optional `systemCommitId`
+   - `transactionId`
+   - `committedNodeIds`
+   - `finalNodeId` / `finalStateHash`
+   - `deliveredPromptViewHash`
+   - `nextPromptViewHash`
+6. Send a second ordinary turn only after the first returns `commit_complete`; this validates restart/head resolution from P1/C2.
 
-The FFMVU tab should progress approximately through:
+## Golden live fixture
 
-```text
-armed
- -> frozen
- -> injected
- -> generation_started
- -> probe_complete
-```
+The successful v0.4.3 live output is known to contain a patch spanning World, World_Calc, Outfit, NPC creation, NextNpcId, and Scene. Its exact JSONPatch bytes were not present in repository history when v0.5 was implemented, so they are **not fabricated**. A fixture slot exists at `fixtures/live-p0-golden/`; exact captured bytes can be added verbatim later.
 
-`probe_complete` is success for v0.4. It proves that the pre-assembly state freeze, late prompt injection, generation correlation, saved message identity, and VariantId evidence all reached the bridge.
-
-The model JSONPatch is **not committed in v0.4**. The resulting assistant variant is marked `unreconciled`, so another stateful generation on that same branch is supposed to be blocked. Do not treat that as a bug.
-
-## What to send back for the next migration step
-
-Copy the JSON shown in the FFMVU drawer after `probe_complete` (or after a `blocked` / `probe_error` state). That gives the live-host evidence needed for P0-F/P0-Q without exposing API keys or private reasoning.
-
-## Important boundaries
-
-- `spindle.userStorage` is authoritative persistence for the extension.
-- Lumi message metadata/chat variables are not used as authoritative FFMVU state.
-- Numeric `swipe_id` is treated only as an observed array index; stable identity is internal `VariantId`.
-- Direct `spindle.generate.raw/quiet/batch` calls are outside this bridge's normal Context Handler / Interceptor path and are not stateful FFMVU generations.
+See `PHASE5_STATUS.md` for the implementation contract.
