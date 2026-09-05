@@ -2,6 +2,7 @@ import { AttemptContextRegistry, EarlyGenerationRegistry } from '../../src/lumi/
 import { injectFrozenModelState } from '../../src/lumi/model-state-injector.js';
 import { UserStorageJsonAdapter } from '../../src/lumi/user-storage-adapter.js';
 import { filterTranscriptForGeneration } from '../../src/lumi/host-adapter.js';
+import { canonicalStringify } from '../../src/shared/hashing.js';
 import type { UserStorageApi } from '../../src/lumi/spindle-lite.js';
 
 let passed = 0;
@@ -27,7 +28,7 @@ class MockUserStorage implements UserStorageApi {
 async function main() {
   const view = { Version: 'FFMVU-1.5.8', Narrative: { Turn: 3 } };
   const sentinel = injectFrozenModelState([{ role: 'system', content: 'x __FFMVU_LIVE_STATE__ y' }], view);
-  assert(sentinel.mode === 'sentinel' && String(sentinel.messages[0].content).includes('"Turn":3'), 'sentinel injection');
+  assert(sentinel.mode === 'sentinel' && String(sentinel.messages[0].content).includes(canonicalStringify(view)), 'sentinel injection uses exact canonical MODEL_STATE serialization');
   const block = injectFrozenModelState([{ role: 'system', content: '<MODEL_STATE>old</MODEL_STATE>' }], view);
   assert(block.mode === 'block' && !String(block.messages[0].content).includes('old'), 'existing MODEL_STATE replacement');
   const fallback = injectFrozenModelState([{ role: 'user', content: 'hello' }], view);
@@ -35,11 +36,13 @@ async function main() {
 
   const contexts = new AttemptContextRegistry();
   const scope = { userId: 'u', chatId: 'c' };
-  const pending = contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', projectionView: {}, promptViewHash: 'v' });
-  let collision = false; try { contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', projectionView: {}, promptViewHash: 'v' }); } catch { collision = true; }
+  const pending = contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
+  let collision = false; try { contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } }); } catch { collision = true; }
   assert(collision, 'one pending non-dryRun generation per scope');
   assert(contexts.bindGeneration('c', 'g1')?.attemptId === pending.attemptId, 'generation id binds to frozen context');
-  contexts.release(pending); assert(contexts.getByGeneration('g1') === null, 'release clears correlation');
+  assert(contexts.claimFinalization('g1')?.attemptId === pending.attemptId, 'first GENERATION_ENDED claims finalization');
+  assert(contexts.claimFinalization('g1') === null && contexts.isFinalizing('g1'), 'duplicate GENERATION_ENDED cannot claim the same attempt');
+  contexts.release(pending); assert(contexts.getByGeneration('g1') === null && !contexts.isFinalizing('g1'), 'release clears correlation and finalization claim');
 
   const early = new EarlyGenerationRegistry();
   early.remember({ chatId: 'c', generationId: 'g-early', targetMessageId: 'staged' });
@@ -52,7 +55,8 @@ async function main() {
   ];
   const normalFiltered = filterTranscriptForGeneration(transcript, 'normal', 'staged');
   assert(normalFiltered.length === 1 && normalFiltered[0].id === 'u1', 'normal generation excludes transient staged assistant from authoritative transcript');
-  assert(filterTranscriptForGeneration(transcript, 'swipe', 'staged').length === 2, 'non-normal generation does not blindly remove target assistant');
+  assert(filterTranscriptForGeneration(transcript, 'swipe', 'staged').length === 1, 'swipe generation resolves from state before target assistant');
+  assert(filterTranscriptForGeneration(transcript, 'continue', 'staged').length === 2, 'continue keeps the existing assistant lineage as its base');
 
   const raw = new MockUserStorage(); const a = new UserStorageJsonAdapter(raw, 'alice'); const b = new UserStorageJsonAdapter(raw, 'bob');
   await a.setJson('x.json', { n: 1 }); await b.setJson('x.json', { n: 2 });

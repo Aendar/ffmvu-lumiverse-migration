@@ -74,6 +74,10 @@ export interface StateCommit {
   patchHash: string;
   reducerVersion: string;
   resultStateHash: string;
+  rawPatchPayloadHash?: string;
+  rawGenerationHash?: string;
+  storedMessageTextHash?: string;
+  presetVersion?: string;
   projectionBinding: ProjectionBinding;
   transactionId: string;
   previousStoreRevisionId: string | null;

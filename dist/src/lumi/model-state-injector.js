@@ -1,8 +1,9 @@
+import { canonicalStringify } from '../shared/hashing.js';
 const SENTINEL = '__FFMVU_LIVE_STATE__';
 const MODEL_STATE_RE = /<MODEL_STATE>[\s\S]*?<\/MODEL_STATE>/i;
 export function injectFrozenModelState(input, view) {
     const messages = structuredClone(input);
-    const serialized = JSON.stringify(view);
+    const serialized = canonicalStringify(view);
     for (let i = 0; i < messages.length; i++) {
         const content = messages[i].content;
         if (typeof content !== 'string')

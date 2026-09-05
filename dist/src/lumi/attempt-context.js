@@ -2,6 +2,7 @@ import { createId, isoNow } from '../persistence/ids.js';
 export class AttemptContextRegistry {
     byScope = new Map();
     byGeneration = new Map();
+    finalizing = new Set();
     key(scope) { return `${scope.userId}\u0000${scope.chatId}`; }
     create(input) {
         const key = this.key(input.scope);
@@ -27,10 +28,20 @@ export class AttemptContextRegistry {
         return value;
     }
     getByGeneration(generationId) { return this.byGeneration.get(generationId) ?? null; }
+    claimFinalization(generationId) {
+        const value = this.byGeneration.get(generationId);
+        if (!value || this.finalizing.has(generationId))
+            return null;
+        this.finalizing.add(generationId);
+        return value;
+    }
+    isFinalizing(generationId) { return this.finalizing.has(generationId); }
     release(value) {
         this.byScope.delete(this.key(value.scope));
-        if (value.generationId)
+        if (value.generationId) {
             this.byGeneration.delete(value.generationId);
+            this.finalizing.delete(value.generationId);
+        }
     }
     list() { return [...this.byScope.values()].map(item => structuredClone(item)); }
 }
@@ -58,3 +69,4 @@ export class EarlyGenerationRegistry {
         }
     }
 }
+//# sourceMappingURL=attempt-context.js.map

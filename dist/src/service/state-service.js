@@ -1,5 +1,7 @@
 import { canonicalHash } from '../shared/hashing.js';
-import { applyJsonPatch, assertPatchResourceLimits } from '../shared/json-patch.js';
+import { applyJsonPatch, assertModelOperationPolicy, assertPatchResourceLimits, canonicalizeTupleOperation } from '../shared/json-patch.js';
+import { assertModelPatchAuthorization } from '../shared/patch-policy.js';
+import { computeProjectionConsumptionPatch } from '../shared/projection-consumption.js';
 import { LEGACY_PROJECTION_VERSION, LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION } from '../shared/state-schema.js';
 import { createDefaultState } from '../shared/state-defaults.js';
 import { AnchorStore } from '../persistence/anchor-store.js';
@@ -24,6 +26,12 @@ export class StateService {
         this.store = new EventStore(storage);
         this.materializer = new Materializer(this.store, reducers);
         this.anchors = new AnchorStore(storage);
+    }
+    async updateMaterializedTipCache(scope, value) {
+        try {
+            await this.storage.setJson(materializedTipPath(scope), value);
+        }
+        catch { /* cache is acceleration only; committed StoreRevision remains authoritative */ }
     }
     async createGenesis(scope, input = {}) {
         return this.mutex.run(scope, async () => {
@@ -52,7 +60,7 @@ export class StateService {
             const revision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: null, previousStoreRevisionHash: null, transactionId, committedArtifacts: [{ type: 'base', id: baseId, hash: baseArtifactHash }], semanticTipNodeId: baseId, semanticTipStateHash: stateHash, createdAt: isoNow() };
             await this.store.writeRevision(revision);
             const result = { nodeId: baseId, stateHash, state };
-            await this.storage.setJson(materializedTipPath(scope), result);
+            await this.updateMaterializedTipCache(scope, result);
             await this.anchors.putRoot({ anchorId: 'root', scope, baseNodeId: baseId, tipNodeId: baseId, updatedAt: isoNow() });
             return result;
         });
@@ -88,14 +96,158 @@ export class StateService {
             const revision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, transactionId, committedArtifacts: [{ type: 'commit', id: commitId, hash: commitArtifactHash }], semanticTipNodeId: commitId, semanticTipStateHash: resultStateHash, createdAt: isoNow() };
             await this.store.writeRevision(revision);
             const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState };
-            await this.storage.setJson(materializedTipPath(scope), result);
+            await this.updateMaterializedTipCache(scope, result);
             return result;
+        });
+    }
+    async finalizeModelAttempt(scope, input) {
+        return this.mutex.run(scope, async () => {
+            const physical = await this.store.resolveStoreHead(scope);
+            if (physical.status !== 'ok' || !physical.head || !physical.headHash)
+                throw new Error('STORE_NOT_WRITABLE: ' + physical.status);
+            if (!await this.store.isNodeCommitted(scope, input.expectedParentNodeId))
+                throw new Error('PARENT_NOT_COMMITTED');
+            const parentArtifact = await this.store.readNode(scope, input.expectedParentNodeId);
+            const parent = await this.materializer.materialize(scope, input.expectedParentNodeId);
+            if (parent.stateHash !== input.expectedParentStateHash)
+                throw new Error('MODEL_COMMIT_CONFLICT: frozen parent state hash mismatch');
+            const reducer = this.reducers.get(parentArtifact.value.reducerVersion);
+            const rawPatch = input.patch ?? [];
+            assertPatchResourceLimits(rawPatch);
+            assertModelOperationPolicy(rawPatch);
+            const canonicalPatch = [];
+            let workingState = structuredClone(parent.state);
+            for (const rawOperation of rawPatch) {
+                const operation = canonicalizeTupleOperation(workingState, rawOperation);
+                canonicalPatch.push(structuredClone(operation));
+                workingState = applyJsonPatch(workingState, [operation]);
+            }
+            assertPatchResourceLimits(canonicalPatch);
+            assertModelPatchAuthorization(parent.state, canonicalPatch, input.authorization);
+            const hasModelPatch = canonicalPatch.length > 0;
+            const canonicalPatchHash = hasModelPatch ? await canonicalHash(canonicalPatch) : undefined;
+            const r1State = hasModelPatch ? reducer.normalize(workingState) : structuredClone(parent.state);
+            const r1Errors = reducer.validate(r1State);
+            if (r1Errors.length)
+                throw new Error('Invalid model commit result: ' + r1Errors.join('; '));
+            const r1StateHash = hasModelPatch ? await canonicalHash(r1State) : parent.stateHash;
+            const modelCommitId = hasModelPatch ? createId('node') : null;
+            const r1NodeId = modelCommitId ?? parent.nodeId;
+            const projectionImplementation = this.projections.get(input.projectionVersion);
+            const nextProjection = projectionImplementation.build(r1State);
+            const nextPromptViewHash = await canonicalHash(nextProjection);
+            const transactionId = createId('tx');
+            const commits = [];
+            if (modelCommitId) {
+                commits.push({
+                    eventFormatVersion: EVENT_FORMAT_VERSION, id: modelCommitId, scope, kind: 'model',
+                    anchor: structuredClone(input.anchor), parentNodeId: parent.nodeId, parentStateHash: parent.stateHash,
+                    patch: structuredClone(canonicalPatch), patchHash: canonicalPatchHash, reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: r1StateHash,
+                    projectionBinding: { sourceKind: 'node', sourceNodeId: modelCommitId, sourceStateHash: r1StateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+                    transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
+                    ...(input.rawGenerationHash ? { rawGenerationHash: input.rawGenerationHash } : {}),
+                    ...(input.rawPatchPayloadHash ? { rawPatchPayloadHash: input.rawPatchPayloadHash } : {}),
+                    ...(input.storedMessageTextHash ? { storedMessageTextHash: input.storedMessageTextHash } : {}),
+                    ...(input.presetVersion ? { presetVersion: input.presetVersion } : {}),
+                    createdAt: isoNow(),
+                });
+            }
+            const consumptionPatch = computeProjectionConsumptionPatch(r1State, nextProjection);
+            let finalNodeId = r1NodeId;
+            let finalStateHash = r1StateHash;
+            let finalState = r1State;
+            let systemCommitId = null;
+            if (consumptionPatch.length) {
+                const consumedState = reducer.normalize(applyJsonPatch(r1State, consumptionPatch));
+                const errors = reducer.validate(consumedState);
+                if (errors.length)
+                    throw new Error('Invalid projection consumption result: ' + errors.join('; '));
+                const consumedStateHash = await canonicalHash(consumedState);
+                systemCommitId = createId('node');
+                commits.push({
+                    eventFormatVersion: EVENT_FORMAT_VERSION, id: systemCommitId, scope, kind: 'system',
+                    anchor: structuredClone(input.anchor), parentNodeId: r1NodeId, parentStateHash: r1StateHash,
+                    patch: structuredClone(consumptionPatch), patchHash: await canonicalHash(consumptionPatch), reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: consumedStateHash,
+                    projectionBinding: { sourceKind: 'node', sourceNodeId: r1NodeId, sourceStateHash: r1StateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+                    transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
+                    note: 'projection-consumption', createdAt: isoNow(),
+                });
+                finalNodeId = systemCommitId;
+                finalStateHash = consumedStateHash;
+                finalState = consumedState;
+            }
+            else if (!modelCommitId) {
+                const binding = parentArtifact.value.projectionBinding;
+                const directMatches = binding.sourceKind === 'node' && binding.sourceNodeId === parent.nodeId && binding.sourceStateHash === parent.stateHash &&
+                    binding.projectionVersion === input.projectionVersion && binding.promptProtocolVersion === input.promptProtocolVersion &&
+                    binding.promptViewHash === nextPromptViewHash;
+                if (!directMatches) {
+                    systemCommitId = createId('node');
+                    commits.push({
+                        eventFormatVersion: EVENT_FORMAT_VERSION, id: systemCommitId, scope, kind: 'system',
+                        anchor: structuredClone(input.anchor), parentNodeId: parent.nodeId, parentStateHash: parent.stateHash,
+                        patch: [], patchHash: await canonicalHash([]), reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: parent.stateHash,
+                        projectionBinding: { sourceKind: 'node', sourceNodeId: systemCommitId, sourceStateHash: parent.stateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+                        transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
+                        note: 'projection-refresh', createdAt: isoNow(),
+                    });
+                    finalNodeId = systemCommitId;
+                }
+            }
+            if (commits.length) {
+                const committedArtifacts = [];
+                for (const commit of commits) {
+                    const artifactHash = await this.store.writeCommit(commit);
+                    committedArtifacts.push({ type: 'commit', id: commit.id, hash: artifactHash });
+                }
+                await this.store.writeRevision({
+                    eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope,
+                    previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash,
+                    transactionId, committedArtifacts, semanticTipNodeId: finalNodeId, semanticTipStateHash: finalStateHash, createdAt: isoNow(),
+                });
+                await this.updateMaterializedTipCache(scope, { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
+            }
+            return {
+                nodeId: finalNodeId, stateHash: finalStateHash, state: finalState,
+                status: hasModelPatch ? 'committed' : 'no_patch',
+                modelCommitId, systemCommitId, transactionId: commits.length ? transactionId : null,
+                committedNodeIds: commits.map(commit => commit.id), nextPromptViewHash,
+                ...(canonicalPatchHash ? { canonicalPatchHash } : {}),
+            };
         });
     }
     async readLatestCommittedTransactionTip(scope) { const revision = await this.store.resolveStoreHead(scope); if (revision.status === 'empty')
         return null; if (revision.status !== 'ok' || !revision.head)
         throw new Error('STORE_HEAD_' + revision.status.toUpperCase()); return this.materializer.materialize(scope, revision.head.semanticTipNodeId); }
-    async getProjectionForNode(scope, nodeId) { if (!await this.store.isNodeCommitted(scope, nodeId))
-        throw new Error('NODE_NOT_COMMITTED'); const materialized = await this.materializer.materialize(scope, nodeId); const view = this.projections.get(LEGACY_PROJECTION_VERSION).build(materialized.state); return { nodeId: materialized.nodeId, stateHash: materialized.stateHash, view, viewHash: await canonicalHash(view) }; }
+    async getProjectionForNode(scope, nodeId) {
+        if (!await this.store.isNodeCommitted(scope, nodeId))
+            throw new Error('NODE_NOT_COMMITTED');
+        const target = await this.materializer.materialize(scope, nodeId);
+        const artifact = await this.store.readNode(scope, nodeId);
+        const binding = artifact.value.projectionBinding;
+        if (binding.sourceKind === 'base-seed') {
+            if (artifact.type !== 'base' || !artifact.value.projectionSeed)
+                throw new Error('BASE_SEED_BINDING_WITHOUT_SEED');
+            const seed = artifact.value.projectionSeed;
+            if (binding.sourceBaseId !== artifact.value.id || seed.projectionVersion !== binding.projectionVersion || seed.promptProtocolVersion !== binding.promptProtocolVersion)
+                throw new Error('BASE_SEED_BINDING_MISMATCH');
+            const viewHash = await canonicalHash(seed.projection);
+            if (viewHash !== binding.promptViewHash || viewHash !== seed.promptViewHash)
+                throw new Error('BASE_SEED_PROJECTION_HASH_MISMATCH');
+            return { nodeId: target.nodeId, stateHash: target.stateHash, reducerVersion: artifact.value.reducerVersion, sourceKind: 'base-seed', sourceBaseId: artifact.value.id, projectionVersion: binding.projectionVersion, promptProtocolVersion: binding.promptProtocolVersion, view: structuredClone(seed.projection), viewHash };
+        }
+        if (!binding.sourceNodeId || !binding.sourceStateHash)
+            throw new Error('NODE_PROJECTION_BINDING_INCOMPLETE');
+        if (!await this.store.isNodeCommitted(scope, binding.sourceNodeId))
+            throw new Error('PROJECTION_SOURCE_NOT_COMMITTED');
+        const source = await this.materializer.materialize(scope, binding.sourceNodeId);
+        if (source.stateHash !== binding.sourceStateHash)
+            throw new Error('PROJECTION_SOURCE_STATE_HASH_MISMATCH');
+        const view = this.projections.get(binding.projectionVersion).build(source.state);
+        const viewHash = await canonicalHash(view);
+        if (viewHash !== binding.promptViewHash)
+            throw new Error('PROJECTION_BINDING_HASH_MISMATCH');
+        return { nodeId: target.nodeId, stateHash: target.stateHash, reducerVersion: artifact.value.reducerVersion, sourceKind: 'node', sourceNodeId: source.nodeId, sourceStateHash: source.stateHash, projectionVersion: binding.projectionVersion, promptProtocolVersion: binding.promptProtocolVersion, view, viewHash };
+    }
 }
 //# sourceMappingURL=state-service.js.map
