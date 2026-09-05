@@ -1,12 +1,17 @@
 {
-  "version": "0.5.0",
+  "version": "0.5.1",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse model commit pipeline. v0.5 freezes authorization with MODEL_STATE, commits model P1 plus optional projection-consumption/refresh C2 in one ChatStoreRevision, then writes immutable Attempt/Anchor evidence.",
-  "permissions": ["context_handler", "interceptor", "generation", "chat_mutation"],
+  "description": "FF+MVU Lumiverse model commit pipeline with explicit live swipe-navigation/head diagnostics. Model P1 + optional C2 remains one ChatStoreRevision; navigation creates no state transaction.",
+  "permissions": [
+    "context_handler",
+    "interceptor",
+    "generation",
+    "chat_mutation"
+  ],
   "entry_backend": "dist/src/lumi/backend.js",
   "entry_frontend": "dist/src/lumi/frontend.js",
   "minimum_lumiverse_version": "1.1.6",

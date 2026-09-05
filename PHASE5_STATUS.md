@@ -1,6 +1,6 @@
-# Phase 5 / Model Commit Pipeline Status — v0.5.0
+# Phase 5 / Model Commit Pipeline Status — v0.5.1
 
-Status: **LIVE NORMAL-GENERATION + REGENERATE SIBLING-BRANCH PARITY PROVEN; swipe/Continue and fault probes remain open.**
+Status: **LIVE NORMAL-GENERATION + REGENERATE/RIGHT-EDGE SIBLING BRANCHING PROVEN; explicit existing-swipe navigation observability added in v0.5.1.**
 
 ## Parity order
 
@@ -43,4 +43,8 @@ This closes live parity for the basic normal-generation chain:
 - It did **not** receive the original P2 projection `de5fe2007e433f7e0cf149ff314aafda24473887c4bbf2c157a953f1bf81e179`.
 - Therefore regenerate is live-proven to create a sibling semantic branch from the state before the regenerated assistant message, not a child of the discarded P2.
 
-Still open: explicit swipe navigation back-and-forth between committed siblings, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.
+The first manual "swipe right" at the end of the swipe list triggered a new model generation, producing another sibling commit from the same pre-message projection. That is branch-generation evidence, not navigation-only evidence.
+
+v0.5.1 now publishes `phase: swipe_navigated` for a true existing-swipe navigation event, including `variantId`, `headNodeId`, `headStateHash`, `headHealth`, and `noStateTransaction: true`. This makes navigation-only head changes directly observable without requiring another generation.
+
+Still open: live back-and-forth existing-swipe navigation proof on v0.5.1, no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.

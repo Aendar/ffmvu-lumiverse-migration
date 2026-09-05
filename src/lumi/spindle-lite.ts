@@ -38,6 +38,13 @@ export interface InterceptorContext {
 export interface GenerationStartedPayload { generationId: string; chatId: string; model: string; targetMessageId?: string; targetSwipeId?: number; characterId?: string; characterName?: string; generationType?: string }
 export interface GenerationEndedPayload { generationId: string; chatId: string; messageId?: string; content?: string; error?: string }
 export interface GenerationStoppedPayload { generationId: string; chatId: string; content: string }
+export interface SwipeEventPayload {
+  chatId: string;
+  action?: 'added' | 'updated' | 'deleted' | 'navigated' | string;
+  swipeId?: number;
+  previousSwipeId?: number;
+  message: LumiChatMessage;
+}
 
 export interface UserStorageApi {
   getJson<T>(path: string, options?: { fallback?: T; userId?: string }): Promise<T>;
@@ -63,6 +70,7 @@ export interface SpindleApiLite {
   on(event: 'GENERATION_STARTED', handler: (payload: GenerationStartedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
   on(event: 'GENERATION_ENDED', handler: (payload: GenerationEndedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
   on(event: 'GENERATION_STOPPED', handler: (payload: GenerationStoppedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
+  on(event: 'MESSAGE_SWIPED' | 'SWIPE_EDITED', handler: (payload: SwipeEventPayload, userId?: string) => void | Promise<void>): (() => void) | void;
   on(event: string, handler: (payload: any, userId?: string) => void | Promise<void>): (() => void) | void;
   onFrontendMessage(handler: (payload: any, userId: string) => void | Promise<void>): void;
   sendToFrontend(payload: unknown, userId?: string): void;

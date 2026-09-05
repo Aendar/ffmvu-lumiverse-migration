@@ -14,7 +14,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
   const root = document.createElement('div'); root.className = 'ffmvu-bridge';
   const controls = document.createElement('div'); controls.className = 'ffmvu-card';
   const row = document.createElement('div'); row.className = 'ffmvu-row';
-  const title = document.createElement('div'); title.innerHTML = '<div class="ffmvu-title">v0.5 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization, then commits a valid final JSONPatch as P1 with optional backend C2 consumption. Invalid or stale-parent patches fail closed.</div>';
+  const title = document.createElement('div'); title.innerHTML = '<div class="ffmvu-title">v0.5.1 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization, then commits a valid final JSONPatch as P1 with optional backend C2 consumption. Invalid or stale-parent patches fail closed.</div>';
   const button = document.createElement('button'); button.className = 'ffmvu-button'; button.textContent = 'Loading…'; button.disabled = true;
   row.append(title, button); controls.appendChild(row);
   const statusCard = document.createElement('div'); statusCard.className = 'ffmvu-card';
@@ -27,7 +27,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     button.disabled = false;
     button.textContent = enabled ? 'Disarm commits' : 'Arm commits';
     status.textContent = JSON.stringify(value ?? {}, null, 2);
-    tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : enabled ? 'DEV' : null);
+    tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict', 'swipe_navigation_error', 'swipe_navigation_unreconciled'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : value?.phase === 'swipe_navigated' ? 'NAV' : enabled ? 'DEV' : null);
   }
   button.addEventListener('click', () => { button.disabled = true; ctx.sendToBackend({ type: 'ffmvu_set_enabled', enabled: !enabled }); });
   const unsub = ctx.onBackendMessage((payload: any) => { if (payload?.type === 'ffmvu_status') render(payload.status); });
