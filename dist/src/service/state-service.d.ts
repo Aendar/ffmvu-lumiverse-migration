@@ -52,6 +52,7 @@ export declare class StateService {
     readonly anchors: AnchorStore;
     private readonly mutex;
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
+    private updateMaterializedTipCache;
     createGenesis(scope: StateScope, input?: CreateGenesisInput): Promise<MaterializedState>;
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;

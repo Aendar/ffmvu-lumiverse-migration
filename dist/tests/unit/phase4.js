@@ -2,6 +2,7 @@ import { AttemptContextRegistry, EarlyGenerationRegistry } from '../../src/lumi/
 import { injectFrozenModelState } from '../../src/lumi/model-state-injector.js';
 import { UserStorageJsonAdapter } from '../../src/lumi/user-storage-adapter.js';
 import { filterTranscriptForGeneration } from '../../src/lumi/host-adapter.js';
+import { canonicalStringify } from '../../src/shared/hashing.js';
 let passed = 0;
 function assert(value, message) { if (!value)
     throw new Error('ASSERT: ' + message); passed += 1; }
@@ -24,7 +25,7 @@ class MockUserStorage {
 async function main() {
     const view = { Version: 'FFMVU-1.5.8', Narrative: { Turn: 3 } };
     const sentinel = injectFrozenModelState([{ role: 'system', content: 'x __FFMVU_LIVE_STATE__ y' }], view);
-    assert(sentinel.mode === 'sentinel' && String(sentinel.messages[0].content).includes('"Turn":3'), 'sentinel injection');
+    assert(sentinel.mode === 'sentinel' && String(sentinel.messages[0].content).includes(canonicalStringify(view)), 'sentinel injection uses exact canonical MODEL_STATE serialization');
     const block = injectFrozenModelState([{ role: 'system', content: '<MODEL_STATE>old</MODEL_STATE>' }], view);
     assert(block.mode === 'block' && !String(block.messages[0].content).includes('old'), 'existing MODEL_STATE replacement');
     const fallback = injectFrozenModelState([{ role: 'user', content: 'hello' }], view);
@@ -41,8 +42,10 @@ async function main() {
     }
     assert(collision, 'one pending non-dryRun generation per scope');
     assert(contexts.bindGeneration('c', 'g1')?.attemptId === pending.attemptId, 'generation id binds to frozen context');
+    assert(contexts.claimFinalization('g1')?.attemptId === pending.attemptId, 'first GENERATION_ENDED claims finalization');
+    assert(contexts.claimFinalization('g1') === null && contexts.isFinalizing('g1'), 'duplicate GENERATION_ENDED cannot claim the same attempt');
     contexts.release(pending);
-    assert(contexts.getByGeneration('g1') === null, 'release clears correlation');
+    assert(contexts.getByGeneration('g1') === null && !contexts.isFinalizing('g1'), 'release clears correlation and finalization claim');
     const early = new EarlyGenerationRegistry();
     early.remember({ chatId: 'c', generationId: 'g-early', targetMessageId: 'staged' });
     assert(early.peek('c')?.generationId === 'g-early', 'early generation start is cached before context freeze');

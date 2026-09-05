@@ -1,4 +1,5 @@
 import { isRecord } from './domain/value-utils.js';
+import { canonicalStringify } from './hashing.js';
 export function extractLastJsonPatch(output) {
     const source = String(output ?? '');
     const openMatches = [...source.matchAll(/<JSONPatch>/gi)];
@@ -24,6 +25,18 @@ export function extractLastJsonPatch(output) {
             throw new Error('Invalid JSONPatch operation at index ' + index);
         return structuredClone(value);
     });
-    return { rawPayload, operations, canonicalPayload: JSON.stringify(operations) };
+    return { rawPayload, operations, canonicalPayload: canonicalStringify(operations) };
+}
+export function resolveFinalJsonPatchEvidence(rawOutput, storedOutput) {
+    const stored = extractLastJsonPatch(storedOutput);
+    if (rawOutput === undefined)
+        return { raw: null, stored, selected: stored };
+    const raw = extractLastJsonPatch(rawOutput);
+    const rawCanonical = raw?.canonicalPayload ?? null;
+    const storedCanonical = stored?.canonicalPayload ?? null;
+    if (rawCanonical !== storedCanonical) {
+        throw new Error('OUTPUT_PATCH_EVIDENCE_MISMATCH: GENERATION_ENDED and canonical stored JSONPatch differ');
+    }
+    return { raw, stored, selected: stored ?? raw };
 }
 //# sourceMappingURL=model-output.js.map

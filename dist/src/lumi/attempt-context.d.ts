@@ -25,12 +25,15 @@ export interface FrozenAttemptContext {
 export declare class AttemptContextRegistry {
     private readonly byScope;
     private readonly byGeneration;
+    private readonly finalizing;
     private key;
     create(input: Omit<FrozenAttemptContext, 'attemptId' | 'createdAt'>): FrozenAttemptContext;
     getForChat(chatId: string): FrozenAttemptContext | null;
     getForScope(scope: StateScope): FrozenAttemptContext | null;
     bindGeneration(chatId: string, generationId: string, targetMessageId?: string): FrozenAttemptContext | null;
     getByGeneration(generationId: string): FrozenAttemptContext | null;
+    claimFinalization(generationId: string): FrozenAttemptContext | null;
+    isFinalizing(generationId: string): boolean;
     release(value: FrozenAttemptContext): void;
     list(): FrozenAttemptContext[];
 }

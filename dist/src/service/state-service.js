@@ -27,6 +27,12 @@ export class StateService {
         this.materializer = new Materializer(this.store, reducers);
         this.anchors = new AnchorStore(storage);
     }
+    async updateMaterializedTipCache(scope, value) {
+        try {
+            await this.storage.setJson(materializedTipPath(scope), value);
+        }
+        catch { /* cache is acceleration only; committed StoreRevision remains authoritative */ }
+    }
     async createGenesis(scope, input = {}) {
         return this.mutex.run(scope, async () => {
             const head = await this.store.resolveStoreHead(scope);
@@ -54,7 +60,7 @@ export class StateService {
             const revision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: null, previousStoreRevisionHash: null, transactionId, committedArtifacts: [{ type: 'base', id: baseId, hash: baseArtifactHash }], semanticTipNodeId: baseId, semanticTipStateHash: stateHash, createdAt: isoNow() };
             await this.store.writeRevision(revision);
             const result = { nodeId: baseId, stateHash, state };
-            await this.storage.setJson(materializedTipPath(scope), result);
+            await this.updateMaterializedTipCache(scope, result);
             await this.anchors.putRoot({ anchorId: 'root', scope, baseNodeId: baseId, tipNodeId: baseId, updatedAt: isoNow() });
             return result;
         });
@@ -90,7 +96,7 @@ export class StateService {
             const revision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, transactionId, committedArtifacts: [{ type: 'commit', id: commitId, hash: commitArtifactHash }], semanticTipNodeId: commitId, semanticTipStateHash: resultStateHash, createdAt: isoNow() };
             await this.store.writeRevision(revision);
             const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState };
-            await this.storage.setJson(materializedTipPath(scope), result);
+            await this.updateMaterializedTipCache(scope, result);
             return result;
         });
     }
@@ -199,7 +205,7 @@ export class StateService {
                     previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash,
                     transactionId, committedArtifacts, semanticTipNodeId: finalNodeId, semanticTipStateHash: finalStateHash, createdAt: isoNow(),
                 });
-                await this.storage.setJson(materializedTipPath(scope), { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
+                await this.updateMaterializedTipCache(scope, { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
             }
             return {
                 nodeId: finalNodeId, stateHash: finalStateHash, state: finalState,
