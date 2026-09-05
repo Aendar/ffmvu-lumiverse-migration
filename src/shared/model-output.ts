@@ -1,5 +1,6 @@
 import type { JsonPatchOperation } from './json-patch.js';
 import { isRecord } from './domain/value-utils.js';
+import { canonicalStringify } from './hashing.js';
 
 export interface ExtractedModelPatch {
   rawPayload: string;
@@ -26,5 +27,24 @@ export function extractLastJsonPatch(output: string): ExtractedModelPatch | null
     if (!isRecord(value) || typeof value.op !== 'string' || typeof value.path !== 'string') throw new Error('Invalid JSONPatch operation at index ' + index);
     return structuredClone(value) as JsonPatchOperation;
   });
-  return { rawPayload, operations, canonicalPayload: JSON.stringify(operations) };
+  return { rawPayload, operations, canonicalPayload: canonicalStringify(operations) };
+}
+
+export interface FinalJsonPatchEvidence {
+  raw: ExtractedModelPatch | null;
+  stored: ExtractedModelPatch | null;
+  selected: ExtractedModelPatch | null;
+}
+
+export function resolveFinalJsonPatchEvidence(rawOutput: string | undefined, storedOutput: string): FinalJsonPatchEvidence {
+  const stored = extractLastJsonPatch(storedOutput);
+  if (rawOutput === undefined) return { raw: null, stored, selected: stored };
+
+  const raw = extractLastJsonPatch(rawOutput);
+  const rawCanonical = raw?.canonicalPayload ?? null;
+  const storedCanonical = stored?.canonicalPayload ?? null;
+  if (rawCanonical !== storedCanonical) {
+    throw new Error('OUTPUT_PATCH_EVIDENCE_MISMATCH: GENERATION_ENDED and canonical stored JSONPatch differ');
+  }
+  return { raw, stored, selected: stored ?? raw };
 }

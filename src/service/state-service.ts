@@ -52,6 +52,11 @@ export class StateService {
     this.store = new EventStore(storage); this.materializer = new Materializer(this.store, reducers); this.anchors = new AnchorStore(storage);
   }
 
+  private async updateMaterializedTipCache(scope: StateScope, value: MaterializedState): Promise<void> {
+    try { await this.storage.setJson(materializedTipPath(scope), value); }
+    catch { /* cache is acceleration only; committed StoreRevision remains authoritative */ }
+  }
+
   async createGenesis(scope: StateScope, input: CreateGenesisInput = {}): Promise<MaterializedState> {
     return this.mutex.run(scope, async () => {
       const head = await this.store.resolveStoreHead(scope); if (head.status !== 'empty') throw new Error('GENESIS_ALREADY_EXISTS_OR_STORE_UNHEALTHY: ' + head.status);
@@ -70,7 +75,7 @@ export class StateService {
       const baseArtifactHash = await this.store.writeBase(base);
       const revision: ChatStoreRevision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: null, previousStoreRevisionHash: null, transactionId, committedArtifacts: [{ type: 'base', id: baseId, hash: baseArtifactHash }], semanticTipNodeId: baseId, semanticTipStateHash: stateHash, createdAt: isoNow() };
       await this.store.writeRevision(revision);
-      const result = { nodeId: baseId, stateHash, state }; await this.storage.setJson(materializedTipPath(scope), result);
+      const result = { nodeId: baseId, stateHash, state }; await this.updateMaterializedTipCache(scope, result);
       await this.anchors.putRoot({ anchorId: 'root', scope, baseNodeId: baseId, tipNodeId: baseId, updatedAt: isoNow() });
       return result;
     });
@@ -96,7 +101,7 @@ export class StateService {
       };
       const commitArtifactHash = await this.store.writeCommit(commit);
       const revision: ChatStoreRevision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, transactionId, committedArtifacts: [{ type: 'commit', id: commitId, hash: commitArtifactHash }], semanticTipNodeId: commitId, semanticTipStateHash: resultStateHash, createdAt: isoNow() };
-      await this.store.writeRevision(revision); const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState }; await this.storage.setJson(materializedTipPath(scope), result); return result;
+      await this.store.writeRevision(revision); const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState }; await this.updateMaterializedTipCache(scope, result); return result;
     });
   }
 
@@ -207,7 +212,7 @@ export class StateService {
           previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash,
           transactionId, committedArtifacts, semanticTipNodeId: finalNodeId, semanticTipStateHash: finalStateHash, createdAt: isoNow(),
         });
-        await this.storage.setJson(materializedTipPath(scope), { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
+        await this.updateMaterializedTipCache(scope, { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
       }
 
       return {

@@ -28,6 +28,7 @@ export interface FrozenAttemptContext {
 export class AttemptContextRegistry {
   private readonly byScope = new Map<string, FrozenAttemptContext>();
   private readonly byGeneration = new Map<string, FrozenAttemptContext>();
+  private readonly finalizing = new Set<string>();
   private key(scope: StateScope): string { return `${scope.userId}\u0000${scope.chatId}`; }
   create(input: Omit<FrozenAttemptContext, 'attemptId' | 'createdAt'>): FrozenAttemptContext {
     const key = this.key(input.scope);
@@ -46,8 +47,19 @@ export class AttemptContextRegistry {
     this.byGeneration.set(generationId, value); return value;
   }
   getByGeneration(generationId: string): FrozenAttemptContext | null { return this.byGeneration.get(generationId) ?? null; }
+  claimFinalization(generationId: string): FrozenAttemptContext | null {
+    const value = this.byGeneration.get(generationId);
+    if (!value || this.finalizing.has(generationId)) return null;
+    this.finalizing.add(generationId);
+    return value;
+  }
+  isFinalizing(generationId: string): boolean { return this.finalizing.has(generationId); }
   release(value: FrozenAttemptContext): void {
-    this.byScope.delete(this.key(value.scope)); if (value.generationId) this.byGeneration.delete(value.generationId);
+    this.byScope.delete(this.key(value.scope));
+    if (value.generationId) {
+      this.byGeneration.delete(value.generationId);
+      this.finalizing.delete(value.generationId);
+    }
   }
   list(): FrozenAttemptContext[] { return [...this.byScope.values()].map(item => structuredClone(item)); }
 }

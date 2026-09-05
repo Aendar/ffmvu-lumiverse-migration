@@ -5,7 +5,7 @@ import { HeadResolver } from '../head-resolver.js';
 import { StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
-import { extractLastJsonPatch } from '../shared/model-output.js';
+import { resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
@@ -123,7 +123,7 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
 }
 
 async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<void> {
-  const pending = contexts.getByGeneration(payload.generationId);
+  const pending = contexts.claimFinalization(payload.generationId);
   if (!pending) return;
   const userId = pending.scope.userId;
 
@@ -188,17 +188,25 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
     if (!storedMessageTextHash) throw new Error('ACTIVE_VARIANT_FINGERPRINT_MISSING');
 
     const storedText = Array.isArray(saved.swipes) && saved.swipes[swipeId] !== undefined ? String(saved.swipes[swipeId]) : String(saved.content ?? '');
-    const rawGeneration = payload.content !== undefined ? String(payload.content) : storedText;
-    const rawGenerationHash = await canonicalHash(rawGeneration);
+    const rawGeneration = payload.content !== undefined ? String(payload.content) : undefined;
+    const rawGenerationHash = rawGeneration !== undefined ? await canonicalHash(rawGeneration) : undefined;
 
-    let extracted: ReturnType<typeof extractLastJsonPatch>;
-    try { extracted = extractLastJsonPatch(rawGeneration); }
+    let evidence: ReturnType<typeof resolveFinalJsonPatchEvidence>;
+    try { evidence = resolveFinalJsonPatchEvidence(rawGeneration, storedText); }
     catch (error) {
-      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, { rawGenerationHash });
-      publish(userId, { phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: String(error) });
+      const message = String(error);
+      const evidenceMismatch = message.includes('OUTPUT_PATCH_EVIDENCE_MISMATCH');
+      const hashes = rawGenerationHash ? { rawGenerationHash } : {};
+      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, hashes);
+      publish(userId, { phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: message });
       return;
     }
-    const rawPatchPayloadHash = extracted ? await canonicalHash(extracted.rawPayload) : undefined;
+    const extracted = evidence.selected;
+    const rawPatchPayloadHash = evidence.raw ? await canonicalHash(evidence.raw.rawPayload) : undefined;
+    const baseEvidenceHashes = {
+      ...(rawGenerationHash ? { rawGenerationHash } : {}),
+      ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}),
+    };
 
     const root = await rt.anchors.readRoot(pending.scope);
     if (!root) throw new Error('ROOT_ANCHOR_MISSING_AT_FINALIZE');
@@ -207,7 +215,7 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
       toHostTranscript(filterTranscriptForGeneration(messages, pending.generationType, saved.id)),
     );
     if (compatible.health !== 'ok' || compatible.nodeId !== pending.baseNodeId || compatible.stateHash !== pending.baseStateHash) {
-      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'unreconciled', null, pending.baseNodeId, { rawGenerationHash, ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}) });
+      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'unreconciled', null, pending.baseNodeId, baseEvidenceHashes);
       publish(userId, { phase: 'model_commit_conflict', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, expectedBaseNodeId: pending.baseNodeId, currentCompatibleNodeId: compatible.nodeId, health: compatible.health });
       return;
     }
@@ -219,19 +227,19 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
         patch: extracted?.operations ?? null, authorization: pending.frozenAuthorization,
         projectionVersion: pending.projectionVersion, promptProtocolVersion: pending.promptProtocolVersion,
         anchor: { messageId: saved.id, variantId, generationId: payload.generationId, attemptId: pending.attemptId, messageRole: 'assistant', lineageAnchorId: variantId },
-        requestId: pending.attemptId, rawGenerationHash,
+        requestId: pending.attemptId,
+        ...(rawGenerationHash ? { rawGenerationHash } : {}),
         ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}), storedMessageTextHash,
         ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
       });
     } catch (error) {
-      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, { rawGenerationHash, ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}) });
+      await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, baseEvidenceHashes);
       publish(userId, { phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: String(error) });
       return;
     }
 
     await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, finalized.status, finalized.modelCommitId, finalized.nodeId, {
-      rawGenerationHash,
-      ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}),
+      ...baseEvidenceHashes,
       ...(finalized.canonicalPatchHash ? { canonicalPatchHash: finalized.canonicalPatchHash } : {}),
     });
     publish(userId, {
@@ -366,6 +374,7 @@ function tryRegisterGenerationEvents(): void {
   }));
   add(spindle.on('GENERATION_STOPPED', (payload: GenerationStoppedPayload) => {
     earlyGenerations.forgetGeneration(payload.generationId);
+    if (contexts.isFinalizing(payload.generationId)) return;
     const pending = contexts.getByGeneration(payload.generationId);
     if (!pending) return;
     publish(pending.scope.userId, { phase: 'stopped', chatId: payload.chatId, generationId: payload.generationId, partialContentHashPending: true, note: 'No state commit. Durable stopped output, if saved by host, will fail closed as unreconciled.' });

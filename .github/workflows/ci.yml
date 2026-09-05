@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Use Node.js 22
         uses: actions/setup-node@v4
@@ -26,3 +28,14 @@ jobs:
 
       - name: Validate manifest, build, and test
         run: npm test
+
+      - name: Commit compiled dist to v0.5 branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'v0.5-model-commit'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          if ! git diff --cached --quiet; then
+            git commit -m "Build v0.5 dist"
+            git push origin HEAD:${{ github.head_ref }}
+          fi

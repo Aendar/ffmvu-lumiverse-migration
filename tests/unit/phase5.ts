@@ -3,11 +3,19 @@ import { StateService } from '../../src/service/state-service.js';
 import { createProjectionRegistry } from '../../src/shared/projection-registry.js';
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { buildModelPatchAuthorizationView, assertModelPatchAuthorization } from '../../src/shared/patch-policy.js';
-import { extractLastJsonPatch } from '../../src/shared/model-output.js';
+import { extractLastJsonPatch, resolveFinalJsonPatchEvidence } from '../../src/shared/model-output.js';
 import { EventStore } from '../../src/persistence/event-store.js';
 
 let passed = 0;
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error('ASSERT: ' + message); passed += 1; }
+
+class CacheFailStorage extends MemoryJsonStorage {
+  failMaterializedTip = false;
+  override async setJson(path: string, value: unknown): Promise<void> {
+    if (this.failMaterializedTip && path.endsWith('/indexes/materialized-tip.json')) throw new Error('simulated cache write failure');
+    await super.setJson(path, value);
+  }
+}
 
 async function main() {
   const storage = new MemoryJsonStorage();
@@ -32,6 +40,11 @@ async function main() {
 
   const extracted = extractLastJsonPatch(liveShapeOutput);
   assert(extracted?.operations.length === 7, 'last model JSONPatch is extracted');
+  const evidence = resolveFinalJsonPatchEvidence(liveShapeOutput, liveShapeOutput.replace(/\n\s+/g, '\n'));
+  assert(evidence.selected?.canonicalPayload === extracted.canonicalPayload, 'raw/stored JSONPatch evidence tolerates serialization whitespace only');
+  let evidenceMismatch = false;
+  try { resolveFinalJsonPatchEvidence(liveShapeOutput, liveShapeOutput.replace('"09:17"', '"09:18"')); } catch { evidenceMismatch = true; }
+  assert(evidenceMismatch, 'raw/stored semantic JSONPatch mismatch fails closed');
   assertModelPatchAuthorization(genesis.state, extracted!.operations, authorization);
 
   const result = await state.finalizeModelAttempt(scope, {
@@ -76,6 +89,25 @@ async function main() {
     ], authorization);
   } catch { denied = true; }
   assert(denied, 'frozen authorization rejects non-contiguous new NPC identity');
+
+  const flakyStorage = new CacheFailStorage();
+  const flakyState = new StateService(flakyStorage, createReducerRegistry(), createProjectionRegistry());
+  const flakyScope = { userId: 'u', chatId: 'cache-fault' };
+  const flakyGenesis = await flakyState.createGenesis(flakyScope);
+  const flakyFrozen = await flakyState.getProjectionForNode(flakyScope, flakyGenesis.nodeId);
+  flakyStorage.failMaterializedTip = true;
+  const cacheFaultCommit = await flakyState.finalizeModelAttempt(flakyScope, {
+    expectedParentNodeId: flakyGenesis.nodeId,
+    expectedParentStateHash: flakyGenesis.stateHash,
+    patch: [{ op: 'replace', path: '/World/Time/0', value: '09:30' }],
+    authorization: buildModelPatchAuthorizationView(flakyFrozen.view),
+    projectionVersion: flakyFrozen.projectionVersion,
+    promptProtocolVersion: flakyFrozen.promptProtocolVersion,
+    anchor: { messageId: 'a-cache', variantId: 'variant_cache', generationId: 'g-cache', attemptId: 'attempt_cache', messageRole: 'assistant', lineageAnchorId: 'variant_cache' },
+    requestId: 'attempt_cache',
+  });
+  const cacheFaultHead = await new EventStore(flakyStorage).resolveStoreHead(flakyScope);
+  assert(cacheFaultCommit.status === 'committed' && cacheFaultHead.status === 'ok' && cacheFaultHead.head?.semanticTipNodeId === cacheFaultCommit.nodeId, 'materialized cache failure cannot roll back or relabel a durable StoreRevision');
 
   console.log(`phase5 model commit tests passed: ${passed}`);
 }
