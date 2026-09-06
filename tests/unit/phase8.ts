@@ -233,6 +233,17 @@ async function main(): Promise<void> {
   }
   assert(structuralAddRejected, 'Variables add is restricted to dynamic record collections');
 
+  const legacyLists = createDefaultState();
+  legacyLists.Mainchar.Quests = { quest_1: { Desc: 'Test quest' } };
+  legacyLists.Mainchar.Buffs = { Blessing: { Desc: 'Test buff' } };
+  legacyLists.Mainchar.Ailments = { Poisoned: { Desc: 'Test ailment' } };
+  const withoutQuest = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Quests', 'quest_1'] });
+  assert(!withoutQuest.Mainchar.Quests.quest_1, 'legacy Quest delete uses the validated dynamic collection path');
+  const withoutBuff = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Buffs', 'Blessing'] });
+  assert(!withoutBuff.Mainchar.Buffs.Blessing, 'legacy Buff delete uses the validated dynamic collection path');
+  const withoutAilment = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Ailments', 'Poisoned'] });
+  assert(!withoutAilment.Mainchar.Ailments.Poisoned, 'legacy Ailment delete uses the validated dynamic collection path');
+
   const storage = new MemoryJsonStorage();
   const state = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
   const scope = { userId: 'u', chatId: 'gui' };
