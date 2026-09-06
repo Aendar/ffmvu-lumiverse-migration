@@ -225,7 +225,7 @@ function shadowCss() {
         .replace(/:root\s*\{/g, ':host {')
         .replace(/\bbody\s*\{/g, '.status-body {')
         + '\n'
-        + ':host{display:block;width:100%;height:100%;min-height:0;color:#e0f7fa;}'
+        + ':host{display:block;width:128.205128%;height:128.205128%;min-height:0;color:#e0f7fa;transform:scale(.78);transform-origin:top left;}'
         + '.status-body{height:100%;min-height:0;padding:0!important;color:var(--text-primary)!important;}'
         + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
         + '.tab-content{min-height:0;}'
