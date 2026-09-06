@@ -67,6 +67,54 @@ async function main() {
     assert(Boolean(crossNext.Mainchar.Inventory.old), 'legacy cross-character auto-unequip returns displaced target gear to source inventory');
     const deleted = applyGuiIntent(crossNext, { type: 'inventory.delete', owner: { kind: 'player' }, itemKey: 'old' });
     assert(!deleted.Mainchar.Inventory.old, 'inventory delete removes exact dictionary key');
+    const controls = createDefaultState();
+    controls.Familiar.evelyn = {
+        Name: ['Эвелин', 'Name'],
+        Image: ['https://example.com/old-evelyn.jpg', 'Image'],
+        Is_present: true,
+        Is_in_battle_team: false,
+    };
+    const playerImage = applyGuiIntent(controls, {
+        type: 'image.set',
+        target: { kind: 'player-avatar' },
+        value: 'https://example.com/player.jpg',
+    });
+    assert(playerImage.Mainchar.Image[0] === 'https://example.com/player.jpg' && playerImage.Mainchar.Image[1] === controls.Mainchar.Image[1], 'player avatar URL preserves the existing labeled tuple metadata');
+    const familiarImage = applyGuiIntent(playerImage, {
+        type: 'image.set',
+        target: { kind: 'familiar-avatar', id: 'evelyn' },
+        value: 'https://example.com/evelyn.jpg',
+    });
+    assert(familiarImage.Familiar.evelyn.Image[0] === 'https://example.com/evelyn.jpg'
+        && familiarImage.Familiar.evelyn.Image[1] === 'Image', 'familiar avatar URL preserves existing labeled tuple shape');
+    const mapImage = applyGuiIntent(familiarImage, {
+        type: 'image.set',
+        target: { kind: 'world-map' },
+        value: 'https://example.com/map.jpg',
+    });
+    assert(mapImage.World.MapImage === 'https://example.com/map.jpg', 'world map image can be added as a typed GUI field');
+    const familiarPresent = applyGuiIntent(mapImage, {
+        type: 'familiar.flag.set',
+        familiarId: 'evelyn',
+        field: 'Is_present',
+        value: false,
+    });
+    assert(familiarPresent.Familiar.evelyn.Is_present === false, 'Familiar Present toggle writes exact boolean field');
+    const familiarBattle = applyGuiIntent(familiarPresent, {
+        type: 'familiar.flag.set',
+        familiarId: 'evelyn',
+        field: 'Is_in_battle_team',
+        value: true,
+    });
+    assert(familiarBattle.Familiar.evelyn.Is_in_battle_team === true, 'Familiar BattleTeam toggle writes exact boolean field');
+    let invalidImageRejected = false;
+    try {
+        applyGuiIntent(controls, { type: 'image.set', target: { kind: 'player-avatar' }, value: 'javascript:alert(1)' });
+    }
+    catch (error) {
+        invalidImageRejected = String(error).includes('GUI_IMAGE_URL_INVALID');
+    }
+    assert(invalidImageRejected, 'typed image intent rejects non-http/https values');
     const variables = createDefaultState();
     variables.Mainchar.Inventory['Серебро'] = { Type: 'Money', Qty: 54, Desc: 'Серебряные монеты' };
     variables.Narrative.GM_Notes.Active = {
@@ -194,6 +242,18 @@ async function main() {
         staleRejected = String(error).includes('GUI_COMMIT_CONFLICT');
     }
     assert(staleRejected, 'stale GUI state hash fails closed');
+    const controlScope = { userId: 'u', chatId: 'legacy-controls-gui' };
+    const controlGenesis = await state.createGenesis(controlScope, { state: controls });
+    const controlCommit = await state.commitGuiIntent(controlScope, {
+        expectedParentNodeId: controlGenesis.nodeId,
+        expectedParentStateHash: controlGenesis.stateHash,
+        intent: { type: 'familiar.flag.set', familiarId: 'evelyn', field: 'Is_present', value: false },
+        anchor: { lineageAnchorId: 'root' },
+        requestId: 'gui-familiar-present',
+    });
+    assert(controlCommit.state.Familiar.evelyn.Is_present === false, 'StateService commits Familiar toggle through validated GUI path');
+    const controlArtifact = await new EventStore(storage).readCommit(controlScope, controlCommit.nodeId);
+    assert(controlArtifact.kind === 'gui' && controlArtifact.note === 'gui-intent:familiar.flag.set', 'Familiar toggle remains an ordinary typed gui commit');
     const variableScope = { userId: 'u', chatId: 'variables-gui' };
     const variableGenesis = await state.createGenesis(variableScope, { state: variables });
     const variableCommit = await state.commitGuiIntent(variableScope, {

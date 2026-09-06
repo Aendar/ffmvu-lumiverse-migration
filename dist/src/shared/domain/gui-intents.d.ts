@@ -7,6 +7,15 @@ export type GuiOwnerRef = {
     id: string;
 };
 export type GuiPath = string[];
+export type GuiImageRef = {
+    kind: 'player-avatar';
+} | {
+    kind: 'familiar-avatar';
+    id: string;
+} | {
+    kind: 'world-map';
+};
+export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
 export type GuiIntent = {
     type: 'outfit.move';
     owner: GuiOwnerRef;
@@ -25,6 +34,15 @@ export type GuiIntent = {
     type: 'equipment.unequip';
     owner: GuiOwnerRef;
     equipmentKey: string;
+} | {
+    type: 'image.set';
+    target: GuiImageRef;
+    value: string;
+} | {
+    type: 'familiar.flag.set';
+    familiarId: string;
+    field: GuiFamiliarFlag;
+    value: boolean;
 } | {
     type: 'variable.set';
     path: GuiPath;
