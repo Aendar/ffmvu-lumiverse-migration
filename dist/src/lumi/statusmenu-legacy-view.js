@@ -890,7 +890,6 @@ export function renderLegacyStatusMenu(options) {
     renderFfState(shadow, options.state.Narrative);
     bindOverview(shadow, options.state);
     wireImages(shadow, options.onUnsupported);
-    wireCheckboxes(shadow, options.onUnsupported);
     wireCollapsibles(shadow);
     selectInitialTab(shadow, options);
     const close = shadow.getElementById('detail-close-btn');
