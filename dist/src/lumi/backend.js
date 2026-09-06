@@ -13,7 +13,7 @@ import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-conte
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.5.3';
+const BRIDGE_VERSION = '0.5.4';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -23,6 +23,7 @@ const knownScopeByChat = new Map();
 const lastStatusByUser = new Map();
 const knownFrontendUsers = new Set();
 const noPatchProbeUsers = new Set();
+const continueProbeUsers = new Set();
 function runtime(userId) {
     let found = runtimes.get(userId);
     if (found)
@@ -86,14 +87,51 @@ async function prepareGeneration(context, targetMessageId) {
         return { ok: false, reason: 'pending_generation_exists' };
     const rt = runtime(context.userId);
     const rawAll = await spindle.chat.getMessages(context.chatId);
-    const raw = filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
+    const diagnosticContinueProbe = context.generationType === 'continue' && continueProbeUsers.has(context.userId);
+    let continueSnapshot = null;
+    if (diagnosticContinueProbe) {
+        for (let i = rawAll.length - 1; i >= 0; i--) {
+            const candidate = rawAll[i];
+            if (candidate.role !== 'assistant')
+                continue;
+            const index = await rt.variants.read(scope, candidate.id);
+            if (!index)
+                continue;
+            const swipeId = Number.isInteger(candidate.swipe_id) ? candidate.swipe_id : 0;
+            const variantId = index.bySwipeIndex[swipeId];
+            if (!variantId)
+                continue;
+            const anchor = await rt.anchors.read(scope, variantId);
+            if (!anchor)
+                continue;
+            const storedText = Array.isArray(candidate.swipes) && candidate.swipes[swipeId] !== undefined
+                ? String(candidate.swipes[swipeId])
+                : String(candidate.content ?? '');
+            continueSnapshot = {
+                messageId: candidate.id,
+                swipeId,
+                variantId,
+                storedText,
+                storedTextHash: await canonicalHash(storedText),
+                swipeCount: Array.isArray(candidate.swipes) ? candidate.swipes.length : 1,
+                messageCount: rawAll.length,
+                sourceIndex: i,
+            };
+            break;
+        }
+        if (!continueSnapshot)
+            return { ok: false, reason: 'continue_probe_source_variant_missing' };
+    }
+    const raw = diagnosticContinueProbe && continueSnapshot
+        ? rawAll.slice(0, continueSnapshot.sourceIndex + 1)
+        : filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
     const baseId = await ensureBootstrap(scope, raw);
     const head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
     if (head.health !== 'ok')
         return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
     const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-    const diagnosticNoPatchProbe = noPatchProbeUsers.has(context.userId);
+    const diagnosticNoPatchProbe = !diagnosticContinueProbe && noPatchProbeUsers.has(context.userId);
     contexts.create({
         scope, generationType: context.generationType, baseNodeId: head.nodeId, baseStateHash: head.stateHash,
         projectionSourceKind: projection.sourceKind,
@@ -102,11 +140,32 @@ async function prepareGeneration(context, targetMessageId) {
         ...(projection.sourceBaseId ? { projectionSourceBaseId: projection.sourceBaseId } : {}),
         projectionVersion: projection.projectionVersion, promptProtocolVersion: projection.promptProtocolVersion,
         reducerVersion: projection.reducerVersion, projectionView: projection.view, promptViewHash: projection.viewHash,
-        frozenAuthorization, presetVersion: PRESET_VERSION, diagnosticNoPatchProbe,
+        frozenAuthorization, presetVersion: PRESET_VERSION, diagnosticNoPatchProbe, diagnosticContinueProbe,
+        ...(continueSnapshot ? {
+            continuePreMessageId: continueSnapshot.messageId,
+            continuePreSwipeId: continueSnapshot.swipeId,
+            continuePreVariantId: continueSnapshot.variantId,
+            continuePreStoredText: continueSnapshot.storedText,
+            continuePreStoredTextHash: continueSnapshot.storedTextHash,
+            continuePreSwipeCount: continueSnapshot.swipeCount,
+            continuePreMessageCount: continueSnapshot.messageCount,
+        } : {}),
     });
     if (diagnosticNoPatchProbe)
         noPatchProbeUsers.delete(context.userId);
-    publish(context.userId, { phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash, promptViewHash: projection.viewHash, diagnosticNoPatchProbe, noPatchProbeArmed: noPatchProbeUsers.has(context.userId) });
+    if (diagnosticContinueProbe)
+        continueProbeUsers.delete(context.userId);
+    publish(context.userId, {
+        phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash,
+        promptViewHash: projection.viewHash, diagnosticNoPatchProbe, diagnosticContinueProbe,
+        noPatchProbeArmed: noPatchProbeUsers.has(context.userId), continueProbeArmed: continueProbeUsers.has(context.userId),
+        ...(continueSnapshot ? {
+            continuePreMessageId: continueSnapshot.messageId,
+            continuePreSwipeId: continueSnapshot.swipeId,
+            continuePreVariantId: continueSnapshot.variantId,
+            continuePreStoredTextHash: continueSnapshot.storedTextHash,
+        } : {}),
+    });
     return { ok: true };
 }
 async function finalizeModelCommit(payload) {
@@ -114,6 +173,96 @@ async function finalizeModelCommit(payload) {
     if (!pending)
         return;
     const userId = pending.scope.userId;
+    if (pending.diagnosticContinueProbe) {
+        try {
+            const rawGeneration = payload.content !== undefined ? String(payload.content) : null;
+            const messages = await spindle.chat.getMessages(payload.chatId);
+            const byPayload = payload.messageId ? messages.find(message => message.id === payload.messageId) : undefined;
+            const byPre = pending.continuePreMessageId ? messages.find(message => message.id === pending.continuePreMessageId) : undefined;
+            const saved = byPayload ?? byPre;
+            if (!saved) {
+                publish(userId, {
+                    phase: 'continue_probe_unreconciled',
+                    chatId: payload.chatId,
+                    generationId: payload.generationId,
+                    payloadMessageId: payload.messageId ?? null,
+                    preMessageId: pending.continuePreMessageId ?? null,
+                    noStateCommit: true,
+                    reason: payload.error ?? 'resulting assistant message not found',
+                });
+                return;
+            }
+            const postSwipeId = Number.isInteger(saved.swipe_id) ? saved.swipe_id : 0;
+            const postText = Array.isArray(saved.swipes) && saved.swipes[postSwipeId] !== undefined
+                ? String(saved.swipes[postSwipeId])
+                : String(saved.content ?? '');
+            const preText = pending.continuePreStoredText ?? '';
+            const sameMessageId = saved.id === pending.continuePreMessageId;
+            const sameSwipeId = postSwipeId === pending.continuePreSwipeId;
+            const prefixPreserved = sameMessageId && sameSwipeId && postText.startsWith(preText);
+            const appendedSegment = prefixPreserved ? postText.slice(preText.length) : null;
+            const rawGenerationHash = rawGeneration !== null ? await canonicalHash(rawGeneration) : null;
+            const postStoredTextHash = await canonicalHash(postText);
+            const appendedSegmentHash = appendedSegment !== null ? await canonicalHash(appendedSegment) : null;
+            const rawEqualsAppendedSegment = rawGeneration !== null && appendedSegment !== null && rawGeneration === appendedSegment;
+            const rawEqualsFullStored = rawGeneration !== null && rawGeneration === postText;
+            const segmentProvable = sameMessageId && sameSwipeId && prefixPreserved && rawEqualsAppendedSegment;
+            publish(userId, {
+                phase: 'continue_probe_complete',
+                chatId: payload.chatId,
+                generationId: payload.generationId,
+                generationType: pending.generationType,
+                payloadMessageId: payload.messageId ?? null,
+                generationStartTargetMessageId: pending.targetMessageId ?? null,
+                generationStartTargetSwipeId: Number.isInteger(pending.targetSwipeId) ? pending.targetSwipeId : null,
+                preMessageId: pending.continuePreMessageId ?? null,
+                postMessageId: saved.id,
+                sameMessageId,
+                preSwipeId: Number.isInteger(pending.continuePreSwipeId) ? pending.continuePreSwipeId : null,
+                postSwipeId,
+                sameSwipeId,
+                preVariantId: pending.continuePreVariantId ?? null,
+                preSwipeCount: pending.continuePreSwipeCount ?? null,
+                postSwipeCount: Array.isArray(saved.swipes) ? saved.swipes.length : 1,
+                preMessageCount: pending.continuePreMessageCount ?? null,
+                postMessageCount: messages.length,
+                prefixPreserved,
+                appendedSegmentLength: appendedSegment?.length ?? null,
+                rawGenerationLength: rawGeneration?.length ?? null,
+                rawGenerationHash,
+                preStoredTextHash: pending.continuePreStoredTextHash ?? null,
+                postStoredTextHash,
+                appendedSegmentHash,
+                rawEqualsAppendedSegment,
+                rawEqualsFullStored,
+                rawContainsUpdateVariable: rawGeneration?.includes('<UpdateVariable>') ?? false,
+                rawContainsJsonPatch: rawGeneration?.includes('<JSONPatch>') ?? false,
+                segmentProvable,
+                deliveredPromptViewHash: pending.promptViewHash,
+                baseNodeId: pending.baseNodeId,
+                baseStateHash: pending.baseStateHash,
+                modelCommitId: null,
+                transactionId: null,
+                noStateCommit: true,
+                transcriptLeftUnreconciled: true,
+                note: 'Diagnostic Continue spike only. Host append semantics were observed; no FFMVU state/variant/anchor finalize was performed.',
+            });
+        }
+        catch (error) {
+            spindle.log.error('[FFMVU] Continue probe failed', error);
+            publish(userId, {
+                phase: 'continue_probe_error',
+                chatId: payload.chatId,
+                generationId: payload.generationId,
+                error: String(error),
+                noStateCommit: true,
+            });
+        }
+        finally {
+            contexts.release(pending);
+        }
+        return;
+    }
     const writeEvidence = async (saved, variantId, swipeId, storedMessageTextHash, status, modelCommitId, tipNodeId, hashes) => {
         const rt = runtime(userId);
         const oldAnchor = await rt.anchors.read(pending.scope, variantId);
@@ -244,6 +393,22 @@ async function reconcileStoppedGeneration(payload) {
     if (!pending)
         return;
     const userId = pending.scope.userId;
+    if (pending.diagnosticContinueProbe) {
+        try {
+            publish(userId, {
+                phase: 'continue_probe_stopped',
+                chatId: payload.chatId,
+                generationId: payload.generationId,
+                rawPartialHash: await canonicalHash(String(payload.content ?? '')),
+                noStateCommit: true,
+                transcriptLeftUnreconciled: true,
+            });
+        }
+        finally {
+            contexts.release(pending);
+        }
+        return;
+    }
     try {
         const rt = runtime(userId);
         const rawPartial = String(payload.content ?? '');
@@ -443,8 +608,8 @@ const contextHandler = async (context) => {
     const cfg = await config(context.userId);
     if (!cfg.enabled || context.dryRun || context.generationType === 'impersonate')
         return context;
-    if (context.generationType === 'continue') {
-        publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'continue state commits are gated in v0.5 pending append/fingerprint parity' });
+    if (context.generationType === 'continue' && !continueProbeUsers.has(context.userId)) {
+        publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'continue state commits are gated; arm the one-shot Continue probe to observe host append semantics without state writes' });
         return { ...context, cancelGeneration: true };
     }
     if (!spindle.permissions.has('chat_mutation')) {
@@ -506,7 +671,9 @@ const interceptorHandler = async (messages, context) => {
     const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(injected.messages) : injected.messages;
     publish(pending.scope.userId, {
         phase: 'injected', chatId: context.chatId, attemptId: pending.attemptId, mode: injected.mode,
-        promptViewHash: pending.promptViewHash, diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+        promptViewHash: pending.promptViewHash,
+        diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+        diagnosticContinueProbe: pending.diagnosticContinueProbe === true,
     });
     if (injected.mode !== 'fallback')
         return finalMessages;
@@ -604,16 +771,18 @@ spindle.onFrontendMessage(async (payload, userId) => {
     ensureRegistrations();
     if (payload?.type === 'ffmvu_get_status') {
         const cfg = await config(userId);
-        spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId) } }, userId);
+        spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId) } }, userId);
         return;
     }
     if (payload?.type === 'ffmvu_set_enabled') {
         const enabled = payload.enabled === true;
         await setConfig(userId, { enabled });
-        if (!enabled)
+        if (!enabled) {
             noPatchProbeUsers.delete(userId);
+            continueProbeUsers.delete(userId);
+        }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), note: enabled ? 'v0.5.3 model commit pipeline armed. Invalid/conflicting/stopped outputs fail closed.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.5.4 model commit pipeline armed. Continue remains state-write gated except for the one-shot diagnostic probe.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -622,16 +791,35 @@ spindle.onFrontendMessage(async (payload, userId) => {
             publish(userId, { phase: 'blocked', enabled: false, noPatchProbeArmed: false, reason: 'Arm commits before arming the no-patch probe.' });
             return;
         }
+        continueProbeUsers.delete(userId);
         noPatchProbeUsers.add(userId);
         publish(userId, {
             phase: 'no_patch_probe_armed',
             enabled: true,
             noPatchProbeArmed: true,
+            continueProbeArmed: false,
             note: 'One-shot diagnostic: the next stateful generation will be instructed to emit prose only and no UpdateVariable/JSONPatch block.',
+        });
+        return;
+    }
+    if (payload?.type === 'ffmvu_arm_continue_probe') {
+        const cfg = await config(userId);
+        if (!cfg.enabled) {
+            publish(userId, { phase: 'blocked', enabled: false, continueProbeArmed: false, reason: 'Arm commits before arming the Continue probe.' });
+            return;
+        }
+        noPatchProbeUsers.delete(userId);
+        continueProbeUsers.add(userId);
+        publish(userId, {
+            phase: 'continue_probe_armed',
+            enabled: true,
+            noPatchProbeArmed: false,
+            continueProbeArmed: true,
+            note: 'One-shot diagnostic: the next native Continue is allowed through for host append/segment observation only. No FFMVU state commit will be written.',
         });
         return;
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.3 model commit + one-shot no-patch live probe).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.4 model commit + one-shot Continue host-semantics spike).`);
 //# sourceMappingURL=backend.js.map

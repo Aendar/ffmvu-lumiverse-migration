@@ -32,7 +32,7 @@ async function main() {
     assert(fallback.mode === 'fallback' && fallback.messages[0].role === 'system', 'fallback injects dedicated system message');
     const contexts = new AttemptContextRegistry();
     const scope = { userId: 'u', chatId: 'c' };
-    const pending = contexts.create({ scope, generationType: 'normal', diagnosticNoPatchProbe: true, baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
+    const pending = contexts.create({ scope, generationType: 'normal', diagnosticNoPatchProbe: true, diagnosticContinueProbe: false, baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
     let collision = false;
     try {
         contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
@@ -42,6 +42,7 @@ async function main() {
     }
     assert(collision, 'one pending non-dryRun generation per scope');
     assert(pending.diagnosticNoPatchProbe === true, 'one-shot no-patch diagnostic flag is frozen into AttemptContext');
+    assert(pending.diagnosticContinueProbe === false, 'Continue diagnostic mode is an independent frozen AttemptContext flag');
     const bound = contexts.bindGeneration('c', 'g1', 'staged-target', 2);
     assert(bound?.attemptId === pending.attemptId && bound.targetMessageId === 'staged-target' && bound.targetSwipeId === 2, 'generation id + target message/swipe bind to frozen context');
     assert(contexts.claimFinalization('g1')?.attemptId === pending.attemptId, 'first GENERATION_ENDED claims finalization');
