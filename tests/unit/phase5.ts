@@ -42,12 +42,12 @@ async function main() {
 
   const continuedPatchPost = oldPatch + ' more prose <JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":2}]</JSONPatch>';
   const continuedPatch = resolveContinueJsonPatchEvidence(oldPatch, continuedPatchPost, continuedPatchPost);
-  assert(continuedPatch.selected?.operations[0]?.value === 2 && !continuedPatch.selectedCrossesBoundary, 'Continue selects only a newly completed suffix JSONPatch');
+  assert((continuedPatch.selected?.operations[0] as any)?.value === 2 && !continuedPatch.selectedCrossesBoundary, 'Continue selects only a newly completed suffix JSONPatch');
 
   const partial = '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":';
   const completed = partial + '3}]</JSONPatch></UpdateVariable>';
   const boundaryPatch = resolveContinueJsonPatchEvidence(partial, completed, completed);
-  assert(boundaryPatch.selected?.operations[0]?.value === 3 && boundaryPatch.selectedCrossesBoundary, 'Continue can complete a JSONPatch that started before the append boundary');
+  assert((boundaryPatch.selected?.operations[0] as any)?.value === 3 && boundaryPatch.selectedCrossesBoundary, 'Continue can complete a JSONPatch that started before the append boundary');
 
   const suffixModePost = oldPatch + ' tail';
   const suffixMode = resolveContinueJsonPatchEvidence(oldPatch, ' tail', suffixModePost);
