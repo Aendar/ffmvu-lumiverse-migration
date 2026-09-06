@@ -1,4 +1,4 @@
-import type { GuiIntent, GuiPath } from '../shared/domain/gui-intents.js';
+import { isGuiVariableDynamicCollectionPath, type GuiIntent, type GuiPath } from '../shared/domain/gui-intents.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../shared/state-schema.js';
 import { isRecord } from '../shared/domain/value-utils.js';
 
@@ -37,8 +37,8 @@ export const VARIABLES_EDITOR_CSS = `
   .ve-value{min-width:0;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:pre-wrap;word-break:break-word;max-height:4.8em;overflow-y:auto;}
   .ve-type{font-size:.68em;color:var(--text-secondary);opacity:.72;margin-left:5px;}
   .ve-empty{padding:16px;text-align:center;color:var(--text-secondary);}
-  .ve-modal-overlay{position:fixed;inset:0;z-index:60000;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;backdrop-filter:blur(2px);}
-  .ve-modal{width:min(520px,calc(100vw - 32px));max-height:min(620px,calc(100vh - 32px));overflow:auto;background:#001f3f;border:1px solid var(--accent-primary);border-radius:7px;padding:14px;color:var(--text-primary);box-shadow:0 16px 48px rgba(0,0,0,.48);}
+  .ve-modal-overlay{position:absolute;inset:0;z-index:60000;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;backdrop-filter:blur(2px);}
+  .ve-modal{width:min(520px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;background:#001f3f;border:1px solid var(--accent-primary);border-radius:7px;padding:14px;color:var(--text-primary);box-shadow:0 16px 48px rgba(0,0,0,.48);}
   .ve-modal-title{font-weight:700;color:var(--accent-primary);font-size:1.05em;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid var(--border-color);}
   .ve-field{display:flex;flex-direction:column;gap:5px;margin:9px 0;}
   .ve-field>label{font-size:.78em;color:var(--text-secondary);}
@@ -80,8 +80,12 @@ function vePathText(path: GuiPath): string {
   return path.join(' › ');
 }
 
-function veCanMutateEntry(path: GuiPath): boolean {
+function veCanEditValue(path: GuiPath): boolean {
   return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0]));
+}
+
+function veCanManageEntry(path: GuiPath): boolean {
+  return isGuiVariableDynamicCollectionPath(path.slice(0, -1));
 }
 
 function veMatches(key: string, value: unknown, query: string, depth = 0): boolean {
@@ -117,7 +121,8 @@ function veModalBase(root: ShadowRoot, title: string): { overlay: HTMLElement; m
   overlay.appendChild(modal);
   const close = () => overlay.remove();
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
-  root.appendChild(overlay);
+  const modalLayer = root.querySelector<HTMLElement>('.status-body');
+  (modalLayer ?? root).appendChild(overlay);
   return { overlay, modal, close };
 }
 
@@ -301,9 +306,10 @@ function veActionButtons(
 ): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 've-actions';
-  const mutable = veCanMutateEntry(path);
+  const editable = veCanEditValue(path);
+  const manageable = !parentIsArray && veCanManageEntry(path);
 
-  if (mutable && (value === null || typeof value !== 'object' || veIsTuple(value))) {
+  if (editable && (value === null || typeof value !== 'object' || veIsTuple(value))) {
     const edit = veButton('Edit');
     edit.disabled = options.mutationDisabled;
     edit.addEventListener('click', event => {
@@ -315,7 +321,7 @@ function veActionButtons(
     actions.appendChild(edit);
   }
 
-  if (!parentIsArray && mutable) {
+  if (manageable) {
     const rename = veButton('Rename');
     rename.disabled = options.mutationDisabled;
     rename.addEventListener('click', event => {
@@ -325,7 +331,7 @@ function veActionButtons(
     actions.appendChild(rename);
   }
 
-  if (mutable) {
+  if (manageable) {
     const remove = veButton('Delete', 'danger');
     remove.disabled = options.mutationDisabled;
     remove.addEventListener('click', event => {
@@ -372,11 +378,6 @@ function veRenderEntry(
     const valueBox = document.createElement('div');
     valueBox.className = 've-value';
     valueBox.textContent = vePrimitiveText(effectiveValue);
-    const type = document.createElement('span');
-    type.className = 've-type';
-    type.textContent = veType(effectiveValue);
-    valueBox.appendChild(type);
-
     row.append(keyBox, valueBox, veActionButtons(root, path, key, value, parentIsArray, options));
     return row;
   }
@@ -410,14 +411,16 @@ function veRenderEntry(
       const rendered = veRenderEntry(root, childKey, child, [...path, childKey], false, depth + 1, query, options);
       if (rendered) children.appendChild(rendered);
     }
-    const add = veButton('+ Add entry');
-    add.disabled = options.mutationDisabled;
-    add.style.alignSelf = 'flex-start';
-    add.addEventListener('click', event => {
-      event.stopPropagation();
-      veShowAdd(root, path, object, options);
-    });
-    children.appendChild(add);
+    if (isGuiVariableDynamicCollectionPath(path)) {
+      const add = veButton('+ Add entry');
+      add.disabled = options.mutationDisabled;
+      add.style.alignSelf = 'flex-start';
+      add.addEventListener('click', event => {
+        event.stopPropagation();
+        veShowAdd(root, path, object, options);
+      });
+      children.appendChild(add);
+    }
   }
 
   if (!children.children.length) {
@@ -444,7 +447,7 @@ export function renderVariablesEditor(root: ShadowRoot, options: VariablesEditor
   search.value = options.search;
   const hint = document.createElement('span');
   hint.className = 've-hint';
-  hint.textContent = 'Edit · Rename · Delete · Add';
+  hint.textContent = 'Edit values · manage user entries';
   toolbar.append(search, hint);
 
   const tree = document.createElement('div');
