@@ -1,22 +1,62 @@
 import { canonicalStringify } from '../hashing.js';
 import type { JsonPatchOperation } from '../json-patch.js';
-import type { FFMVUState, MutableRecord } from '../state-schema.js';
+import type { FFMVUState, JsonValue, MutableRecord } from '../state-schema.js';
 import { asRecord, clone, isRecord, text, tupleValue } from './value-utils.js';
 
 export type GuiOwnerRef =
   | { kind: 'player' }
   | { kind: 'familiar'; id: string };
 
+export type GuiPath = string[];
+
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
   | { type: 'inventory.delete'; owner: GuiOwnerRef; itemKey: string }
   | { type: 'equipment.equip'; sourceOwner: GuiOwnerRef; targetOwner: GuiOwnerRef; itemKey: string }
-  | { type: 'equipment.unequip'; owner: GuiOwnerRef; equipmentKey: string };
+  | { type: 'equipment.unequip'; owner: GuiOwnerRef; equipmentKey: string }
+  | { type: 'variable.set'; path: GuiPath; value: JsonValue }
+  | { type: 'variable.rename'; path: GuiPath; newKey: string }
+  | { type: 'variable.delete'; path: GuiPath }
+  | { type: 'variable.add'; parentPath: GuiPath; key: string; value: JsonValue };
 
 function isOwnerRef(value: unknown): value is GuiOwnerRef {
   if (!isRecord(value)) return false;
   if (value.kind === 'player') return true;
   return value.kind === 'familiar' && typeof value.id === 'string' && Boolean(value.id.trim());
+}
+
+const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
+const PROTECTED_ROOT_KEYS = new Set([
+  'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
+  'MVUStatMenu_DB_Ver', 'GameStarted',
+]);
+
+function assertSafeKey(key: unknown, label: string): asserts key is string {
+  if (typeof key !== 'string' || !key.trim() || key.length > 256 || FORBIDDEN_PATH_SEGMENTS.has(key)) {
+    throw new Error('GUI_VARIABLE_INVALID_' + label.toUpperCase());
+  }
+}
+
+function assertGuiPath(path: unknown, allowRoot = true): asserts path is GuiPath {
+  if (!Array.isArray(path) || (!allowRoot && path.length === 0) || path.length > 64) {
+    throw new Error('GUI_VARIABLE_INVALID_PATH');
+  }
+  for (const segment of path) assertSafeKey(segment, 'path_segment');
+}
+
+function isJsonValue(value: unknown, depth = 0): value is JsonValue {
+  if (depth > 64) return false;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(child => isJsonValue(child, depth + 1));
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(([key, child]) =>
+    !FORBIDDEN_PATH_SEGMENTS.has(key) && isJsonValue(child, depth + 1)
+  );
+}
+
+function assertVariablePayload(value: unknown): asserts value is JsonValue {
+  if (!isJsonValue(value)) throw new Error('GUI_VARIABLE_VALUE_NOT_JSON');
 }
 
 export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
@@ -39,6 +79,26 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
   }
   if (value.type === 'equipment.unequip') {
     if (!isOwnerRef(value.owner) || typeof value.equipmentKey !== 'string' || !value.equipmentKey) throw new Error('GUI_INTENT_INVALID_UNEQUIP');
+    return;
+  }
+  if (value.type === 'variable.set') {
+    assertGuiPath(value.path, false);
+    assertVariablePayload(value.value);
+    return;
+  }
+  if (value.type === 'variable.rename') {
+    assertGuiPath(value.path, false);
+    assertSafeKey(value.newKey, 'new_key');
+    return;
+  }
+  if (value.type === 'variable.delete') {
+    assertGuiPath(value.path, false);
+    return;
+  }
+  if (value.type === 'variable.add') {
+    assertGuiPath(value.parentPath, true);
+    assertSafeKey(value.key, 'key');
+    assertVariablePayload(value.value);
     return;
   }
   throw new Error('GUI_INTENT_UNSUPPORTED: ' + value.type);
@@ -294,12 +354,99 @@ function equipmentUnequip(state: FFMVUState, intent: Extract<GuiIntent, { type: 
   reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
 
+function pathParent(root: unknown, path: GuiPath): { parent: MutableRecord | unknown[]; key: string } {
+  if (!path.length) throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
+  let current: unknown = root;
+  for (const segment of path.slice(0, -1)) {
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+      current = current[index];
+      continue;
+    }
+    if (!isRecord(current) || !Object.prototype.hasOwnProperty.call(current, segment)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+    current = current[segment];
+  }
+  if (!isRecord(current) && !Array.isArray(current)) throw new Error('GUI_VARIABLE_PARENT_NOT_CONTAINER');
+  return { parent: current as MutableRecord | unknown[], key: path[path.length - 1] };
+}
+
+function hasContainerKey(parent: MutableRecord | unknown[], key: string): boolean {
+  if (Array.isArray(parent)) {
+    const index = Number(key);
+    return Number.isInteger(index) && index >= 0 && index < parent.length;
+  }
+  return Object.prototype.hasOwnProperty.call(parent, key);
+}
+
+function protectedRootMutation(path: GuiPath): boolean {
+  return path.length === 1 && PROTECTED_ROOT_KEYS.has(path[0]);
+}
+
+function variableSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.set' }>): void {
+  if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  const { parent, key } = pathParent(state, intent.path);
+  if (!hasContainerKey(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+  if (Array.isArray(parent)) {
+    const index = Number(key);
+    if (!Number.isInteger(index)) throw new Error('GUI_VARIABLE_ARRAY_INDEX_INVALID');
+    parent[index] = clone(intent.value);
+  } else {
+    parent[key] = clone(intent.value);
+  }
+}
+
+function variableRename(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.rename' }>): void {
+  if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  const { parent, key } = pathParent(state, intent.path);
+  if (Array.isArray(parent)) throw new Error('GUI_VARIABLE_RENAME_ARRAY_UNSUPPORTED');
+  if (!Object.prototype.hasOwnProperty.call(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+  if (key === intent.newKey) throw new Error('GUI_INTENT_NO_CHANGE');
+  if (Object.prototype.hasOwnProperty.call(parent, intent.newKey)) throw new Error('GUI_VARIABLE_KEY_EXISTS');
+  parent[intent.newKey] = parent[key];
+  delete parent[key];
+}
+
+function variableDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.delete' }>): void {
+  if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  const { parent, key } = pathParent(state, intent.path);
+  if (!hasContainerKey(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+  if (Array.isArray(parent)) {
+    const index = Number(key);
+    if (!Number.isInteger(index)) throw new Error('GUI_VARIABLE_ARRAY_INDEX_INVALID');
+    parent.splice(index, 1);
+  } else {
+    delete parent[key];
+  }
+}
+
+function variableAdd(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.add' }>): void {
+  let parent: unknown = state;
+  for (const segment of intent.parentPath) {
+    if (Array.isArray(parent)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index) || index < 0 || index >= parent.length) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+      parent = parent[index];
+      continue;
+    }
+    if (!isRecord(parent) || !Object.prototype.hasOwnProperty.call(parent, segment)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+    parent = parent[segment];
+  }
+  if (!isRecord(parent)) throw new Error('GUI_VARIABLE_ADD_PARENT_NOT_OBJECT');
+  if (Object.prototype.hasOwnProperty.call(parent, intent.key)) throw new Error('GUI_VARIABLE_KEY_EXISTS');
+  parent[intent.key] = clone(intent.value);
+}
+
 export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState {
   const state = clone(input);
   if (intent.type === 'outfit.move') moveOutfit(state, intent);
   else if (intent.type === 'inventory.delete') inventoryDelete(state, intent);
   else if (intent.type === 'equipment.equip') equipmentEquip(state, intent);
   else if (intent.type === 'equipment.unequip') equipmentUnequip(state, intent);
+  else if (intent.type === 'variable.set') variableSet(state, intent);
+  else if (intent.type === 'variable.rename') variableRename(state, intent);
+  else if (intent.type === 'variable.delete') variableDelete(state, intent);
+  else if (intent.type === 'variable.add') variableAdd(state, intent);
   else {
     const neverIntent: never = intent;
     throw new Error('GUI_INTENT_UNSUPPORTED: ' + JSON.stringify(neverIntent));
