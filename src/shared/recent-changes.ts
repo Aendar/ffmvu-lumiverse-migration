@@ -18,6 +18,7 @@ export interface RecentChangesEnvelope {
 }
 
 function same(a: unknown, b: unknown): boolean {
+  if (a === undefined || b === undefined) return a === b;
   return canonicalStringify(a) === canonicalStringify(b);
 }
 
