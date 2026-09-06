@@ -1,11 +1,11 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse model commit pipeline with explicit live swipe-navigation/head diagnostics. Model P1 + optional C2 remains one ChatStoreRevision; navigation creates no state transaction.",
+  "description": "FF+MVU Lumiverse state bridge with model commits, swipe/head diagnostics, and durable stopped-attempt reconciliation. Stopped partial output never commits state and blocks active lineage until explicit resolution.",
   "permissions": [
     "context_handler",
     "interceptor",
