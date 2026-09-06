@@ -186,3 +186,15 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - Tier-1 legacy import is now exposed through frontend/backend RPC and still delegates authoritative mutation to `StateService.importLegacyState`.
 - The import path refuses already initialized chats and in-flight generations, computes a current-chat TranscriptBaseBoundary, and preserves exact legacy `ff_mvu_prompt_view` as the existing base seed path when supplied.
 - Regex imports were completed in Lumiverse; real-message visual/order smoke-test remains pending.
+
+
+# Phase 12 — Canonical StatusMenu parity UI (v0.12.0)
+
+- Frozen `legacy-reference/statusmenu.json` v2.8.1 is now the visual source of truth for initialized-game StatusMenu rendering.
+- The canonical legacy DOM/CSS is extracted into a build-time template and mounted inside Shadow DOM so Lumiverse host-theme selectors cannot turn the original light text dark or leak legacy generic CSS into the host.
+- The original tabs, Overview v2.5 layout, vertical HP/MP/ST bars, World/Character/Avatar/HPH/Quests composition, Familiar layout, Wardrobe, Equipments, Items, Others and FF State are preserved rather than approximated.
+- Legacy SillyTavern/MVU mutation code is not reused. Supported Wardrobe / Inventory / Equipment actions are rebound to existing typed `StateService.commitGuiIntent` transactions.
+- Legacy editing surfaces that do not yet have a typed intent remain visually present and fail visibly instead of performing full-`stat_data` writes.
+- The composer StatusMenu has a top-edge drag handle. One panel height is persisted in browser local storage and reused across tab changes, hide/show, and reload; viewport changes clamp it safely.
+- Tier-1 legacy import of the user's real Turn 109 save is live-proven. First post-import MODEL_STATE/projection continuity still requires a real generation test.
+- Remaining UI work is live visual smoke-testing and typed migration of intentionally retained legacy mutation controls.

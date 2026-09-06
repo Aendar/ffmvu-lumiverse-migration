@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 const parts = [
   'dist/src/shared/domain/value-utils.js',
   'dist/src/lumi/statusmenu-model.js',
+  'dist/src/lumi/statusmenu-legacy-template.js',
+  'dist/src/lumi/statusmenu-legacy-view.js',
   'dist/src/lumi/frontend.js',
 ];
 
@@ -10,23 +12,18 @@ function stripSourceMap(text) {
   return text.replace(/\n?\/\/# sourceMappingURL=.*$/gm, '');
 }
 
-function stripKnownImports(path, text) {
+function stripKnownImports(_path, text) {
+  const localDependencies = [
+    '../shared/domain/value-utils.js',
+    './statusmenu-model.js',
+    './statusmenu-legacy-template.js',
+    './statusmenu-legacy-view.js',
+  ];
   let out = text;
-  if (path.endsWith('statusmenu-model.js')) {
-    out = out.replace(
-      /^import \{ asRecord, isRecord, text, tupleValue \} from '\.\.\/shared\/domain\/value-utils\.js';\n/,
-      '',
-    );
-  }
-  if (path.endsWith('frontend.js')) {
-    out = out.replace(
-      /^import \{ asRecord, isRecord \} from '\.\.\/shared\/domain\/value-utils\.js';\n/,
-      '',
-    );
-    out = out.replace(
-      /^import \{ statusCompactObject, statusCoreBudget, statusHphOverview, statusItems, statusNumber, statusOwnerById, statusOwners, statusText, \} from '\.\/statusmenu-model\.js';\n/,
-      '',
-    );
+  for (const dependency of localDependencies) {
+    const escaped = dependency.replace(/[.*+?^$()|[\\]\\\\]/g, '\\$&');
+    const pattern = '^import\\s+[\\s\\S]*?\\s+from\\s+[\\\"\\\']' + escaped + '[\\\"\\\'];?\\s*$';
+    out = out.replace(new RegExp(pattern, 'gm'), '');
   }
   return out;
 }

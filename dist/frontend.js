@@ -1,6 +1,3 @@
-// FFMVU self-contained Lumiverse frontend bundle.
-// Generated from tsc output by scripts/build-frontend-bundle.mjs.
-
 // ---- bundled from dist/src/shared/domain/value-utils.js ----
 export function clone(value) {
     if (typeof structuredClone === 'function')
@@ -142,6 +139,915 @@ export function statusCompactObject(value, maxEntries = 8) {
     });
 }
 
+// ---- bundled from dist/src/lumi/statusmenu-legacy-template.js ----
+// Generated from legacy-reference/statusmenu.json (StatusMenu FF + MVU v2.8.1).
+// Keep this visual template synchronized with the frozen legacy reference.
+// Runtime behavior is rebound to Lumiverse/StateService in frontend.ts.
+export const LEGACY_STATUS_CSS = ":root {\n        --text-primary: #e0f7fa;\n        --text-secondary: #81d4fa;\n        --accent-primary: #00e5ff;\n        --border-color: rgba(0, 229, 255, 0.3);\n        --background-card: rgba(0, 20, 40, 0.65);\n    }\n    /* mvu-row-sync-v4 */\n    * { box-sizing: border-box; }\n    /* Gradient Animation */\n    @keyframes gradient-flow {\n        0% { background-position: 0% 50%; }\n        50% { background-position: 100% 50%; }\n        100% { background-position: 0% 50%; }\n    }\n\n    body {\n        font-family: 'Segoe UI', sans-serif;\n        background: transparent;\n        color: var(--text-primary);\n        margin: 0; padding: 10px;\n        font-size: 16px;\n    }\n\n    .status-container, .status-card {\n        display: flex; flex-direction: column;\n        background: linear-gradient(-45deg, #001f3f, #003366, #006064, #013243);\n        background-size: 400% 400%;\n        animation: gradient-flow 30s ease infinite;\n        border: 1px solid var(--border-color);\n        border-radius: 8px;\n        min-height: 500px;\n        overflow: hidden;\n        max-width: 100%;\n        box-sizing: border-box;\n        transition: width 0.3s;\n        margin: 0 auto;\n    }\n\n    /* .tab-nav is the canonical tab container. PreviewRenderer uses it too (was .preview-tabs). */\n    .tab-nav {\n        display: flex;\n        background: rgba(0,0,0,0.3);\n        border-bottom: 1px solid var(--border-color);\n        overflow-x: auto;\n    }\n    .tab-btn {\n        padding: 12px 20px; color: var(--text-secondary); cursor: pointer;\n        border-bottom: 2px solid transparent; user-select: none;\n    }\n    .tab-btn.active {\n        color: var(--accent-primary); border-bottom-color: var(--accent-primary);\n    }\n    /* Builder Preview tab buttons — display-only (cursor: default, no click handler) */\n    .p-tab-btn {\n        padding: 12px 20px;\n        color: var(--text-secondary);\n        cursor: default;\n        border-bottom: 2px solid transparent;\n        user-select: none;\n    }\n    .p-tab-btn.active {\n        color: var(--accent-primary);\n        border-bottom: 2px solid var(--accent-primary);\n    }\n\n    /* Pagination — shared flex layout */\n    .pagination-controls,\n    .pagination-controls-sm {\n        display: flex;\n        justify-content: center;\n        align-items: center;\n    }\n    /* Large pagination (PreviewRenderer top-level list pager) */\n    .pagination-controls {\n        gap: 15px;\n        margin-top: 15px;\n        padding-top: 10px;\n        border-top: 1px solid var(--border-color);\n    }\n    .pager-btn {\n        background: transparent;\n        border: 1px solid var(--accent-primary);\n        color: var(--accent-primary);\n        width: 30px;\n        height: 30px;\n        border-radius: 4px;\n        cursor: pointer;\n        font-weight: bold;\n    }\n    .pager-btn:disabled {\n        border-color: #555;\n        color: #555;\n        cursor: not-allowed;\n    }\n    .pager-btn:hover:not(:disabled) {\n        background: rgba(0, 229, 255, 0.2);\n    }\n    .page-info {\n        font-size: 0.9em;\n        color: #aaa;\n    }\n    .tab-content { display: none; padding: 10px; height: 100%; overflow-y: auto; }\n    .tab-content.active { display: block; }\n\n    .grid-row { display: flex; flex-wrap: wrap; margin: 0 -5px; align-items: stretch; align-content: flex-start; max-width: 100%; }\n    .responsive-stats-grid {\n        display: grid;\n        grid-template-columns: repeat(auto-fit, minmax(55px, 1fr));\n        gap: 2px;\n        width: 100%;\n    }\n    /* When .grid-row and .responsive-stats-grid are used together, flex wins via specificity (0,2,0 > 0,1,0).\n       This replaces the old duplicate .grid-row rule that was previously used as a cascade anchor. */\n    .grid-row.responsive-stats-grid { display: flex; flex-wrap: wrap; margin: 0 -5px; align-items: stretch; align-content: flex-start; }\n    .grid-full-width {\n        grid-column: 1 / -1;\n    }\n    \n    /* Responsive Grid Layout Adjustments */\n    .responsive-stats-grid .checkbox-display {\n        justify-content: flex-start;\n    }\n    .col-wrapper { padding: 5px; box-sizing: border-box; min-width: 0; max-width: 100%; overflow: hidden; }\n    .info-card {\n        background: var(--background-card);\n        border: 1px solid var(--border-color);\n        border-radius: 6px;\n        padding: 8px;\n        height: 100%;\n    }\n    .card-header {\n        color: var(--accent-primary); font-weight: bold;\n        border-bottom: 1px solid var(--border-color);\n        padding-bottom: 3px; margin-bottom: 4px;\n    }\n\n    .prop-list {\n        display: flex;\n        flex-wrap: wrap;\n        margin: 0 -4px;\n        width: 100%;\n    }\n    .prop-row-wrapper { \n        padding: 1px 4px; \n        box-sizing: border-box; \n        min-width: 55px;\n        flex: 1 0 auto;\n    }\n    .prop-row {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;\n        border-bottom: 1px dashed rgba(255,255,255,0.1);\n        padding: 2px 0; margin: 0;\n        line-height: 1.2;\n        font-size: 0.875em;\n        min-width: 0;\n        gap: 4px;\n    }\n    .prop-label {\n        color: #81d4fa;\n        flex: 0 0 auto;\n        max-width: 100%;\n        margin-right: 4px;\n        margin-bottom: 1px;\n        padding-top: 2px;\n        white-space: nowrap !important;\n        overflow: visible !important;\n        text-overflow: clip !important;\n    }\n    .prop-val-container {\n        flex: 1 1 auto;\n        width: auto;\n        display: flex;\n        justify-content: flex-end;\n        align-items: center;\n        min-width: 0;\n    }\n    .prop-val {\n        font-weight: 400;\n        width: auto;\n        max-width: 100%;\n        min-width: 0;\n        overflow-wrap: break-word;\n        word-break: normal;\n    }\n    .checkbox-display {\n        width: 100%;\n        display: flex;\n        justify-content: flex-start;\n    }\n\n    /* List content fallback (works even where :has is unsupported) */\n    .prop-val ul,\n    .prop-val ol {\n        margin: 0;\n        padding-left: 1.2em;\n        text-align: left;\n        line-height: 1.35;\n        list-style-position: outside;\n        list-style-type: disc;\n    }\n    .prop-val ol { list-style-type: decimal; }\n    .prop-val li { margin-bottom: 4px; }\n    .prop-val li:last-child { margin-bottom: 0; }\n    .hidden { display: none !important; }\n\n    /* Stat Bars */\n    .stat-bar-box,\n    .stat-bar-card {\n        margin-bottom: 4px; padding: 4px;\n        background: rgba(0,0,0,0.2); border-radius: 6px;\n        border: 1px solid rgba(255,255,255,0.05);\n    }\n    .stat-bar-header {\n        display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.9em;\n    }\n    .stat-bar-label { font-weight: bold; color: #fff; }\n    .stat-bar-val { font-family: monospace; color: #ccc; }\n    \n    .stat-bar-track {\n        width: 100%;\n        height: 8px;\n        background: rgba(0,0,0,0.5);\n        border-radius: 4px;\n        overflow: hidden;\n    }\n    .stat-bar-fill {\n        height: 100%;\n        border-radius: 4px;\n        transition: width 0.3s ease;\n    }\n    /* Bar Colors with Gradients */\n    .bar-red { background: linear-gradient(90deg, #ff5252, #ff8a80); box-shadow: 0 0 5px rgba(255,82,82,0.5); }\n    .bar-green { background: linear-gradient(90deg, #50fa7b, #69f0ae); box-shadow: 0 0 5px rgba(80,250,123,0.5); }\n    .bar-darkgreen { background: linear-gradient(90deg, #05870e, #2e7d32); box-shadow: 0 0 5px rgba(5,135,14,0.5); }\n    .bar-blue { background: linear-gradient(90deg, #4272f5, #82b1ff); box-shadow: 0 0 5px rgba(66,114,245,0.5); }\n    .bar-cyan { background: linear-gradient(90deg, #00e5ff, #84ffff); box-shadow: 0 0 5px rgba(0,229,255,0.5); }\n    .bar-orange { background: linear-gradient(90deg, #fab025, #ffe082); box-shadow: 0 0 5px rgba(250,176,37,0.5); }\n    .bar-yellow { background: linear-gradient(90deg, #faf325, #ffffb0); box-shadow: 0 0 5px rgba(250,243,37,0.5); }\n    .bar-purple { background: linear-gradient(90deg, #8a42f5, #b388ff); box-shadow: 0 0 5px rgba(138,66,245,0.5); }\n    .bar-pink { background: linear-gradient(90deg, #fc8bd5, #ff80ab); box-shadow: 0 0 5px rgba(252,139,213,0.5); }\n    .bar-brown { background: linear-gradient(90deg, #a15012, #8d6e63); box-shadow: 0 0 5px rgba(161,80,18,0.5); }\n    .bar-default { background: linear-gradient(90deg, #ff5252, #ff8a80); }\n\n    /* Grid Layout */\n    .list-grid-view {\n        display: grid;\n        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));\n        gap: 8px;\n        width: 100%;\n    }\n    .list-inventory-view {\n        display: grid;\n        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));\n        gap: 8px;\n        width: 100%;\n    }\n    .grid-tile {\n        background: rgba(0, 40, 60, 0.8);\n        border: 1px solid var(--border-color);\n        padding: 6px 10px;\n        border-radius: 4px;\n        display: flex;\n        justify-content: space-between;\n        align-items: center;\n        color: #fff;\n        font-weight: bold;\n        font-size: 0.95em;\n    }\n    .tile-name { \n        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \n    }\n    .tile-qty {\n        color: var(--accent-primary);\n        font-size: 0.85em;\n        margin-left: 8px;\n        flex-shrink: 0;\n    }\n    /* Shared header style — .nested-section-header used in exported HTML; .grid-group-header builder-only */\n    .nested-section-header,\n    .grid-group-header {\n        font-size: 0.9em; font-weight: bold; color: var(--accent-primary);\n        border-bottom: 1px solid rgba(0, 229, 255, 0.3);\n        text-transform: uppercase; letter-spacing: 0.5px;\n    }\n    .nested-section-header { padding-bottom: 2px; margin-bottom: 4px; margin-top: 8px; }\n    /* .grid-group-header has more vertical breathing room */\n    .grid-group-header { padding-bottom: 4px; margin-bottom: 8px; }\n    .simple-list { margin-top: 4px; }\n    .list-entry { padding: 1px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }\n    .entry-title { color: var(--text-primary); font-weight: bold; font-size: 0.95em; }\n    .entry-desc { font-size: 0.85em; color: #ccc; }\n    \n    /* Checkbox Row */\n    .kin-checkbox-row {\n        font-size: 0.9em;\n        background: rgba(0,0,0,0.2);\n        padding: 4px 8px;\n        border-radius: 4px;\n        width: 100%;\n        gap: 8px;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        flex-wrap: wrap;\n    }\n    .kin-checkbox-label {\n        display: flex; align-items: center; gap: 6px;\n        cursor: pointer; color: var(--text-primary);\n        user-select: none;\n    }\n    .kin-checkbox-text {\n        color: #81d4fa;\n        display: block;\n        flex: 1 1 auto;\n        min-width: 0;\n        white-space: normal;\n        overflow-wrap: anywhere;\n        word-break: break-word;\n    }\n    .kin-checkbox-control {\n        flex: 0 0 auto;\n        width: auto;\n        min-width: 20px;\n        margin-left: auto;\n        justify-content: flex-end;\n    }\n    .kin-checkbox-label input { margin: 0; cursor: pointer; }\n\n    /* On narrow layouts, place checkbox on next line so long labels remain fully visible */\n    @media (max-width: 560px) {\n        .kin-checkbox-text {\n            flex: 1 0 100%;\n        }\n        .kin-checkbox-control {\n            flex: 1 0 100%;\n            width: 100%;\n            margin-left: 0;\n            justify-content: flex-end;\n        }\n    }\n\n    .img-wrapper {\n        position: relative;\n    }\n    .avatar-img {\n        max-width: 100%;\n        height: auto;\n    }\n    \n    .img-popup-overlay {\n        position: fixed;\n        top: 0;\n        left: 0;\n        width: 100%;\n        height: 100%;\n        background: rgba(0,0,0,0.85);\n        z-index: 9999;\n        display: none;\n        align-items: center;\n        justify-content: center;\n        cursor: zoom-out;\n        padding: 12px;\n        box-sizing: border-box;\n    }\n    .img-popup-content {\n        max-width: calc(100vw - 24px);\n        max-height: calc(100vh - 24px);\n        width: auto;\n        height: auto;\n        display: block;\n        border-radius: 4px;\n        box-shadow: 0 0 20px rgba(0,0,0,0.5);\n        object-fit: contain;\n    }\n    .img-edit-btn {\n        position: absolute;\n        bottom: 8px;\n        right: 8px;\n        background: rgba(0,0,0,0.6);\n        color: white;\n        width: 32px;\n        height: 32px;\n        border-radius: 50%;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: pointer;\n        font-size: 16px;\n        border: 1px solid rgba(255,255,255,0.3);\n        transition: background 0.2s;\n        z-index: 10;\n    }\n    .img-edit-btn:hover {\n        background: rgba(0,0,0,0.9);\n        border-color: white;\n    }\n\n    .st-checkbox { width: 20px; height: 20px; cursor: pointer; accent-color: #50fa7b; }\n    .ar-checkbox-input {\n        width: 20px;\n        height: 20px;\n        margin: 0;\n        cursor: pointer;\n        accent-color: #50fa7b;\n        appearance: auto;\n        -webkit-appearance: checkbox;\n        position: static;\n        transform: none;\n    }\n    .lorebook-placeholder-img { width: 100%; height: 150px; border: 2px dashed #ff5252; background: rgba(255, 82, 82, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #ff5252; font-size: 0.9em; padding: 10px; text-align: center; }\n\n    /* Local Pagination (Small) — CardRenderer inline pager; base flex from shared rule above */\n    .pagination-controls-sm { gap: 10px; margin-top: 8px; padding-top: 4px; border-top: 1px dashed rgba(0, 229, 255, 0.15); }\n    .pager-btn-sm { background: transparent; border: 1px solid rgba(0, 229, 255, 0.5); color: #00e5ff; width: 20px; height: 20px; font-size: 0.8em; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; }\n    .pager-btn-sm:disabled { color: #555; border-color: #555; cursor: not-allowed; }\n    .page-info-sm { font-size: 0.75em; color: #888; }\n\n    /* Grid Container & Groups (Builder-side layout wrapper) */\n    .grid-group-card { border: 1px solid rgba(0, 229, 255, 0.15); border-radius: 4px; padding: 8px; background: rgba(0,0,0,0.2); margin-top: 5px; }\n    .grid-group-content { display: flex; flex-wrap: wrap; margin: 0 -4px; }\n    .grid-item { box-sizing: border-box; padding: 4px; min-width: 80px; flex: 1 0 auto; }\n    .grid-item .prop-row { border-bottom: none; background: rgba(255,255,255,0.03); padding: 4px 8px; border-radius: 3px; }\n\n    /* Image Card Layout Wrapper */\n    .image-card { display: flex; flex-direction: column; align-items: center; gap: 10px; }\n    .p-avatar { width: 100%; border: 1px solid #00e5ff; border-radius: 4px; }\n    .p-name { font-family: serif; font-size: 1.2em; color: #00e5ff; }\n\n    /* Quest List Card — canonical class, used by both Builder preview and exported HTML template (tmpl-quest) */\n    .quest-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid var(--accent-primary); position: relative; }\n    .quest-card-header { display: flex; justify-content: space-between; margin-bottom: 4px; }\n    .quest-card-title { font-weight: bold; color: var(--text-primary); }\n    .quest-card-actions { display: flex; gap: 8px; align-items: center; }\n    .quest-delete-btn { background: rgba(255,100,100,0.2); border: 1px solid rgba(255,100,100,0.4); color: #ff6b6b; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.9em; line-height: 1; }\n    .quest-difficulty { font-size: 0.8em; background: #333; padding: 2px 6px; border-radius: 4px; }\n    .quest-desc { font-size: 0.9em; color: var(--text-secondary); margin-bottom: 4px; }\n    .quest-reward { font-size: 0.8em; color: #ffd700; }\n    .quest-last-updated { font-size: 0.75em; color: #888; margin-top: 4px; }\n\n    /* Inventory / Equipment Action item controls */\n    .item-action-wrap { position: relative; width: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }\n    .item-menu-btn { background: rgba(0,229,255,0.15); border: 1px solid rgba(0,229,255,0.4); color: #00e5ff; border-radius: 4px; font-size: 14px; cursor: pointer; padding: 0 6px; line-height: 18px; z-index: 10; }\n    .item-action-menu { display: none; position: absolute; bottom: 22px; right: 0; min-width: 100px; background: rgba(0,31,63,0.95); border: 1px solid rgba(0,229,255,0.4); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 9999; overflow: hidden; }\n    .action-equip-btn, .action-delete-btn { display: none; width: 100%; text-align: left; background: transparent; border: none; padding: 6px 10px; cursor: pointer; font-size: 0.8em; }\n    .action-equip-btn { display: none; color: #00e5ff; }\n    .action-delete-btn { display: block; color: #ff8a80; }\n    .unequip-btn { background: rgba(255,100,100,0.2); border: 1px solid rgba(255,100,100,0.4); color: #ff6b6b; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 1em; line-height: 1; min-width: 30px; }\n\n    /* Item Detail Modal — ID-based; used only in exported HTML (detail-modal popup for item inspection) */\n    #detail-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }\n    #detail-content { background: #001f3f; border: 1px solid #00e5ff; padding: 20px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; color: #e0f7fa; position: relative; box-shadow: 0 0 20px rgba(0, 229, 255, 0.2); }\n    #detail-close-btn { position: absolute; top: 10px; right: 15px; background: none; border: none; color: #81d4fa; font-size: 24px; cursor: pointer; }\n    #detail-close-btn:hover { color: #fff; }\n    #detail-title { margin-top: 0; color: #00e5ff; border-bottom: 1px solid rgba(0,229,255,0.3); padding-bottom: 10px; }\n    .detail-row { display: flex; margin-bottom: 5px; font-size: 0.9em; }\n    .detail-key { font-weight: bold; color: #81d4fa; min-width: 100px; }\n    .detail-val { color: #e0f7fa; white-space: pre-wrap; }\n\n    /* FF + MVU Narrative state */\n    .ffsm-toolbar { display:flex; gap:6px; align-items:center; position:sticky; top:0; z-index:5; padding:4px 0 8px; background:#002b4c; }\n    .ffsm-search { flex:1; min-width:120px; background:rgba(0,0,0,.32); border:1px solid var(--border-color); color:var(--text-primary); border-radius:4px; padding:7px 9px; font:inherit; }\n    .ffsm-btn { background:rgba(0,229,255,.1); border:1px solid var(--border-color); color:var(--accent-primary); border-radius:4px; padding:6px 9px; cursor:pointer; white-space:nowrap; }\n    .ffsm-scroll { height:clamp(620px, calc(100vh - 170px), 840px); overflow-y:auto; overflow-x:hidden; padding-right:4px; }\n    .ffsm-stack { display:flex; flex-direction:column; gap:7px; padding-bottom:10px; }\n    .ffsm-top, .ffsm-node { background:rgba(0,20,40,.55); border:1px solid rgba(0,229,255,.22); border-radius:5px; overflow:hidden; }\n    .ffsm-node { margin:4px 0 0 10px; background:rgba(0,0,0,.14); border-color:rgba(129,212,250,.16); }\n    .ffsm-top > summary, .ffsm-node > summary { cursor:pointer; list-style:none; color:var(--accent-primary); font-weight:700; padding:7px 9px; display:flex; align-items:center; gap:6px; overflow-wrap:anywhere; }\n    .ffsm-top > summary::-webkit-details-marker, .ffsm-node > summary::-webkit-details-marker { display:none; }\n    .ffsm-top > summary::before, .ffsm-node > summary::before { content:'▸'; color:var(--text-secondary); transition:transform .15s; }\n    .ffsm-top[open] > summary::before, .ffsm-node[open] > summary::before { transform:rotate(90deg); }\n    .ffsm-body { padding:0 8px 8px; }\n    .ffsm-row { display:grid; grid-template-columns:minmax(100px,32%) minmax(0,1fr); gap:8px; padding:5px 2px; border-top:1px dashed rgba(255,255,255,.08); font-size:.84em; }\n    .ffsm-key { color:var(--text-secondary); overflow-wrap:anywhere; }\n    .ffsm-val { color:var(--text-primary); white-space:pre-wrap; overflow-wrap:anywhere; }\n    .ffsm-empty { color:#90a4ae; padding:10px; text-align:center; }\n    .ffsm-count { margin-left:auto; color:#90a4ae; font-size:.78em; font-weight:400; }\n    .ffsm-relbar { height:4px; background:rgba(0,0,0,.42); border-radius:2px; overflow:hidden; margin-top:3px; }\n    .ffsm-relfill { height:100%; background:linear-gradient(90deg,#00b8d4,#69f0ae); }\n\n\n\n    /* Compact Overview v2.3 */\n    .ff23-overview { display:flex; flex-direction:column; gap:10px; }\n    /* Overview v2.5 — compact Figma-based layout */\n    .ff25-grid {\n        display:grid;\n        grid-template-columns:minmax(245px,29%) minmax(0,1fr);\n        grid-template-areas:\"left right\" \"quests quests\";\n        gap:12px;\n        align-items:stretch;\n    }\n    .ff25-left { grid-area:left; display:grid; grid-template-rows:190px 448px; gap:14px; min-width:0; }\n    .ff25-right { grid-area:right; display:grid; grid-template-rows:228px 412px; gap:12px; min-width:0; }\n    .ff25-lower { display:grid; grid-template-columns:minmax(255px,47.3%) minmax(370px,1fr); gap:12px; min-width:0; }\n    .ff25-lower.ff25-no-hph { grid-template-columns:1fr; }\n    .ff25-card {\n        min-width:0;\n        padding:11px 12px;\n        border:1px solid var(--border-color);\n        border-radius:8px;\n        background:var(--background-card);\n        overflow:hidden;\n    }\n    .ff25-title {\n        color:var(--accent-primary);\n        font-weight:700;\n        line-height:1.25;\n        padding-bottom:7px;\n        margin-bottom:8px;\n        border-bottom:1px solid var(--border-color);\n    }\n    .ff25-stats,.ff25-world,.ff25-avatar,.ff25-character { min-height:0; }\n    .ff25-hph { display:flex; flex-direction:column; min-height:0; }\n    .ff25-quests { grid-area:quests; }\n\n    .ff25-stat-list {\n        display:grid;\n        grid-template-columns:repeat(3,minmax(0,1fr));\n        gap:7px;\n        min-height:106px;\n        align-items:center;\n    }\n    .ff25-stat {\n        display:grid;\n        grid-template-columns:30px minmax(38px,1fr);\n        grid-template-rows:1fr auto;\n        column-gap:7px;\n        justify-content:center;\n        min-width:0;\n    }\n    .ff25-stat-track {\n        grid-row:1;\n        position:relative;\n        width:30px;\n        height:88px;\n        overflow:hidden;\n        border:1px solid rgba(196,239,249,.46);\n        border-radius:17px;\n        background:rgba(127,163,175,.42);\n        box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);\n    }\n    .ff25-stat-fill {\n        position:absolute;\n        inset:auto 0 0;\n        height:0;\n        border-radius:16px;\n        transition:height .3s ease;\n    }\n    .ff25-stat-numbers {\n        align-self:center;\n        min-width:0;\n        color:#eefaff;\n        font:700 .96em/1.15 ui-monospace,SFMono-Regular,Consolas,monospace;\n    }\n    .ff25-stat-current,.ff25-stat-max { display:block; overflow:hidden; text-overflow:ellipsis; }\n    .ff25-stat-max { color:#8fc6d8; margin-top:10px; font-weight:500; }\n    .ff25-stat-name {\n        grid-column:1 / -1;\n        color:var(--text-secondary);\n        font-size:.76em;\n        font-weight:700;\n        text-align:left;\n        padding-left:8px;\n        margin-top:4px;\n    }\n    .ff25-hp { background:linear-gradient(180deg,#ff8d88,#ff5c63); }\n    .ff25-mp { background:linear-gradient(180deg,#75a9ff,#4276ef); }\n    .ff25-sp { background:linear-gradient(180deg,#69e8aa,#2fcf82); }\n\n    .ff25-rows { display:flex; flex-direction:column; }\n    .ff25-row {\n        display:grid;\n        grid-template-columns:minmax(82px,31%) minmax(0,1fr);\n        gap:10px;\n        padding:6px 0;\n        border-bottom:1px dashed rgba(255,255,255,.1);\n        font-size:calc(.875em + .5px);\n        line-height:1.25;\n    }\n    .ff25-row:last-child { border-bottom:0; }\n    .ff25-label { color:var(--text-secondary); white-space:nowrap; }\n    .ff25-value { min-width:0; color:var(--text-primary); text-align:right; overflow-wrap:anywhere; }\n    .ff25-world .ff25-row { padding:7px 0; }\n\n    .ff25-avatar-center { display:flex; justify-content:center; align-items:flex-start; }\n    .ff25-avatar-shell { position:relative; width:min(92%,353px); }\n    .ff25-avatar-image {\n        display:none;\n        width:100%;\n        height:auto;\n        max-height:390px;\n        object-fit:contain;\n        border:1px solid var(--accent-primary);\n        border-radius:5px;\n        cursor:pointer;\n    }\n    .ff25-avatar-placeholder {\n        display:flex;\n        align-items:center;\n        justify-content:center;\n        width:100%;\n        height:390px;\n        border:1px solid rgba(0,229,255,.34);\n        border-radius:5px;\n        background:rgba(255,255,255,.015);\n        color:#719eae;\n        font-weight:700;\n    }\n    .ff25-avatar-shell:has(.ff25-avatar-image[style*=\"display: block\"]) .ff25-avatar-placeholder { display:none; }\n    .ff25-character { display:flex; flex-direction:column; }\n    .ff25-character .ff25-rows { flex:1; justify-content:space-evenly; }\n\n    .ff25-hph-head { display:flex; align-items:center; }\n    .ff25-hph-layout {\n        width:min(100%,357px);\n        margin:0 auto;\n        display:flex;\n        flex-direction:column;\n        justify-content:space-between;\n        min-height:344px;\n        flex:1;\n    }\n    .ff25-reservoirs,.ff25-hph-bottom { position:relative; width:100%; aspect-ratio:357/158; }\n    .ff25-reservoir {\n        position:absolute;\n        top:0;\n        width:44.26%;\n        aspect-ratio:1;\n        overflow:hidden;\n        border:1.5px solid var(--accent-primary);\n        border-radius:50%;\n        background:#052938;\n    }\n    .ff25-reservoir:last-child { left:55.74%; }\n    .ff25-reservoir-fill { position:absolute; inset:auto 0 0; height:0; transition:height .3s ease; opacity:.78; }\n    .ff25-bladder-fill { background:linear-gradient(180deg,#f4d66e,#d9aa31); }\n    .ff25-semen-fill { background:linear-gradient(180deg,#fff,#dce9ed); }\n    .ff25-reservoir-copy { position:absolute; inset:0; z-index:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; text-shadow:0 1px 2px #00141d; }\n    .ff25-reservoir-label,.ff25-meter-label,.ff25-dimension-label { color:var(--text-secondary); font-size:.62em; font-weight:700; letter-spacing:.04em; }\n    .ff25-reservoir-value { color:#f3fbff; font:700 1.05em/1.1 ui-monospace,SFMono-Regular,Consolas,monospace; margin-top:7px; }\n    .ff25-reservoir-unit { color:#9ac5d2; font-size:.62em; margin-top:3px; }\n    .ff25-meter {\n        position:absolute;\n        top:0;\n        width:18.21%;\n        height:100%;\n        overflow:hidden;\n        border:1.5px solid var(--accent-primary);\n        border-radius:999px;\n        background:#052938;\n    }\n    .ff25-meter-arousal { left:22.13%; }\n    .ff25-meter-fill { position:absolute; inset:auto 0 0; height:0; transition:height .3s ease; opacity:.9; }\n    .ff25-erection-fill { background:linear-gradient(180deg,#f07179,#c53f50); }\n    .ff25-arousal-fill { background:linear-gradient(180deg,#ee8ac4,#c75399); }\n    .ff25-meter-copy { position:absolute; inset:0; z-index:1; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:13px 3px; text-align:center; text-shadow:0 1px 2px #00141d; }\n    .ff25-meter-value { color:#f3fbff; font:700 .9em/1 ui-monospace,SFMono-Regular,Consolas,monospace; }\n    .ff25-dimension-box {\n        position:absolute;\n        left:54.62%;\n        top:0;\n        width:44.26%;\n        height:100%;\n        display:grid;\n        grid-template-rows:1fr 1fr;\n        border:1.5px solid var(--accent-primary);\n        border-radius:18px;\n        overflow:hidden;\n        background:#0b3c4d;\n    }\n    .ff25-dimension { display:flex; align-items:center; justify-content:space-between; gap:5px; padding:8px 12px; min-width:0; }\n    .ff25-dimension + .ff25-dimension { border-top:1px solid rgba(0,229,255,.38); }\n    .ff25-dimension-main { text-align:right; white-space:nowrap; }\n    .ff25-dimension-number { color:#f2fbff; font:700 1.05em/1 ui-monospace,SFMono-Regular,Consolas,monospace; }\n    .ff25-dimension-unit { color:#8ab9c8; font-size:.58em; margin-left:2px; }\n\n    .ff25-quests .prop-list { margin:0; }\n    .ff25-quests .prop-row-wrapper { padding:0; }\n    .ff25-quests .list-collapse-wrapper { margin:0; }\n\n    @media (max-width:960px) {\n        .ff25-grid { grid-template-columns:1fr; grid-template-areas:\"left\" \"right\" \"quests\"; }\n        .ff25-left,.ff25-right { grid-template-rows:auto; }\n        .ff25-left { grid-template-columns:minmax(230px,.7fr) minmax(270px,1fr); }\n        .ff25-right { grid-template-rows:auto; }\n        .ff25-lower { grid-template-columns:minmax(255px,.9fr) minmax(370px,1.1fr); }\n    }\n    @media (max-width:720px) {\n        .ff25-grid { gap:8px; }\n        .ff25-left,.ff25-lower { grid-template-columns:1fr; gap:8px; }\n        .ff25-avatar-shell { width:min(84%,310px); }\n        .ff25-hph-layout { min-height:auto; }\n    }\n    @media (max-width:430px) {\n        body { padding:4px; }\n        .tab-content { padding:6px; }\n        .ff25-card { padding:9px; }\n        .ff25-stat-list { gap:2px; }\n        .ff25-stat { grid-template-columns:25px minmax(32px,1fr); column-gap:4px; }\n        .ff25-stat-track { width:25px; height:76px; }\n        .ff25-stat-numbers { font-size:.82em; }\n        .ff25-dimension { padding-inline:7px; }\n        .ff25-reservoir-label,.ff25-meter-label,.ff25-dimension-label { font-size:.55em; }\n    }\n\n    /* Persistent Outfit / Wardrobe */\n    .outfit-tab-btn { color:#f3a6da; }\n    .outfit-tab-btn.active { color:#ff7ac8; border-bottom-color:#ff7ac8; }\n    .outfit-shell { --outfit-accent:#ff7ac8; --outfit-soft:#f3a6da; --outfit-border:rgba(255,122,200,.38); display:flex; flex-direction:column; gap:10px; }\n    .outfit-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px; background:rgba(54,8,42,.42); border:1px solid var(--outfit-border); border-radius:7px; }\n    .outfit-toolbar-label { color:var(--outfit-soft); font-size:.82em; font-weight:700; margin-right:2px; }\n    .outfit-owner-tabs { display:flex; flex-wrap:wrap; gap:6px; }\n    .outfit-owner-btn { appearance:none; border:1px solid var(--outfit-border); background:rgba(255,122,200,.08); color:#f7d7ec; border-radius:999px; padding:5px 11px; cursor:pointer; font:inherit; font-size:.8em; }\n    .outfit-owner-btn:hover { background:rgba(255,122,200,.16); }\n    .outfit-owner-btn.active { color:#fff; border-color:var(--outfit-accent); background:rgba(255,122,200,.28); box-shadow:0 0 10px rgba(255,122,200,.12); }\n    .outfit-status { margin-left:auto; color:#cfa9c4; font-size:.74em; }\n    .outfit-columns { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }\n    .outfit-panel { min-width:0; background:rgba(45,5,34,.48); border:1px solid var(--outfit-border); border-radius:7px; padding:9px; }\n    .outfit-panel-title { color:var(--outfit-accent); font-weight:800; font-size:.92em; padding-bottom:5px; margin-bottom:7px; border-bottom:1px solid var(--outfit-border); display:flex; justify-content:space-between; gap:8px; }\n    .outfit-count { color:#cfa9c4; font-weight:400; }\n    .outfit-list { display:flex; flex-direction:column; gap:6px; }\n    .outfit-empty { color:#a9799a; font-size:.8em; text-align:center; padding:14px 6px; }\n    .outfit-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px 8px; padding:8px; border:1px solid rgba(255,122,200,.22); border-radius:6px; background:linear-gradient(135deg,rgba(255,122,200,.1),rgba(98,34,90,.1)); }\n    .outfit-item-main { min-width:0; }\n    .outfit-item-name { color:#fff0fa; font-size:.86em; font-weight:700; overflow-wrap:anywhere; }\n    .outfit-badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }\n    .outfit-badge { border:1px solid rgba(255,122,200,.28); border-radius:999px; padding:1px 6px; color:#e9b9d8; font-size:.66em; line-height:1.45; }\n    .outfit-item-detail { grid-column:1 / -1; color:#cdb6c6; font-size:.72em; line-height:1.35; overflow-wrap:anywhere; }\n    .outfit-item-state { color:#f0a9d5; }\n    .outfit-action { align-self:start; appearance:none; border:1px solid var(--outfit-accent); color:#ffd9ef; background:rgba(255,122,200,.13); border-radius:5px; padding:4px 8px; cursor:pointer; font:inherit; font-size:.7em; white-space:nowrap; }\n    .outfit-action:hover { background:rgba(255,122,200,.28); }\n    @media (max-width:680px) { .outfit-columns { grid-template-columns:1fr; } .outfit-status { width:100%; margin-left:0; } }";
+export const LEGACY_STATUS_BODY_HTML = "<!-- DB Upgrade Utility Placeholder -->\n    <UpgradeAR_DB_Holder/>\n\n    <!-- Main Container -->\n    <!-- Forced to 100% width for export as requested -->\n    <div class=\"status-container\" style=\"width: 100%\">\n        \n        <!-- Tab Navigation -->\n        <div class=\"tab-nav\">\n            <div class=\"tab-btn active\" onclick=\"selectTab('tab-tab-1', this)\">Overview</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-tab-1770046656361', this)\">Attributes</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-tab-1770138241595', this)\">Familiars</div>\n            <div class=\"tab-btn outfit-tab-btn\" onclick=\"selectTab('tab-outfits', this)\">Wardrobe</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-tab-1770203490813', this)\">Equipments</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-tab-1770205420551', this)\">Items</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-tab-1770205502569', this)\">Others</div>\n            <div class=\"tab-btn \" onclick=\"selectTab('tab-ff-state', this)\">FF State</div>\n        </div>\n\n        <!-- Tab Content -->\n\n    <div id=\"tab-tab-1\" class=\"tab-content active\">\n        <div class=\"ff25-grid\" id=\"ff25-grid\">\n            <div class=\"ff25-left\">\n                <section class=\"ff25-card ff25-stats\">\n                    <div class=\"ff25-title\">Main Stats</div>\n                    <div class=\"ff25-stat-list\">\n                        <div class=\"ff25-stat\" data-ff25-cur=\"Mainchar.Hp_curr\" data-ff25-max=\"Mainchar.Hp_max\"><div class=\"ff25-stat-track\"><div class=\"ff25-stat-fill ff25-hp\"></div></div><div class=\"ff25-stat-numbers\"><span class=\"ff25-stat-current\">—</span><span class=\"ff25-stat-max\">—</span></div><div class=\"ff25-stat-name\">HP</div></div>\n                        <div class=\"ff25-stat\" data-ff25-cur=\"Mainchar.Mp_curr\" data-ff25-max=\"Mainchar.Mp_max\"><div class=\"ff25-stat-track\"><div class=\"ff25-stat-fill ff25-mp\"></div></div><div class=\"ff25-stat-numbers\"><span class=\"ff25-stat-current\">—</span><span class=\"ff25-stat-max\">—</span></div><div class=\"ff25-stat-name\">MP</div></div>\n                        <div class=\"ff25-stat\" data-ff25-cur=\"Mainchar.Sta_curr\" data-ff25-max=\"Mainchar.Sta_max\"><div class=\"ff25-stat-track\"><div class=\"ff25-stat-fill ff25-sp\"></div></div><div class=\"ff25-stat-numbers\"><span class=\"ff25-stat-current\">—</span><span class=\"ff25-stat-max\">—</span></div><div class=\"ff25-stat-name\">ST</div></div>\n                    </div>\n                </section>\n                <section class=\"ff25-card ff25-avatar\">\n                    <div class=\"ff25-title\">Avatar</div>\n                    <div class=\"ff25-avatar-center\"><div class=\"ff25-avatar-shell img-wrapper\" data-bind-fullpath=\"Mainchar.Image\"><img class=\"ff25-avatar-image\" data-bind-img=\"Mainchar.Image\" alt=\"Avatar\" onclick=\"showImagePopup(this.src)\"><div class=\"ff25-avatar-placeholder\">IMAGE</div><div class=\"img-edit-btn\" data-save-root=\"Mainchar\" data-save-leaf=\"Image\" onclick=\"handleEditClick(event,this)\">✎</div></div></div>\n                </section>\n            </div>\n            <div class=\"ff25-right\">\n                <section class=\"ff25-card ff25-world\">\n                    <div class=\"ff25-title\">World Info</div>\n                    <div class=\"ff25-rows\">\n                        <div class=\"ff25-row\"><span class=\"ff25-label\">Date</span><span class=\"ff25-value\" data-bind-val=\"World.Date\">—</span></div>\n                        <div class=\"ff25-row\"><span class=\"ff25-label\">Time</span><span class=\"ff25-value\" data-bind-val=\"World.Time\">—</span></div>\n                        <div class=\"ff25-row\"><span class=\"ff25-label\">Location</span><span class=\"ff25-value\" data-bind-val=\"World.Location\">—</span></div>\n                        <div class=\"ff25-row\"><span class=\"ff25-label\">Weather</span><span class=\"ff25-value\" data-bind-val=\"World.Weather\">—</span></div>\n                    </div>\n                </section>\n                <div class=\"ff25-lower\" id=\"ff25-lower\">\n                    <section class=\"ff25-card ff25-character\">\n                        <div class=\"ff25-title\">Character Status</div>\n                        <div class=\"ff25-rows\">\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Name</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Name\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Age</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Age\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Gender</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Gender\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Occupation</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Occupation\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Race</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Race\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Level / Exp</span><span class=\"ff25-value\"><span data-bind-val=\"Mainchar.Level\">—</span> / <span data-bind-val=\"Mainchar.Exp\">—</span></span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Mental State</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Mental_state\">—</span></div>\n                            <div class=\"ff25-row\"><span class=\"ff25-label\">Core Point</span><span class=\"ff25-value\" data-bind-val=\"Mainchar.Core-points\">—</span></div>\n                        </div>\n                    </section>\n                    <section class=\"ff25-card ff25-hph\" id=\"ff25-hph\">\n                        <div class=\"ff25-title ff25-hph-head\">Genitalia Info</div>\n                        <div class=\"ff25-hph-layout\">\n                            <div class=\"ff25-reservoirs\">\n                                <div class=\"ff25-reservoir\"><div class=\"ff25-reservoir-fill ff25-bladder-fill\" id=\"ff25-bladder-fill\"></div><div class=\"ff25-reservoir-copy\"><div class=\"ff25-reservoir-label\">BLADDER</div><div class=\"ff25-reservoir-value\" id=\"ff25-bladder-value\">—</div><div class=\"ff25-reservoir-unit\">/ 10</div></div></div>\n                                <div class=\"ff25-reservoir\"><div class=\"ff25-reservoir-fill ff25-semen-fill\" id=\"ff25-semen-fill\"></div><div class=\"ff25-reservoir-copy\"><div class=\"ff25-reservoir-label\">SEMEN</div><div class=\"ff25-reservoir-value\" id=\"ff25-semen-value\">—</div><div class=\"ff25-reservoir-unit\">ml</div></div></div>\n                            </div>\n                            <div class=\"ff25-hph-bottom\">\n                                <div class=\"ff25-meter\"><div class=\"ff25-meter-fill ff25-erection-fill\" id=\"ff25-erection-fill\"></div><div class=\"ff25-meter-copy\"><div class=\"ff25-meter-label\">ERECTION</div><div class=\"ff25-meter-value\"><span id=\"ff25-erection-value\">—</span><small>/10</small></div></div></div>\n                                <div class=\"ff25-meter ff25-meter-arousal\"><div class=\"ff25-meter-fill ff25-arousal-fill\" id=\"ff25-arousal-fill\"></div><div class=\"ff25-meter-copy\"><div class=\"ff25-meter-label\">AROUSAL</div><div class=\"ff25-meter-value\"><span id=\"ff25-arousal-value\">—</span><small>/10</small></div></div></div>\n                                <div class=\"ff25-dimension-box\">\n                                    <div class=\"ff25-dimension\"><div class=\"ff25-dimension-label\">LENGTH</div><div class=\"ff25-dimension-main\"><span class=\"ff25-dimension-number\" id=\"ff25-length-value\">—</span><span class=\"ff25-dimension-unit\">cm</span></div></div>\n                                    <div class=\"ff25-dimension\"><div class=\"ff25-dimension-label\">GIRTH</div><div class=\"ff25-dimension-main\"><span class=\"ff25-dimension-number\" id=\"ff25-girth-value\">—</span><span class=\"ff25-dimension-unit\">cm</span></div></div>\n                                </div>\n                            </div>\n                        </div>\n                    </section>\n                </div>\n            </div>\n            <section class=\"ff25-card ff25-quests\">\n                <div class=\"ff25-title\" id=\"lbl_blk_blk_1770135834327\">Current Quests</div>\n                <div id=\"blk-blk-1770135834327\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770135834327\" data-page-size=\"5\"></div>\n                <template id=\"tpl-blk-blk-1770135834327\"><div class=\"prop-row-wrapper\" style=\"width:100%\"><div class=\"list-collapse-wrapper\"><div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770135842396\" style=\"cursor:pointer;display:flex;justify-content:space-between;align-items:center\"><span></span><span class=\"list-collapse-arrow\" style=\"font-size:.8em;opacity:.6\">▼</span></div><div class=\"list-collapse-body\"><div id=\"list-crd-1770135842396\" class=\"simple-list\" data-bind-list=\"Quests\" data-bind-list-fullpath=\"Mainchar.Quests\" data-list-type=\"quest\" data-allow-delete=\"1\"></div></div></div></div></template>\n            </section>\n        </div>\n    </div>\n\n    <div id=\"tab-tab-1770046656361\" class=\"tab-content \">\n        <div class=\"grid-row\">\n            \n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770046675226\">Base Attributes</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770046675226\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770046675226\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770046675226\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Strength\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770136694112\" >Str</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Strength\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Agility\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770136714637\" >Agi</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Agility\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Constitution\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770137031643\" >Con</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Constitution\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Intelligence\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770137041752\" >Int</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Intelligence\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Wisdom\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770137088501\" >Wis</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Wisdom\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Charisma\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770137108059\" >Cha</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Charisma\">???</span>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770136606429\">Combat Stats</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770136606429\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770136606429\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770136606429\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Physical_attack\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770137968763\" >P_Atk</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Physical_attack\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Physical_defense\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770138024815\" >P_Def</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Physical_defense\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Magic_attack\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770138039757\" >M_Atk</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_attack\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Magic_defense\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770138066356\" >M_Def</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_defense\">???</span>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"prop-row\" data-bind-fullpath=\"Mainchar.Magic_assist\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770138086951\" >M_Ast</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_assist\">???</span>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:100%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770136622937\">Skill List</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770136622937\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770136622937\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770136622937\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770138116086\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770138116086\" class=\"simple-list\" data-bind-list=\"Skills\" data-bind-list-fullpath=\"Mainchar.Skills\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        </div>\n    </div>\n\n    <div id=\"tab-tab-1770138241595\" class=\"tab-content \">\n        <div class=\"grid-row\">\n            \n        <div class=\"col-wrapper\" style=\"width:100%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770140160072\">Familiar List</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770140160072\" class=\"prop-list\" data-bind-root=\"Familiar\" data-template=\"tpl-blk-blk-1770140160072\" data-page-size=\"5\" data-quick-jump=\"1\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770140160072\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:25%\">\n                \n                <div class=\"grid-group-card\">\n                    <div class=\"grid-group-header\" id=\"lbl_gc_crd_1774572430588\">&lt;br&gt;</div>\n                    <div class=\"grid-group-content\"><div class=\"prop-row-wrapper\" style=\"width:100%\"><div style=\"text-align:center;\">\n                    <div class=\"img-wrapper\" style=\"text-align:center; position:relative; display:inline-block; width:90%; max-width:100%;\" data-bind-fullpath=\"Familiar.Image\">\n                        <img \n                            src=\"\" \n                            alt=\"Card Title\" \n                            id=\"lbl_img_crd_1774572509680\"\n                            class=\"avatar-img\" \n                            style=\"width:100%; border-radius:4px; border:1px solid var(--accent-primary); cursor:pointer; display:block;\" \n                            data-bind-img=\"Image\" \n                            onclick=\"showImagePopup(this.src)\"\n                        />\n                        <!-- Edit Button -->\n                        <div class=\"img-edit-btn\" \n                            data-save-root=\"Familiar\" \n                            data-save-leaf=\"Image\"\n                            onclick=\"handleEditClick(event, this)\"\n                        >\n                            ✎\n                        </div>\n                    </div></div></div></div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:75%\">\n                \n                <div class=\"grid-group-card\">\n                    <div class=\"grid-group-header\" id=\"lbl_gc_crd_1770140317759\">Basic Stats</div>\n                    <div class=\"grid-group-content\"><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"stat-bar-box\" data-bind-fullpath=\"Familiar.Hp_curr\">\n                    <div class=\"stat-bar-header\">\n                        <span class=\"stat-bar-label\" id=\"lbl_statbar_crd_1770140617427\" >HP</span>\n                        <span class=\"stat-bar-val\"><span data-bind-curr=\"Hp_curr\">?</span> / <span data-bind-max=\"Hp_max\">?</span></span>\n                    </div>\n                    <div class=\"stat-bar-track\">\n                        <div class=\"stat-bar-fill bar-red\" style=\"width:50%;\" data-bind-bar=\"Hp_curr\" data-bind-bar-max=\"Hp_max\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"stat-bar-box\" data-bind-fullpath=\"Familiar.Mp_curr\">\n                    <div class=\"stat-bar-header\">\n                        <span class=\"stat-bar-label\" id=\"lbl_statbar_crd_1770140759187\" >MP</span>\n                        <span class=\"stat-bar-val\"><span data-bind-curr=\"Mp_curr\">?</span> / <span data-bind-max=\"Mp_max\">?</span></span>\n                    </div>\n                    <div class=\"stat-bar-track\">\n                        <div class=\"stat-bar-fill bar-blue\" style=\"width:50%;\" data-bind-bar=\"Mp_curr\" data-bind-bar-max=\"Mp_max\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"stat-bar-box\" data-bind-fullpath=\"Familiar.Sta_curr\">\n                    <div class=\"stat-bar-header\">\n                        <span class=\"stat-bar-label\" id=\"lbl_statbar_crd_1770140810258\" >SP</span>\n                        <span class=\"stat-bar-val\"><span data-bind-curr=\"Sta_curr\">?</span> / <span data-bind-max=\"Sta_max\">?</span></span>\n                    </div>\n                    <div class=\"stat-bar-track\">\n                        <div class=\"stat-bar-fill bar-orange\" style=\"width:50%;\" data-bind-bar=\"Sta_curr\" data-bind-bar-max=\"Sta_max\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Name\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770140326850\" >Name</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Name\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Race\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770140342151\" >Race</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Race\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Occupation\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770140534232\" >Job</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Occupation\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Level\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770140979467\" >Lv</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Level\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Exp\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770140991096\" >Exp</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Exp\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:33%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Core-points\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770141013213\" >Core Point</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\" data-dynamic-logic=\"Ly8gJ3N0YXQnIElTIHRoZSBjdXJyZW50IGZhbWlsaWFyIChlLmcuIEVuZ25pKQovLyBTbyB3ZSBqdXN0IGFzayBmb3IgaXRzIHByb3BlcnR5IGRpcmVjdGx5CmxldCB2YWwgPSBnZXRWKHN0YXQsICdDb3JlLXBvaW50cycsIDApOyAKCmlmIChOdW1iZXIodmFsKSA+IDApIHsKICAgIF9vdXRwdXQgPSBgPHNwYW4gc3R5bGU9ImNvbG9yOiByZWQ7IGZvbnQtd2VpZ2h0OiBib2xkOyI+JHt2YWx9PC9zcGFuPmA7Cn0gZWxzZSB7CiAgICBfb3V0cHV0ID0gdmFsOwp9\" data-bind-val=\"Core-points\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:49%\">\n                <div class=\"prop-row kin-checkbox-row\" data-bind-fullpath=\"Familiar.Is_present\">\n                    <span class=\"kin-checkbox-text\" id=\"lbl_checkbox_crd_1770141076983\">Present</span>\n                    <div class=\"prop-val-container kin-checkbox-control\">\n                        <input \n                            type=\"checkbox\"\n                            class=\"ar-checkbox-input\"\n                            style=\"margin:0; flex-shrink:0;\"\n                            data-bind-checked=\"Is_present\" \n                            data-save-root=\"Familiar\" \n                            data-save-leaf=\"Is_present\" \n                        />\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:49%\">\n                <div class=\"prop-row kin-checkbox-row\" data-bind-fullpath=\"Familiar.Is_in_battle_team\">\n                    <span class=\"kin-checkbox-text\" id=\"lbl_checkbox_crd_1770141497406\">BattleTeam</span>\n                    <div class=\"prop-val-container kin-checkbox-control\">\n                        <input \n                            type=\"checkbox\"\n                            class=\"ar-checkbox-input\"\n                            style=\"margin:0; flex-shrink:0;\"\n                            data-bind-checked=\"Is_in_battle_team\" \n                            data-save-root=\"Familiar\" \n                            data-save-leaf=\"Is_in_battle_team\" \n                        />\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:50%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Familiar_Status\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770141545080\" >Familiar</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Familiar_Status\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Identity\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770141666787\" >ID</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\" data-dynamic-logic=\"bGV0IG91dCA9IGdldFYoc3RhdCwgJ0lkZW50aXR5JywgJycpOwppZiAoIW91dCAmJiByb290ICYmIHJvb3QuTmFycmF0aXZlICYmIHJvb3QuTmFycmF0aXZlLk5QQ3MpIHsKICBjb25zdCBrZXkgPSBTdHJpbmcoc3RhdC4ka2V5IHx8ICcnKS50cmltKCkudG9Mb3dlckNhc2UoKTsKICBjb25zdCBuYW1lID0gU3RyaW5nKGdldFYoc3RhdCwgJ05hbWUnLCAnJykgfHwgJycpLnRyaW0oKS50b0xvd2VyQ2FzZSgpOwogIGZvciAoY29uc3QgW2lkLCBucGNdIG9mIE9iamVjdC5lbnRyaWVzKHJvb3QuTmFycmF0aXZlLk5QQ3MpKSB7CiAgICBjb25zdCBkaXNwbGF5ID0gU3RyaW5nKG5wYyAmJiAobnBjLkRpc3BsYXlOYW1lIHx8IG5wYy5OYW1lKSB8fCAnJykudHJpbSgpLnRvTG93ZXJDYXNlKCk7CiAgICBjb25zdCBhbGlhc2VzID0gQXJyYXkuaXNBcnJheShucGMgJiYgbnBjLkFsaWFzZXMpID8gbnBjLkFsaWFzZXMubWFwKHYgPT4gU3RyaW5nKHYpLnRyaW0oKS50b0xvd2VyQ2FzZSgpKSA6IFtdOwogICAgaWYgKChrZXkgJiYgKGRpc3BsYXkgPT09IGtleSB8fCBhbGlhc2VzLmluY2x1ZGVzKGtleSkpKSB8fCAobmFtZSAmJiAoZGlzcGxheSA9PT0gbmFtZSB8fCBhbGlhc2VzLmluY2x1ZGVzKG5hbWUpKSkpIHsgb3V0ID0gaWQ7IGJyZWFrOyB9CiAgfQp9Cl9vdXRwdXQgPSBvdXQgfHwgJ+KAlCc7\" data-bind-val=\"Identity\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Location\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770141679187\" >Loc</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Location\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\"><div class=\"nested-section-header\" id=\"lbl_rt_crd_1770142444444\"  >Combat Stats</div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Strength\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770142523667\" >Str</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Strength\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Agility\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770142560800\" >Agi</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Agility\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Constitution\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770142575909\" >Con</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Constitution\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Intelligence\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770142600383\" >Int</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Intelligence\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Wisdom\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770142623498\" >Wis</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Wisdom\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Physical_attack\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770143697349\" >P_Atk</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Physical_attack\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Physical_defense\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770143741756\" >P_Def</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Physical_defense\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:20%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Magic_attack\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770143782402\" >M_Atk</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_attack\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Magic_defense\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770143800419\" >M_Def</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_defense\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Magic_assist\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770143814954\" >M_Ast</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Magic_assist\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\"><div class=\"nested-section-header\" id=\"lbl_rt_crd_1770143850337\"  >Personal Info</div></div><div class=\"prop-row-wrapper\" style=\"width:58%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Age\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1775040487053\" >Age</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Age\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:23%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Affection\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770200742766\" >Affection</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Affection\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:17%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Charisma\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770200711417\" >Cha</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Charisma\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:25%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Gender\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1775040577803\" >Gender</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Gender\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:24%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Height\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770144495122\" >Height</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Height\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Cup_Size\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770200609456\" >Cup</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Cup_Size\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:30%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Body_Measurements\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770200619133\" >B/W/H</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Body_Measurements\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.M_level\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770202149384\" >M_Lv</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"M_level\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:19%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Lewdness\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770202108897\" >Lewd</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Lewdness\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:25%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Control_desire\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770202126686\" >Control</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Control_desire\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:25%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Sex_count\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770202172072\" >Sex_count</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Sex_count\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"grid-group-card\">\n                    <div class=\"grid-group-header\" id=\"lbl_gc_crd_1770202748305\">Equipments</div>\n                    <div class=\"grid-group-content\"><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770288152164\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770288152164\" class=\"simple-list\" data-bind-list=\"Equipment\" data-bind-list-fullpath=\"Familiar.Equipment\" data-list-type=\"equipment-action\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div></div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"grid-group-card\">\n                    <div class=\"grid-group-header\">Inventory</div>\n                    <div class=\"grid-group-content\"><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-familiar-inventory\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-familiar-inventory\" class=\"simple-list\" data-bind-list=\"Inventory\" data-bind-list-fullpath=\"Familiar.Inventory\" data-list-type=\"inventory\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div></div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\"><div class=\"nested-section-header\" id=\"lbl_rt_crd_1770203081539\"  >Biography</div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Hair_Style\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770203123194\" >Hair Style</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Hair_Style\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Personality\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770203143265\" >Personality</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Personality\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Physical_Features\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770203169089\" >Physical Feature</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Physical_Features\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.ExSkill\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770203184716\" >Ex_Skill</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"ExSkill\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Biography\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1770203198356\" >Bio</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\"  data-bind-val=\"Biography\">???</span>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"prop-row\" data-bind-fullpath=\"Familiar.Secret\">\n                    <span class=\"prop-label\" id=\"lbl_statrow_crd_1774135573596\" >Secret</span>\n                    <div class=\"prop-val-container\">\n                        <span class=\"prop-val\" data-dynamic-logic=\"X291dHB1dCA9IE51bWJlcihnZXRWKHN0YXQsICdBZmZlY3Rpb24nLCAwKSkgPj0gOTAgPyBnZXRWKHN0YXQsICdTZWNyZXQnLCAnJykgOiAnUmVxdWlyZSA5MCUgQWZmZWN0aW9uJzs=\" data-bind-val=\"Secret\">???</span>\n                    </div>\n                </div></div></div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        </div>\n    </div>\n\n    <div id=\"tab-outfits\" class=\"tab-content\">\n        <div class=\"outfit-shell\">\n            <div class=\"outfit-toolbar\">\n                <span class=\"outfit-toolbar-label\">Владелец</span>\n                <div class=\"outfit-owner-tabs\" id=\"outfit-owner-tabs\"></div>\n                <span class=\"outfit-status\" id=\"outfit-status\"></span>\n            </div>\n            <div class=\"outfit-columns\">\n                <section class=\"outfit-panel\">\n                    <div class=\"outfit-panel-title\"><span>Надето</span><span class=\"outfit-count\" id=\"outfit-worn-count\">0</span></div>\n                    <div class=\"outfit-list\" id=\"outfit-worn-list\"></div>\n                </section>\n                <section class=\"outfit-panel\">\n                    <div class=\"outfit-panel-title\"><span>Гардероб</span><span class=\"outfit-count\" id=\"outfit-wardrobe-count\">0</span></div>\n                    <div class=\"outfit-list\" id=\"outfit-wardrobe-list\"></div>\n                </section>\n            </div>\n        </div>\n    </div>\n\n    <div id=\"tab-tab-1770203490813\" class=\"tab-content \">\n        <div class=\"grid-row\">\n            \n        <div class=\"col-wrapper\" style=\"width:100%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770203491926\">Equipments</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770203491926\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770203491926\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770203491926\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770203898894\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770203898894\" class=\"simple-list\" data-bind-list=\"Equipment\" data-bind-list-fullpath=\"Mainchar.Equipment\" data-list-type=\"equipment-action\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        </div>\n    </div>\n\n    <div id=\"tab-tab-1770205420551\" class=\"tab-content \">\n        <div class=\"grid-row\">\n            \n        <div class=\"col-wrapper\" style=\"width:100%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770205452062\">Inventory</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770205452062\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770205452062\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770205452062\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770205456788\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770205456788\" class=\"simple-list\" data-bind-list=\"Inventory\" data-bind-list-fullpath=\"Mainchar.Inventory\" data-list-type=\"inventory\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        </div>\n    </div>\n\n    <div id=\"tab-tab-1770205502569\" class=\"tab-content \">\n        <div class=\"grid-row\">\n            \n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770205519586\">Talents</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770205519586\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770205519586\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770205519586\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770205569992\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770205569992\" class=\"simple-list\" data-bind-list=\"Talents\" data-bind-list-fullpath=\"Mainchar.Talents\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770205524852\">Estates</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770205524852\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770205524852\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770205524852\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770205594899\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span></span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▶</span>\n                    </div>\n                    <div class=\"list-collapse-body\" style=\"display:none;\">\n                        <div id=\"list-crd-1770205594899\" class=\"simple-list\" data-bind-list=\"Real_estate\" data-bind-list-fullpath=\"Mainchar.Real_estate\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770205528854\">Buff and Ailments</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770205528854\" class=\"prop-list\" data-bind-root=\"Mainchar\" data-template=\"tpl-blk-blk-1770205528854\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770205528854\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770205662494\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Buffs</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770205662494\" class=\"simple-list\" data-bind-list=\"Buffs\" data-bind-list-fullpath=\"Mainchar.Buffs\" data-list-type=\"simple\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1770205677565\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Ailments</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▼</span>\n                    </div>\n                    <div class=\"list-collapse-body\">\n                        <div id=\"list-crd-1770205677565\" class=\"simple-list\" data-bind-list=\"Ailments\" data-bind-list-fullpath=\"Mainchar.Ailments\" data-list-type=\"simple\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:50%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1770205538619\">Map</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1770205538619\" class=\"prop-list\" data-bind-root=\"World\" data-template=\"tpl-blk-blk-1770205538619\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1770205538619\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div style=\"text-align:center;\">\n                    <div class=\"img-wrapper\" style=\"text-align:center; position:relative; display:inline-block; width:100%; max-width:100%;\" data-bind-fullpath=\"World.MapImage\">\n                        <img \n                            src=\"\" \n                            alt=\"Card Title\" \n                            id=\"lbl_img_crd_1770205727421\"\n                            class=\"avatar-img\" \n                            style=\"width:100%; border-radius:4px; border:1px solid var(--accent-primary); cursor:pointer; display:block;\" \n                            data-bind-img=\"MapImage\" \n                            onclick=\"showImagePopup(this.src)\"\n                        />\n                        <!-- Edit Button -->\n                        <div class=\"img-edit-btn\" \n                            data-save-root=\"World\" \n                            data-save-leaf=\"MapImage\"\n                            onclick=\"handleEditClick(event, this)\"\n                        >\n                            ✎\n                        </div>\n                    </div></div> \n            </div>\n                </template>\n            </div>\n        </div>\n        <div class=\"col-wrapper\" style=\"width:100%\">\n            <div class=\"info-card\" style=\"\">\n                <div class=\"card-header\" id=\"lbl_blk_blk_1776467005665\">World Events</div>\n                \n                <!-- Container for Dynamic Content -->\n                <div id=\"blk-blk-1776467005665\" class=\"prop-list\" data-bind-root=\"World_Calc\" data-template=\"tpl-blk-blk-1776467005665\" data-page-size=\"5\">\n                    <!-- Content will be injected here -->\n                </div>\n\n                <!-- Template -->\n                <template id=\"tpl-blk-blk-1776467005665\">\n                    \n            <div class=\"prop-row-wrapper\" style=\"width:100%\">\n                \n                <div class=\"grid-group-card\">\n                    \n                    <div class=\"grid-group-content\"><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1776467032936\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Factions</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▶</span>\n                    </div>\n                    <div class=\"list-collapse-body\" style=\"display:none;\">\n                        <div id=\"list-crd-1776467032936\" class=\"simple-list\" data-bind-list=\"Factions\" data-bind-list-fullpath=\"World_Calc.Factions\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1776467290754\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Locations</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▶</span>\n                    </div>\n                    <div class=\"list-collapse-body\" style=\"display:none;\">\n                        <div id=\"list-crd-1776467290754\" class=\"simple-list\" data-bind-list=\"Locations\" data-bind-list-fullpath=\"World_Calc.Locations\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1776467309736\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Ruins</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▶</span>\n                    </div>\n                    <div class=\"list-collapse-body\" style=\"display:none;\">\n                        <div id=\"list-crd-1776467309736\" class=\"simple-list\" data-bind-list=\"Ruins\" data-bind-list-fullpath=\"World_Calc.Ruins\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div><div class=\"prop-row-wrapper\" style=\"width:100%\">\n                <div class=\"list-collapse-wrapper\">\n                    <div class=\"nested-section-header list-collapse-header\" data-target=\"list-crd-1776467328410\" style=\"cursor:pointer; display:flex; justify-content:space-between; align-items:center;\">\n                        <span>Events</span><span class=\"list-collapse-arrow\" style=\"font-size:0.8em; opacity:0.6;\">▶</span>\n                    </div>\n                    <div class=\"list-collapse-body\" style=\"display:none;\">\n                        <div id=\"list-crd-1776467328410\" class=\"simple-list\" data-bind-list=\"Events\" data-bind-list-fullpath=\"World_Calc.Events\" data-list-type=\"simple\" data-allow-edit=\"1\" data-allow-delete=\"1\"></div>\n                    </div>\n                </div></div></div>\n                </div> \n            </div>\n                </template>\n            </div>\n        </div>\n        </div>\n    </div>\n\n    <div id=\"tab-ff-state\" class=\"tab-content\">\n        <div class=\"ffsm-toolbar\">\n            <input id=\"ffsm-search\" class=\"ffsm-search\" type=\"search\" placeholder=\"Search FF state...\" aria-label=\"Search FF state\">\n            <button class=\"ffsm-btn\" type=\"button\" onclick=\"setAllFFSMDetails(true)\">Expand</button>\n            <button class=\"ffsm-btn\" type=\"button\" onclick=\"setAllFFSMDetails(false)\">Collapse</button>\n        </div>\n        <div class=\"ffsm-scroll\">\n            <div id=\"ffsm-root\" class=\"ffsm-stack\"><div class=\"ffsm-empty\">Narrative state is not initialized yet.</div></div>\n        </div>\n    </div>\n\n    </div>\n\n    <!-- Templates -->\n    \n    <!-- Simple List Template -->\n    <template id=\"tmpl-simple\">\n        <div class=\"list-entry\" style=\"display:flex; justify-content:space-between; align-items:center;\">\n            <div>\n                <div class=\"entry-title\" data-slot=\"title\"></div>\n                <div class=\"entry-desc\" data-slot=\"desc\"></div>\n            </div>\n            <button class=\"list-delete-btn\" title=\"Delete\">&times;</button>\n        </div>\n    </template>\n\n    <!-- Grid List Template -->\n    <template id=\"tmpl-grid\">\n        <div class=\"grid-tile\" style=\"position:relative;\">\n            <span class=\"tile-name\" data-slot=\"name\"></span>\n            <span class=\"tile-qty\" data-slot=\"qty\"></span>\n            <button class=\"list-delete-btn\" style=\"position:absolute; top:2px; right:2px;\" title=\"Delete\">&times;</button>\n        </div>\n    </template>\n\n    <!-- Inventory List Template -->\n    <template id=\"tmpl-inventory\">\n        <div class=\"grid-tile\" style=\"cursor:pointer; position:relative; display:flex; flex-direction:row; align-items:center; justify-content:space-between; padding:6px 10px; height:100%; min-height:40px; text-align:left; border: 1px solid rgba(255,255,255,0.1); border-radius:4px; gap: 8px;\">\n            <span class=\"tile-name\" style=\"font-weight:bold; pointer-events:none; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\" data-slot=\"name\" title=\"\"></span>\n            <span class=\"tile-qty\" style=\"pointer-events:none; flex-shrink: 0;\" data-slot=\"qty\"></span>\n            <div class=\"item-action-wrap\">\n                <button class=\"item-menu-btn\" title=\"Actions\">⋮</button>\n                <div class=\"item-action-menu\">\n                    <button class=\"action-equip-btn\">⚔ Equip</button>\n                    <button class=\"action-delete-btn list-delete-btn\">🗑 Delete</button>\n                </div>\n            </div>\n            <div style=\"display:none\" data-slot=\"desc\"></div>\n        </div>\n    </template>\n\n    <!-- Equipment List Template -->\n    <template id=\"tmpl-equipment-action\">\n        <div class=\"list-entry\" style=\"display:flex; justify-content:space-between; align-items:center;\">\n            <div>\n                <div class=\"entry-title\" data-slot=\"title\"></div>\n                <div class=\"entry-desc\" data-slot=\"desc\"></div>\n            </div>\n            <div style=\"display:flex; gap:4px; align-items:center;\">\n                <button class=\"unequip-btn\" title=\"Unequip\">📤</button>\n                <button class=\"list-delete-btn\" title=\"Delete\">&times;</button>\n            </div>\n        </div>\n    </template>\n\n    <!-- Quest List Template -->\n    <template id=\"tmpl-quest\">\n        <div class=\"quest-card\">\n            <div class=\"quest-card-header\">\n                <span class=\"quest-card-title\" data-slot=\"title\"></span>\n                <div class=\"quest-card-actions\">\n                    <span class=\"quest-difficulty\" style=\"display:none\" data-slot=\"difficulty\"></span>\n                    <button class=\"quest-delete-btn list-delete-btn\" data-delete-key=\"\" title=\"Delete Quest\">&times;</button>\n                </div>\n            </div>\n            <div class=\"quest-desc\" style=\"display:none\" data-slot=\"desc\"></div>\n            <div class=\"quest-reward\" data-slot=\"reward\" style=\"display:none\">🏆 <span data-slot=\"reward-text\"></span></div>\n            <div class=\"quest-status\" data-slot=\"status-row\" style=\"display:none\">Status: <span data-slot=\"status\"></span></div>\n            <div class=\"quest-last-updated\" data-slot=\"last-updated-row\" style=\"display:none\">Last Updated: <span data-slot=\"LastUpdated\"></span></div>\n        </div>\n    </template>\n\n    \n\n    <!-- Item Detail Modal -->\n    <div id=\"detail-modal\">\n        <div id=\"detail-content\">\n            <button id=\"detail-close-btn\" onclick=\"document.getElementById('detail-modal').style.display='none'\">&times;</button>\n            <h3 id=\"detail-title\">Item Details</h3>\n            <div id=\"detail-body\"></div>\n        </div>\n    </div>";
+
+// ---- bundled from dist/src/lumi/statusmenu-legacy-view.js ----
+const TAB_IDS = {
+    overview: 'tab-tab-1',
+    attributes: 'tab-tab-1770046656361',
+    familiars: 'tab-tab-1770138241595',
+    wardrobe: 'tab-outfits',
+    equipment: 'tab-tab-1770203490813',
+    items: 'tab-tab-1770205420551',
+    others: 'tab-tab-1770205502569',
+    ffstate: 'tab-ff-state',
+};
+const TAB_ORDER = [
+    'overview', 'attributes', 'familiars', 'wardrobe',
+    'equipment', 'items', 'others', 'ffstate',
+];
+const EMPTY_TEXT = {
+    simple: 'None',
+    quest: 'No active quests',
+    inventory: 'Empty inventory',
+    'equipment-action': 'Nothing equipped',
+};
+const OUTFIT_SLOT_ORDER = { Head: 0, Torso: 1, Legs: 2, Feet: 3, Extra: 4 };
+const OUTFIT_LAYER_ORDER = { Underwear: 0, Base: 1, Outerwear: 2 };
+const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect fill='%23e0e0e0' width='300' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='0.3em' fill='%23999' font-size='16' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E";
+function record(value) {
+    return isRecord(value) ? value : {};
+}
+function tupleValue(value) {
+    return Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string' ? value[0] : value;
+}
+function getPath(root, path) {
+    let value = root;
+    for (const part of path.split('.').filter(Boolean)) {
+        if (!isRecord(value) && !Array.isArray(value))
+            return undefined;
+        value = value[part];
+    }
+    return tupleValue(value);
+}
+function numberAt(root, path) {
+    const raw = getPath(root, path);
+    if (raw === null || raw === undefined || raw === '' || raw === '???')
+        return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+}
+function shownNumber(value) {
+    if (value === null)
+        return '—';
+    return String(Number.isInteger(value) ? value : Math.round(value * 10) / 10);
+}
+function setSlot(fragment, name, value) {
+    const element = fragment.querySelector('[data-slot="' + name + '"]');
+    if (!element)
+        return;
+    element.textContent = value;
+    if (value)
+        element.style.display = '';
+}
+function describe(raw) {
+    const value = tupleValue(raw);
+    if (value === null || value === undefined)
+        return '';
+    if (!isRecord(value))
+        return String(value);
+    for (const key of ['Desc', 'description', 'name', 'type']) {
+        if (value[key] !== undefined)
+            return statusText(value[key], '');
+    }
+    return '';
+}
+function ownerRefForId(state, ownerId) {
+    return statusOwnerById(state, ownerId).ref;
+}
+function shadowCss() {
+    return LEGACY_STATUS_CSS
+        .replace(/:root\s*\{/g, ':host {')
+        .replace(/\bbody\s*\{/g, '.status-body {')
+        + '\n'
+        + ':host{display:block;width:100%;height:100%;min-height:0;color:#e0f7fa;}'
+        + '.status-body{height:100%;min-height:0;padding:0!important;color:var(--text-primary)!important;}'
+        + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
+        + '.tab-content{min-height:0;}'
+        + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
+        + 'button,input,textarea,select{font-family:inherit;}';
+}
+function bindValues(root, data) {
+    root.querySelectorAll('[data-bind-val]').forEach(element => {
+        const path = element.getAttribute('data-bind-val');
+        if (path === null)
+            return;
+        element.textContent = statusText(getPath(data, path), '???');
+    });
+    root.querySelectorAll('[data-bind-curr]').forEach(element => {
+        const path = element.getAttribute('data-bind-curr');
+        if (path !== null)
+            element.textContent = statusText(getPath(data, path), '0');
+    });
+    root.querySelectorAll('[data-bind-max]').forEach(element => {
+        const path = element.getAttribute('data-bind-max');
+        if (path !== null)
+            element.textContent = statusText(getPath(data, path), '100');
+    });
+    root.querySelectorAll('[data-bind-bar]').forEach(element => {
+        const path = element.getAttribute('data-bind-bar');
+        if (!path)
+            return;
+        const maxPath = element.getAttribute('data-bind-bar-max') || path.replace('_curr', '_max');
+        const current = Number(getPath(data, path)) || 0;
+        const maximum = Number(getPath(data, maxPath)) || 100;
+        const pct = Math.max(0, Math.min(100, maximum > 0 ? current / maximum * 100 : 0));
+        element.style.width = pct + '%';
+    });
+    root.querySelectorAll('[data-bind-checked]').forEach(element => {
+        const path = element.getAttribute('data-bind-checked');
+        if (path)
+            element.checked = Boolean(getPath(data, path));
+    });
+    root.querySelectorAll('[data-bind-img]').forEach(element => {
+        const path = element.getAttribute('data-bind-img');
+        if (!path)
+            return;
+        const value = statusText(getPath(data, path), '');
+        if (value && value !== '—' && value !== 'N/A') {
+            element.src = value;
+            element.style.display = 'block';
+        }
+        else if (element.classList.contains('ff25-avatar-image')) {
+            element.removeAttribute('src');
+            element.style.display = 'none';
+        }
+        else {
+            element.src = PLACEHOLDER_IMAGE;
+            element.style.display = 'block';
+        }
+    });
+}
+function bindOverview(root, state) {
+    root.querySelectorAll('[data-ff25-cur]').forEach(row => {
+        const current = numberAt(state, row.getAttribute('data-ff25-cur') || '');
+        const maximum = numberAt(state, row.getAttribute('data-ff25-max') || '');
+        const currentElement = row.querySelector('.ff25-stat-current');
+        const maximumElement = row.querySelector('.ff25-stat-max');
+        const fill = row.querySelector('.ff25-stat-fill');
+        if (currentElement)
+            currentElement.textContent = shownNumber(current);
+        if (maximumElement)
+            maximumElement.textContent = shownNumber(maximum);
+        if (fill) {
+            const pct = current !== null && maximum !== null && maximum > 0 ? Math.max(0, Math.min(100, current / maximum * 100)) : 0;
+            fill.style.height = pct + '%';
+        }
+    });
+    const avatar = root.querySelector('.ff25-avatar-image');
+    const placeholder = root.querySelector('.ff25-avatar-placeholder');
+    if (placeholder)
+        placeholder.style.display = avatar && avatar.style.display === 'block' ? 'none' : 'flex';
+    const hph = getPath(state, 'Narrative.Scene.HPH.player');
+    const hphElement = root.getElementById('ff25-hph');
+    const lower = root.getElementById('ff25-lower');
+    const hasHph = isRecord(hph);
+    if (hphElement)
+        hphElement.style.display = hasHph ? '' : 'none';
+    if (lower)
+        lower.classList.toggle('ff25-no-hph', !hasHph);
+    if (!hasHph)
+        return;
+    const clamp10 = (value) => value === null ? 0 : Math.max(0, Math.min(10, value));
+    const bladder = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Bladder');
+    const arousal = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Arousal');
+    const erection = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionLevel')
+        ?? numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionCapacity');
+    const semen = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenMl');
+    const semenMax = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenCapacityMl');
+    const length = numberAt(state, 'Narrative.Scene.HPH.player.Penis.LengthCm');
+    const girth = numberAt(state, 'Narrative.Scene.HPH.player.Penis.GirthCm');
+    const write = (id, value) => {
+        const element = root.getElementById(id);
+        if (element)
+            element.textContent = shownNumber(value);
+    };
+    const setHeight = (id, pct) => {
+        const element = root.getElementById(id);
+        if (element)
+            element.style.height = Math.max(0, Math.min(100, pct)) + '%';
+    };
+    setHeight('ff25-bladder-fill', clamp10(bladder) * 10);
+    setHeight('ff25-arousal-fill', clamp10(arousal) * 10);
+    setHeight('ff25-erection-fill', clamp10(erection) * 10);
+    setHeight('ff25-semen-fill', semen !== null && semenMax !== null && semenMax > 0 ? semen / semenMax * 100 : 0);
+    write('ff25-bladder-value', bladder);
+    write('ff25-arousal-value', arousal);
+    write('ff25-erection-value', erection);
+    write('ff25-semen-value', semen);
+    write('ff25-length-value', length);
+    write('ff25-girth-value', girth);
+}
+function showImage(root, src) {
+    if (!src || src === PLACEHOLDER_IMAGE)
+        return;
+    const overlay = document.createElement('div');
+    overlay.className = 'img-popup-overlay';
+    overlay.style.display = 'flex';
+    const image = document.createElement('img');
+    image.className = 'img-popup-content';
+    image.src = src;
+    overlay.appendChild(image);
+    overlay.addEventListener('click', () => overlay.remove());
+    root.appendChild(overlay);
+}
+function formatDetail(container, value, depth = 0) {
+    const raw = tupleValue(value);
+    if (!isRecord(raw) && !Array.isArray(raw)) {
+        container.appendChild(document.createTextNode(raw === null || raw === undefined ? 'null' : String(raw)));
+        return;
+    }
+    const entries = Array.isArray(raw) ? raw.map((child, index) => [String(index), child]) : Object.entries(raw);
+    for (const [key, child] of entries) {
+        if (['$meta', '$key', 'template'].includes(key))
+            continue;
+        const row = document.createElement('div');
+        row.className = 'detail-row';
+        row.style.paddingLeft = Math.min(depth * 8, 24) + 'px';
+        const keyElement = document.createElement('span');
+        keyElement.className = 'detail-key';
+        keyElement.textContent = key + ':';
+        const valueElement = document.createElement('span');
+        valueElement.className = 'detail-val';
+        if (isRecord(tupleValue(child)) || Array.isArray(tupleValue(child))) {
+            formatDetail(valueElement, child, depth + 1);
+        }
+        else {
+            valueElement.textContent = statusText(child, 'null');
+        }
+        row.append(keyElement, valueElement);
+        container.appendChild(row);
+    }
+}
+function showDetail(root, title, value) {
+    const modal = root.getElementById('detail-modal');
+    const titleElement = root.getElementById('detail-title');
+    const body = root.getElementById('detail-body');
+    if (!modal || !titleElement || !body)
+        return;
+    titleElement.textContent = title;
+    body.replaceChildren();
+    formatDetail(body, value);
+    modal.style.display = 'flex';
+}
+function showEquipTarget(root, state, sourceOwner, itemKey, onIntent) {
+    const existing = root.getElementById('ffmvu-equip-overlay');
+    existing?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'ffmvu-equip-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;width:100vw;height:100dvh;background:rgba(0,0,0,.85);z-index:50000;display:flex;justify-content:center;align-items:center;overflow:auto;padding:12px;box-sizing:border-box;backdrop-filter:blur(2px);';
+    const content = document.createElement('div');
+    content.style.cssText = 'background:#001f3f;border:1px solid #00e5ff;padding:20px;border-radius:8px;width:90%;max-width:min(400px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;color:#e0f7fa;box-shadow:0 0 20px rgba(0,229,255,.2);box-sizing:border-box;';
+    const title = document.createElement('h3');
+    title.textContent = 'Equip to...';
+    title.style.cssText = 'margin-top:0;color:#00e5ff;margin-bottom:15px;border-bottom:1px solid rgba(0,229,255,.3);padding-bottom:10px;';
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:15px;';
+    for (const owner of statusOwners(state)) {
+        const button = document.createElement('button');
+        button.textContent = owner.ref.kind === 'player' ? 'Main Character' : owner.label + ' (Familiar)';
+        button.style.cssText = 'padding:12px;background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);color:#e0f7fa;border-radius:4px;cursor:pointer;text-align:left;font-size:1em;';
+        button.addEventListener('click', () => {
+            overlay.remove();
+            onIntent({ type: 'equipment.equip', sourceOwner, targetOwner: owner.ref, itemKey });
+        });
+        list.appendChild(button);
+    }
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText = 'width:100%;padding:10px;background:rgba(255,100,100,.1);border:1px solid rgba(255,100,100,.4);color:#ff6b6b;border-radius:4px;cursor:pointer;font-weight:bold;';
+    cancel.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', event => { if (event.target === overlay)
+        overlay.remove(); });
+    content.append(title, list, cancel);
+    overlay.appendChild(content);
+    root.appendChild(overlay);
+}
+function wireImages(root, onUnsupported) {
+    root.querySelectorAll('img[data-bind-img]').forEach(image => {
+        image.removeAttribute('onclick');
+        image.addEventListener('click', () => showImage(root, image.src));
+    });
+    root.querySelectorAll('.img-edit-btn').forEach(button => {
+        button.removeAttribute('onclick');
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            onUnsupported('Image editing is visually preserved from StatusMenu v2.8.1 but its typed Lumiverse intent is not migrated yet.');
+        });
+    });
+}
+function wireCheckboxes(root, onUnsupported) {
+    root.querySelectorAll('.ar-checkbox-input').forEach(input => {
+        input.addEventListener('change', () => {
+            input.checked = !input.checked;
+            onUnsupported('Familiar Present/BattleTeam editing is not migrated to a typed StateService intent yet.');
+        });
+    });
+}
+function wireCollapsibles(root) {
+    root.querySelectorAll('.list-collapse-header').forEach(header => {
+        if (header.dataset.ffmvuBound === '1')
+            return;
+        header.dataset.ffmvuBound = '1';
+        header.addEventListener('click', () => {
+            const body = header.nextElementSibling;
+            const arrow = header.querySelector('.list-collapse-arrow');
+            if (!body)
+                return;
+            const hidden = body.style.display === 'none';
+            body.style.display = hidden ? '' : 'none';
+            if (arrow)
+                arrow.textContent = hidden ? '▼' : '▶';
+        });
+    });
+}
+function renderList(shadow, container, rawData, owner, options) {
+    const listType = container.getAttribute('data-list-type') || 'simple';
+    const templateId = listType === 'inventory' ? 'tmpl-inventory' :
+        listType === 'equipment-action' ? 'tmpl-equipment-action' :
+            listType === 'quest' ? 'tmpl-quest' :
+                listType === 'grid' ? 'tmpl-grid' :
+                    'tmpl-simple';
+    const template = shadow.getElementById(templateId);
+    if (!template)
+        return;
+    const data = asRecord(tupleValue(rawData));
+    const entries = Object.entries(data).filter(([key]) => !['$meta', '$key', 'template'].includes(key));
+    container.replaceChildren();
+    container.className = listType === 'inventory' ? 'list-inventory-view' : listType === 'grid' ? 'list-grid-view' : '';
+    if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.textContent = EMPTY_TEXT[listType] || 'None';
+        empty.style.cssText = listType === 'inventory' || listType === 'grid'
+            ? 'grid-column:1/-1;text-align:center;color:var(--text-secondary);'
+            : 'text-align:center;color:var(--text-secondary);padding:10px;';
+        container.appendChild(empty);
+        return;
+    }
+    const pageSize = 5;
+    const paged = listType !== 'inventory' && listType !== 'grid' && entries.length > pageSize;
+    let page = 0;
+    const draw = () => {
+        container.replaceChildren();
+        const visible = paged ? entries.slice(page * pageSize, page * pageSize + pageSize) : entries;
+        for (const [key, raw] of visible) {
+            const fragment = template.content.cloneNode(true);
+            const itemRecord = record(tupleValue(raw));
+            const name = statusText(itemRecord.Name ?? itemRecord.name, key);
+            const title = listType === 'inventory' || listType === 'grid' ? name : key;
+            const desc = describe(raw);
+            const qtyValue = itemRecord.Qty ?? itemRecord.qty;
+            const qty = qtyValue !== undefined && Number(qtyValue) >= 1 ? 'x' + String(qtyValue) : '';
+            setSlot(fragment, 'title', title);
+            setSlot(fragment, 'name', title);
+            setSlot(fragment, 'desc', desc);
+            setSlot(fragment, 'qty', qty);
+            setSlot(fragment, 'difficulty', statusText(itemRecord.Difficulty ?? itemRecord.difficulty, ''));
+            setSlot(fragment, 'reward-text', statusText(itemRecord.Reward ?? itemRecord.reward, ''));
+            setSlot(fragment, 'status', statusText(itemRecord.Status ?? itemRecord.status, ''));
+            setSlot(fragment, 'LastUpdated', statusText(itemRecord.LastUpdated, ''));
+            const rootElement = fragment.firstElementChild;
+            if (rootElement) {
+                rootElement.style.cursor = 'pointer';
+                rootElement.addEventListener('click', () => showDetail(shadow, title, raw));
+            }
+            const allowDelete = container.getAttribute('data-allow-delete') === '1';
+            const deleteButton = fragment.querySelector('.list-delete-btn:not(.action-delete-btn)');
+            if (deleteButton) {
+                if (!allowDelete)
+                    deleteButton.style.display = 'none';
+                else
+                    deleteButton.addEventListener('click', event => {
+                        event.stopPropagation();
+                        if (listType === 'inventory' && owner) {
+                            if (window.confirm('Delete "' + title + '"?'))
+                                options.onIntent({ type: 'inventory.delete', owner, itemKey: key });
+                        }
+                        else {
+                            options.onUnsupported('Delete/edit for ' + listType + ' is still waiting for its typed StateService intent.');
+                        }
+                    });
+            }
+            const menuButton = fragment.querySelector('.item-menu-btn');
+            const actionMenu = fragment.querySelector('.item-action-menu');
+            const equipButton = fragment.querySelector('.action-equip-btn');
+            const actionDelete = fragment.querySelector('.action-delete-btn');
+            if (menuButton && actionMenu && owner) {
+                const item = statusItems({ [key]: raw })[0];
+                menuButton.textContent = item?.equippable ? '⚔' : '⋮';
+                menuButton.title = item?.equippable ? 'Equip / Actions' : 'Actions';
+                menuButton.addEventListener('click', event => {
+                    event.stopPropagation();
+                    const open = actionMenu.style.display !== 'block';
+                    shadow.querySelectorAll('.item-action-menu').forEach(menu => { menu.style.display = 'none'; });
+                    actionMenu.style.display = open ? 'block' : 'none';
+                });
+                actionMenu.addEventListener('click', event => event.stopPropagation());
+                if (equipButton) {
+                    equipButton.style.display = item?.equippable ? 'block' : 'none';
+                    equipButton.disabled = options.mutationDisabled;
+                    equipButton.addEventListener('click', event => {
+                        event.stopPropagation();
+                        actionMenu.style.display = 'none';
+                        showEquipTarget(shadow, options.state, owner, key, options.onIntent);
+                    });
+                }
+                if (actionDelete) {
+                    actionDelete.style.display = allowDelete ? 'block' : 'none';
+                    actionDelete.disabled = options.mutationDisabled;
+                    actionDelete.addEventListener('click', event => {
+                        event.stopPropagation();
+                        actionMenu.style.display = 'none';
+                        if (allowDelete && window.confirm('Delete "' + title + '"?'))
+                            options.onIntent({ type: 'inventory.delete', owner, itemKey: key });
+                    });
+                }
+            }
+            const unequip = fragment.querySelector('.unequip-btn');
+            if (unequip && owner) {
+                unequip.disabled = options.mutationDisabled;
+                unequip.addEventListener('click', event => {
+                    event.stopPropagation();
+                    if (window.confirm('Unequip ' + title + '?'))
+                        options.onIntent({ type: 'equipment.unequip', owner, equipmentKey: key });
+                });
+            }
+            fragment.querySelectorAll('[data-slot="reward"]').forEach(element => {
+                if (statusText(itemRecord.Reward ?? itemRecord.reward, ''))
+                    element.style.display = 'block';
+            });
+            fragment.querySelectorAll('[data-slot="status-row"]').forEach(element => {
+                if (statusText(itemRecord.Status ?? itemRecord.status, ''))
+                    element.style.display = 'block';
+            });
+            fragment.querySelectorAll('[data-slot="last-updated-row"]').forEach(element => {
+                if (statusText(itemRecord.LastUpdated, ''))
+                    element.style.display = 'block';
+            });
+            container.appendChild(fragment);
+        }
+        if (paged) {
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 4px;margin-top:8px;border-top:1px solid rgba(255,255,255,.1);';
+            const prev = document.createElement('button');
+            const next = document.createElement('button');
+            const info = document.createElement('span');
+            prev.textContent = '<';
+            next.textContent = '>';
+            info.textContent = String(page + 1) + ' / ' + String(Math.ceil(entries.length / pageSize));
+            info.style.cssText = 'color:var(--text-secondary);font-size:.85em;';
+            for (const button of [prev, next])
+                button.style.cssText = 'background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);color:#00e5ff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:1em;min-width:36px;';
+            prev.disabled = page === 0;
+            next.disabled = page >= Math.ceil(entries.length / pageSize) - 1;
+            prev.addEventListener('click', event => { event.stopPropagation(); if (page > 0) {
+                page -= 1;
+                draw();
+            } });
+            next.addEventListener('click', event => { event.stopPropagation(); if (!next.disabled) {
+                page += 1;
+                draw();
+            } });
+            bar.append(prev, info, next);
+            container.appendChild(bar);
+        }
+    };
+    draw();
+}
+function renderNestedLists(shadow, root, data, owner, options) {
+    root.querySelectorAll('[data-bind-list]').forEach(container => {
+        const path = container.getAttribute('data-bind-list');
+        if (!path)
+            return;
+        renderList(shadow, container, getPath(data, path), owner, options);
+    });
+    wireCollapsibles(root);
+}
+function instantiateRecordBlock(shadow, containerId, data, owner, options) {
+    const container = shadow.getElementById(containerId);
+    if (!container)
+        return;
+    const templateId = container.getAttribute('data-template');
+    const template = templateId ? shadow.getElementById(templateId) : null;
+    if (!template)
+        return;
+    container.replaceChildren();
+    const wrapper = document.createElement('div');
+    wrapper.style.display = 'contents';
+    wrapper.appendChild(template.content.cloneNode(true));
+    container.appendChild(wrapper);
+    bindValues(wrapper, data);
+    renderNestedLists(shadow, wrapper, data, owner, options);
+    wireCheckboxes(wrapper, options.onUnsupported);
+}
+function familiarIdentity(state, id, member) {
+    const explicit = statusText(member.Identity, '');
+    if (explicit)
+        return explicit;
+    const key = id.trim().toLowerCase();
+    const name = statusText(member.Name, id).trim().toLowerCase();
+    for (const [npcId, rawNpc] of Object.entries(asRecord(state.Narrative.NPCs))) {
+        if (!isRecord(rawNpc))
+            continue;
+        const display = statusText(rawNpc.DisplayName ?? rawNpc.Name, '').trim().toLowerCase();
+        const aliases = Array.isArray(rawNpc.Aliases) ? rawNpc.Aliases.map(value => String(value).trim().toLowerCase()) : [];
+        if ((key && (display === key || aliases.includes(key))) || (name && (display === name || aliases.includes(name))))
+            return npcId;
+    }
+    return '—';
+}
+function renderFamiliars(shadow, options) {
+    const container = shadow.getElementById('blk-blk-1770140160072');
+    const template = shadow.getElementById('tpl-blk-blk-1770140160072');
+    if (!container || !template)
+        return;
+    const entries = Object.entries(asRecord(options.state.Familiar)).filter(([, value]) => isRecord(value));
+    container.replaceChildren();
+    if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'width:100%;text-align:center;padding:10px;color:#666;';
+        empty.textContent = 'No Data';
+        container.appendChild(empty);
+        return;
+    }
+    let page = 0;
+    const pageSize = 5;
+    const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
+    const draw = () => {
+        container.replaceChildren();
+        const addPager = (position) => {
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 4px;width:100%;flex-basis:100%;flex-shrink:0;box-sizing:border-box;'
+                + (position === 'top' ? 'margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.1);' : 'margin-top:8px;border-top:1px solid rgba(255,255,255,.1);');
+            const prev = document.createElement('button');
+            const next = document.createElement('button');
+            const select = document.createElement('select');
+            const info = document.createElement('span');
+            prev.textContent = '<';
+            next.textContent = '>';
+            prev.disabled = page === 0;
+            next.disabled = page >= pageCount - 1;
+            for (const button of [prev, next])
+                button.style.cssText = 'background:transparent;border:1px solid rgba(0,229,255,.5);color:#00e5ff;width:30px;height:30px;border-radius:4px;cursor:pointer;font-weight:bold;';
+            info.textContent = String(page + 1) + ' / ' + String(pageCount);
+            info.style.cssText = 'font-size:.9em;color:#aaa;';
+            prev.addEventListener('click', () => { if (page > 0) {
+                page -= 1;
+                draw();
+            } });
+            next.addEventListener('click', () => { if (page < pageCount - 1) {
+                page += 1;
+                draw();
+            } });
+            bar.appendChild(prev);
+            if (position === 'top') {
+                for (let index = 0; index < entries.length; index += 1) {
+                    const [id, raw] = entries[index];
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    option.textContent = statusText(raw.Name, id);
+                    if (index === page * pageSize)
+                        option.selected = true;
+                    select.appendChild(option);
+                }
+                select.addEventListener('change', () => { page = Math.floor(Number(select.value) / pageSize); draw(); });
+                bar.appendChild(select);
+            }
+            bar.append(info, next);
+            container.appendChild(bar);
+        };
+        addPager('top');
+        const start = page * pageSize;
+        for (const [id, raw] of entries.slice(start, start + pageSize)) {
+            const member = raw;
+            const anchor = document.createElement('div');
+            anchor.style.cssText = 'height:0;margin:0;padding:0;width:100%;flex-basis:100%;flex-shrink:0;';
+            container.appendChild(anchor);
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'contents';
+            wrapper.appendChild(template.content.cloneNode(true));
+            container.appendChild(wrapper);
+            bindValues(wrapper, member);
+            const identity = wrapper.querySelector('[data-bind-val="Identity"]');
+            if (identity)
+                identity.textContent = familiarIdentity(options.state, id, member);
+            const secret = wrapper.querySelector('[data-bind-val="Secret"]');
+            if (secret)
+                secret.textContent = (statusNumber(member.Affection) ?? 0) >= 90 ? statusText(member.Secret, '') : 'Require 90% Affection';
+            const corePoints = wrapper.querySelector('[data-bind-val="Core-points"]');
+            if (corePoints && (statusNumber(member['Core-points']) ?? 0) > 0) {
+                corePoints.style.color = 'red';
+                corePoints.style.fontWeight = 'bold';
+            }
+            renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
+            wireCheckboxes(wrapper, options.onUnsupported);
+        }
+        if (pageCount > 1)
+            addPager('bottom');
+    };
+    draw();
+}
+function renderWardrobe(shadow, options) {
+    const tabs = shadow.getElementById('outfit-owner-tabs');
+    const status = shadow.getElementById('outfit-status');
+    const wornList = shadow.getElementById('outfit-worn-list');
+    const wardrobeList = shadow.getElementById('outfit-wardrobe-list');
+    const wornCount = shadow.getElementById('outfit-worn-count');
+    const wardrobeCount = shadow.getElementById('outfit-wardrobe-count');
+    if (!tabs || !status || !wornList || !wardrobeList)
+        return;
+    const owners = statusOwners(options.state);
+    let selected = owners.some(owner => owner.id === options.selectedOwnerId) ? options.selectedOwnerId : owners[0]?.id || 'player';
+    const draw = () => {
+        tabs.replaceChildren();
+        for (const owner of owners) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'outfit-owner-btn' + (owner.id === selected ? ' active' : '');
+            button.textContent = owner.label;
+            button.addEventListener('click', () => {
+                selected = owner.id;
+                options.onOwner(selected);
+                draw();
+            });
+            tabs.appendChild(button);
+        }
+        const owner = statusOwnerById(options.state, selected);
+        const outfit = record(owner.record.Outfit);
+        const worn = record(outfit.Worn);
+        const wardrobe = record(outfit.Wardrobe);
+        status.textContent = outfit.Initialized ? 'Наряд зафиксирован' : 'Будет создан моделью при следующем RP-ходе';
+        if (wornCount)
+            wornCount.textContent = String(Object.keys(worn).length);
+        if (wardrobeCount)
+            wardrobeCount.textContent = String(Object.keys(wardrobe).length);
+        const sort = (source) => Object.entries(source).sort((left, right) => {
+            const a = record(left[1]);
+            const b = record(right[1]);
+            return (OUTFIT_SLOT_ORDER[statusText(a.Slot, '')] ?? 99) - (OUTFIT_SLOT_ORDER[statusText(b.Slot, '')] ?? 99)
+                || (OUTFIT_LAYER_ORDER[statusText(a.Layer, '')] ?? 99) - (OUTFIT_LAYER_ORDER[statusText(b.Layer, '')] ?? 99)
+                || statusText(a.Name, left[0]).localeCompare(statusText(b.Name, right[0]), 'ru');
+        });
+        const bucket = (container, source, from) => {
+            container.replaceChildren();
+            const entries = sort(source);
+            if (!entries.length) {
+                const empty = document.createElement('div');
+                empty.className = 'outfit-empty';
+                empty.textContent = from === 'Worn' ? 'Одежда ещё не зафиксирована' : 'Нет запасной одежды';
+                container.appendChild(empty);
+                return;
+            }
+            for (const [key, raw] of entries) {
+                const item = record(raw);
+                const card = document.createElement('div');
+                card.className = 'outfit-item';
+                const main = document.createElement('div');
+                main.className = 'outfit-item-main';
+                const name = document.createElement('div');
+                name.className = 'outfit-item-name';
+                name.textContent = statusText(item.Name, key);
+                const badges = document.createElement('div');
+                badges.className = 'outfit-badges';
+                for (const badgeValue of [item.Slot || 'Extra', item.Layer || 'Base', item.Slot === 'Extra' ? item.Placement : null]) {
+                    if (!badgeValue)
+                        continue;
+                    const badge = document.createElement('span');
+                    badge.className = 'outfit-badge';
+                    badge.textContent = statusText(badgeValue);
+                    badges.appendChild(badge);
+                }
+                main.append(name, badges);
+                const action = document.createElement('button');
+                action.type = 'button';
+                action.className = 'outfit-action';
+                action.textContent = from === 'Worn' ? 'Снять' : 'Надеть';
+                action.disabled = options.mutationDisabled;
+                action.addEventListener('click', event => {
+                    event.stopPropagation();
+                    options.onIntent({ type: 'outfit.move', owner: owner.ref, from, itemKey: key });
+                });
+                card.append(main, action);
+                const identity = [item.Color, item.Material].filter(Boolean).map(value => statusText(value));
+                const descriptions = [];
+                if (identity.length)
+                    descriptions.push(identity.join(' · '));
+                if (item.Appearance)
+                    descriptions.push(statusText(item.Appearance));
+                if (descriptions.length) {
+                    const detail = document.createElement('div');
+                    detail.className = 'outfit-item-detail';
+                    detail.textContent = descriptions.join(' — ');
+                    card.appendChild(detail);
+                }
+                const stateParts = [item.Condition, item.Arrangement].filter(Boolean).map(value => statusText(value));
+                if (stateParts.length) {
+                    const detail = document.createElement('div');
+                    detail.className = 'outfit-item-detail outfit-item-state';
+                    detail.textContent = stateParts.join(' · ');
+                    card.appendChild(detail);
+                }
+                container.appendChild(card);
+            }
+        };
+        bucket(wornList, worn, 'Worn');
+        bucket(wardrobeList, wardrobe, 'Wardrobe');
+    };
+    draw();
+}
+function renderFfState(shadow, narrative) {
+    const root = shadow.getElementById('ffsm-root');
+    const search = shadow.getElementById('ffsm-search');
+    if (!root || !search)
+        return;
+    root.replaceChildren();
+    const primitive = (value) => value === null || value === undefined || typeof value !== 'object';
+    const label = (value) => {
+        if (value === null)
+            return 'null';
+        if (value === undefined)
+            return '—';
+        if (typeof value === 'boolean')
+            return value ? 'true' : 'false';
+        if (Array.isArray(value) && value.length === 2 && typeof value[1] === 'string')
+            return String(value[0]);
+        if (Array.isArray(value))
+            return value.every(primitive) ? value.map(label).join(', ') : '[' + value.length + ']';
+        if (isRecord(value))
+            return '{' + Object.keys(value).length + '}';
+        return String(value);
+    };
+    const count = (value) => Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0;
+    const rows = (container, value, depth) => {
+        if (primitive(value)) {
+            const element = document.createElement('div');
+            element.className = 'ffsm-val';
+            element.textContent = label(value);
+            container.appendChild(element);
+            return;
+        }
+        const entries = Array.isArray(value) ? value.map((child, index) => [String(index), child]) : Object.entries(record(value));
+        if (!entries.length) {
+            const empty = document.createElement('div');
+            empty.className = 'ffsm-empty';
+            empty.textContent = 'No data';
+            container.appendChild(empty);
+            return;
+        }
+        for (const [key, item] of entries) {
+            if (primitive(item) || (Array.isArray(item) && item.every(primitive))) {
+                const row = document.createElement('div');
+                row.className = 'ffsm-row';
+                const keyElement = document.createElement('div');
+                keyElement.className = 'ffsm-key';
+                keyElement.textContent = key;
+                const valueElement = document.createElement('div');
+                valueElement.className = 'ffsm-val';
+                valueElement.textContent = label(item);
+                const lower = key.toLowerCase();
+                if (['bond', 'sparks', 'grudge'].includes(lower) && Number.isFinite(Number(item))) {
+                    const bar = document.createElement('div');
+                    bar.className = 'ffsm-relbar';
+                    const fill = document.createElement('div');
+                    fill.className = 'ffsm-relfill';
+                    const n = Number(item);
+                    fill.style.width = Math.max(0, Math.min(100, lower === 'bond' ? (n + 100) / 2 : n)) + '%';
+                    bar.appendChild(fill);
+                    valueElement.appendChild(bar);
+                }
+                row.append(keyElement, valueElement);
+                container.appendChild(row);
+                continue;
+            }
+            const details = document.createElement('details');
+            details.className = 'ffsm-node';
+            details.open = depth < 1;
+            const summary = document.createElement('summary');
+            summary.textContent = key;
+            const counter = document.createElement('span');
+            counter.className = 'ffsm-count';
+            counter.textContent = String(count(item));
+            summary.appendChild(counter);
+            const body = document.createElement('div');
+            body.className = 'ffsm-body';
+            rows(body, item, depth + 1);
+            details.append(summary, body);
+            container.appendChild(details);
+        }
+    };
+    const section = (title, value, open) => {
+        const details = document.createElement('details');
+        details.className = 'ffsm-top';
+        details.open = open;
+        const summary = document.createElement('summary');
+        summary.textContent = title;
+        const counter = document.createElement('span');
+        counter.className = 'ffsm-count';
+        counter.textContent = String(count(value));
+        summary.appendChild(counter);
+        const body = document.createElement('div');
+        body.className = 'ffsm-body';
+        rows(body, value, 0);
+        details.append(summary, body);
+        root.appendChild(details);
+    };
+    if (!isRecord(narrative)) {
+        const empty = document.createElement('div');
+        empty.className = 'ffsm-empty';
+        empty.textContent = 'Narrative state is not initialized yet.';
+        root.appendChild(empty);
+    }
+    else {
+        section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
+        section('NPC Registry', narrative.NPCs || {}, true);
+        section('Relationships', narrative.Relationships || {}, true);
+        section('GM Notes', narrative.GM_Notes || {}, false);
+        section('Chekhov', narrative.Chekhov || {}, false);
+        section('WorldSim', narrative.WorldSim || {}, false);
+    }
+    const filter = () => {
+        const query = search.value.trim().toLocaleLowerCase('ru');
+        root.querySelectorAll(':scope > .ffsm-top').forEach(sectionElement => {
+            const matches = !query || (sectionElement.textContent || '').toLocaleLowerCase('ru').includes(query);
+            sectionElement.hidden = !matches;
+            if (query && matches && sectionElement instanceof HTMLDetailsElement)
+                sectionElement.open = true;
+        });
+    };
+    search.addEventListener('input', filter);
+    const buttons = shadow.querySelectorAll('#tab-ff-state .ffsm-toolbar .ffsm-btn');
+    buttons[0]?.removeAttribute('onclick');
+    buttons[1]?.removeAttribute('onclick');
+    buttons[0]?.addEventListener('click', () => root.querySelectorAll('details').forEach(details => { details.open = true; }));
+    buttons[1]?.addEventListener('click', () => root.querySelectorAll('details').forEach(details => { details.open = false; }));
+}
+function selectInitialTab(shadow, options) {
+    const select = (tab, notify) => {
+        shadow.querySelectorAll('.tab-content').forEach(element => element.classList.remove('active'));
+        shadow.querySelectorAll('.tab-btn').forEach(element => element.classList.remove('active'));
+        shadow.getElementById(TAB_IDS[tab])?.classList.add('active');
+        const index = TAB_ORDER.indexOf(tab);
+        const button = shadow.querySelectorAll('.tab-nav > .tab-btn')[index];
+        button?.classList.add('active');
+        if (notify)
+            options.onTab(tab);
+    };
+    shadow.querySelectorAll('.tab-nav > .tab-btn').forEach((button, index) => {
+        button.removeAttribute('onclick');
+        const tab = TAB_ORDER[index];
+        if (!tab)
+            return;
+        button.addEventListener('click', () => select(tab, true));
+    });
+    select(options.activeTab, false);
+}
+export function renderLegacyStatusMenu(options) {
+    const host = document.createElement('div');
+    host.className = 'ffsm-legacy-host';
+    host.style.cssText = 'display:block;width:100%;height:100%;min-height:0;';
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = shadowCss();
+    const body = document.createElement('div');
+    body.className = 'status-body';
+    body.innerHTML = LEGACY_STATUS_BODY_HTML;
+    shadow.append(style, body);
+    shadow.querySelectorAll('[onclick]').forEach(element => element.removeAttribute('onclick'));
+    bindValues(shadow, options.state);
+    const player = { kind: 'player' };
+    instantiateRecordBlock(shadow, 'blk-blk-1770135834327', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770046675226', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770136606429', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770136622937', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770203491926', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770205452062', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770205519586', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770205524852', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770205528854', options.state.Mainchar, player, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1770205538619', options.state.World, null, options);
+    instantiateRecordBlock(shadow, 'blk-blk-1776467005665', options.state.World_Calc, null, options);
+    renderFamiliars(shadow, options);
+    renderWardrobe(shadow, options);
+    renderFfState(shadow, options.state.Narrative);
+    bindOverview(shadow, options.state);
+    wireImages(shadow, options.onUnsupported);
+    wireCollapsibles(shadow);
+    selectInitialTab(shadow, options);
+    const close = shadow.getElementById('detail-close-btn');
+    const modal = shadow.getElementById('detail-modal');
+    close?.removeAttribute('onclick');
+    close?.addEventListener('click', () => { if (modal)
+        modal.style.display = 'none'; });
+    modal?.addEventListener('click', event => { if (event.target === modal)
+        modal.style.display = 'none'; });
+    return host;
+}
+
 // ---- bundled from dist/src/lumi/frontend.js ----
 const TAB_DEFS = [
     ['overview', 'Overview'],
@@ -237,14 +1143,52 @@ export function setup(ctx) {
       color:var(--lumiverse-text);
       width:100%;
       box-sizing:border-box;
-      padding:8px;
+      padding:0;
       display:none;
+      min-height:0;
     }
     .ffsm-app.open {
       display:block;
       height:520px;
-      max-height:calc(100vh - 190px);
-      min-height:360px;
+      min-height:0;
+    }
+    .ffsm-panel-frame {
+      width:100%;
+      height:100%;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      box-sizing:border-box;
+    }
+    .ffsm-resize-grip {
+      flex:0 0 10px;
+      height:10px;
+      cursor:ns-resize;
+      touch-action:none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+    }
+    .ffsm-resize-grip::before {
+      content:'';
+      display:block;
+      width:64px;
+      height:3px;
+      border-radius:99px;
+      background:rgba(0,229,255,.38);
+      box-shadow:0 0 8px rgba(0,229,255,.12);
+    }
+    .ffsm-resize-grip:hover::before,
+    .ffsm-resize-grip.dragging::before {
+      background:rgba(0,229,255,.72);
+    }
+    .ffsm-panel-content {
+      flex:1 1 auto;
+      min-height:0;
+      width:100%;
+      overflow:hidden;
+      box-sizing:border-box;
     }
     .ffsm-shell {
       height:100%;
@@ -409,10 +1353,78 @@ export function setup(ctx) {
     let panelOpen = false;
     let legacyImportOpen = false;
     let legacyImportText = '';
+    const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
+    const DEFAULT_PANEL_HEIGHT = 520;
+    let panelHeight = (() => {
+        try {
+            const stored = Number(window.localStorage.getItem(PANEL_HEIGHT_KEY));
+            return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_PANEL_HEIGHT;
+        }
+        catch {
+            return DEFAULT_PANEL_HEIGHT;
+        }
+    })();
+    function clampPanelHeight(value) {
+        const minimum = 280;
+        const maximum = Math.max(minimum, window.innerHeight - 110);
+        return Math.round(Math.max(minimum, Math.min(maximum, value)));
+    }
+    function applyPanelHeight() {
+        panelHeight = clampPanelHeight(panelHeight);
+        app.style.height = panelHeight + 'px';
+    }
+    function persistPanelHeight() {
+        try {
+            window.localStorage.setItem(PANEL_HEIGHT_KEY, String(panelHeight));
+        }
+        catch { }
+    }
+    function resizeGrip() {
+        const grip = make('div', 'ffsm-resize-grip');
+        grip.title = 'Drag to resize FFMVU StatusMenu';
+        grip.setAttribute('role', 'separator');
+        grip.setAttribute('aria-orientation', 'horizontal');
+        let dragging = false;
+        let startY = 0;
+        let startHeight = 0;
+        const finish = () => {
+            if (!dragging)
+                return;
+            dragging = false;
+            grip.classList.remove('dragging');
+            persistPanelHeight();
+        };
+        grip.addEventListener('pointerdown', event => {
+            if (event.button !== 0)
+                return;
+            event.preventDefault();
+            dragging = true;
+            startY = event.clientY;
+            startHeight = app.getBoundingClientRect().height || panelHeight;
+            grip.classList.add('dragging');
+            grip.setPointerCapture(event.pointerId);
+        });
+        grip.addEventListener('pointermove', event => {
+            if (!dragging)
+                return;
+            panelHeight = clampPanelHeight(startHeight + (startY - event.clientY));
+            applyPanelHeight();
+        });
+        grip.addEventListener('pointerup', finish);
+        grip.addEventListener('pointercancel', finish);
+        return grip;
+    }
+    const viewportResize = () => {
+        if (panelOpen)
+            applyPanelHeight();
+    };
+    window.addEventListener('resize', viewportResize);
     function syncPanelVisibility() {
         app.classList.toggle('open', panelOpen);
         toggle.classList.toggle('active', panelOpen);
         toggle.setAttribute('aria-pressed', String(panelOpen));
+        if (panelOpen)
+            applyPanelHeight();
     }
     toggle.addEventListener('click', () => {
         panelOpen = !panelOpen;
@@ -1125,14 +2137,35 @@ export function setup(ctx) {
         shell.appendChild(details);
     }
     function render() {
-        const oldScroll = app.scrollTop;
         app.replaceChildren();
-        const shell = make('div', 'ffsm-shell');
-        renderHeader(shell);
-        renderBody(shell);
-        renderDiagnostics(shell);
-        app.appendChild(shell);
-        app.scrollTop = oldScroll;
+        const frame = make('div', 'ffsm-panel-frame');
+        const content = make('div', 'ffsm-panel-content');
+        frame.append(resizeGrip(), content);
+        const state = activeState();
+        if (state && snapshot?.ok && snapshot.initialized) {
+            content.appendChild(renderLegacyStatusMenu({
+                state,
+                activeTab,
+                selectedOwnerId,
+                mutationDisabled: mutationDisabled(),
+                onTab: tab => { activeTab = tab; },
+                onOwner: ownerId => { selectedOwnerId = ownerId; },
+                onIntent: sendIntent,
+                onUnsupported: message => {
+                    notice = message;
+                    window.alert(message);
+                },
+            }));
+        }
+        else {
+            const shell = make('div', 'ffsm-shell');
+            renderHeader(shell);
+            renderBody(shell);
+            renderDiagnostics(shell);
+            content.appendChild(shell);
+        }
+        app.appendChild(frame);
+        applyPanelHeight();
     }
     const backendUnsub = ctx.onBackendMessage((payload) => {
         if (payload?.type === 'ffmvu_status') {
@@ -1263,6 +2296,7 @@ export function setup(ctx) {
     return () => {
         backendUnsub();
         chatSwitchUnsub();
+        window.removeEventListener('resize', viewportResize);
         toggle.remove();
         app.remove();
         removeStyle();
