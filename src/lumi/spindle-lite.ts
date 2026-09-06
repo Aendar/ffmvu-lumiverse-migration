@@ -83,9 +83,15 @@ export interface FrontendDrawerTab {
   onActivate(handler: () => void): () => void;
 }
 
+export interface SpindleFrontendStateLite {
+  get<T = unknown>(id: string): T;
+  subscribe<T = unknown>(id: string, handler: (value: T) => void): () => void;
+}
+
 export interface SpindleFrontendContextLite {
   ui: { registerDrawerTab(options: { id: string; title: string; shortName?: string; description?: string; keywords?: string[]; headerTitle?: string; iconSvg?: string }): FrontendDrawerTab };
   dom: { addStyle(css: string): () => void; cleanup(): void };
+  state: SpindleFrontendStateLite;
   sendToBackend(payload: unknown): void;
   onBackendMessage(handler: (payload: any) => void): () => void;
 }
