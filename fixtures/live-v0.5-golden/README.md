@@ -43,4 +43,8 @@ The v0.5.1 live STOP probe is stored as:
 
 Lumiverse preserved the partial assistant output after `GENERATION_STOPPED`. The captured machine envelope contains an unterminated JSONPatch/string. This fixture must never be fed into the state reducer as a completed model patch.
 
-v0.5.2 adds exact durable stopped-attempt reconciliation; a second live probe is required to prove `stopped_durable -> stopped_uncommitted`.
+v0.5.2 live proof is stored as:
+- `stopped-v0.5.2-durable-status.json`
+- `stopped-v0.5.2-blocked-next-generation.json`
+
+Together they prove `stopped_durable -> stopped_uncommitted`: the stopped partial is persisted as evidence without a state transaction, and a subsequent normal stateful generation is blocked until explicit resolution.
