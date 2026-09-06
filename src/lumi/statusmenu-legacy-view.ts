@@ -459,7 +459,8 @@ function openImageEditor(
         browse.setAttribute('disabled', 'true');
         const encoded = await compressLocalImage(file);
         writeLocalImage(path, encoded);
-        const image = root.querySelector<HTMLImageElement>('.img-edit-btn[data-save-root="' + (target.kind === 'world-map' ? 'World' : target.kind === 'player-avatar' ? 'Mainchar' : 'Familiar') + '"]' + (target.kind === 'familiar-avatar' ? '[data-ffmvu-familiar-id="' + CSS.escape(target.id) + '"]' : '') )?.closest('.img-wrapper')?.querySelector('img[data-bind-img]');
+        const editButton = root.querySelector<HTMLElement>('.img-edit-btn[data-save-root="' + (target.kind === 'world-map' ? 'World' : target.kind === 'player-avatar' ? 'Mainchar' : 'Familiar') + '"]' + (target.kind === 'familiar-avatar' ? '[data-ffmvu-familiar-id="' + CSS.escape(target.id) + '"]' : ''));
+        const image = editButton?.closest('.img-wrapper')?.querySelector<HTMLImageElement>('img[data-bind-img]') ?? null;
         if (image) {
           image.src = encoded;
           image.style.display = 'block';
