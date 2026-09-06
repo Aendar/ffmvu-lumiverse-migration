@@ -14,7 +14,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
   const root = document.createElement('div'); root.className = 'ffmvu-bridge';
   const controls = document.createElement('div'); controls.className = 'ffmvu-card';
   const row = document.createElement('div'); row.className = 'ffmvu-row';
-  const title = document.createElement('div'); title.innerHTML = '<div class="ffmvu-title">v0.6.0 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization and commits normal/regenerate/swipe/Continue attempts through the same state transaction path. Continue preserves VariantId and proves its append boundary before patch extraction.</div>';
+  const title = document.createElement('div'); title.innerHTML = '<div class="ffmvu-title">v0.8.0 migration bridge</div><div class="ffmvu-muted">When armed, the bridge commits model state through the proven lifecycle path. Assistant history is annotated with in-world World.Date/World.Time metadata and net off-screen RecentChanges.</div>';
   const button = document.createElement('button'); button.className = 'ffmvu-button'; button.textContent = 'Loading…'; button.disabled = true;
   const probeButton = document.createElement('button'); probeButton.className = 'ffmvu-button'; probeButton.textContent = 'Arm no-patch probe'; probeButton.disabled = true;
   const buttonBox = document.createElement('div'); buttonBox.style.display = 'flex'; buttonBox.style.gap = '8px'; buttonBox.style.flexWrap = 'wrap'; buttonBox.append(button, probeButton);

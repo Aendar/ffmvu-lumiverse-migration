@@ -1,11 +1,11 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with stateful lifecycle parity plus portable fork snapshots, exact legacy stat_data import, and GameStart-backed new-game genesis. Snapshot loads preserve exact next-turn projection seeds across fresh chats.",
+  "description": "FF+MVU Lumiverse migration bridge with portable snapshots, legacy import, stateful Continue, in-world narrative timestamps on assistant history, and net RecentChanges context for off-screen Outfit/Inventory/Equipment/Location/Stats/Relationship mutations.",
   "permissions": [
     "context_handler",
     "interceptor",

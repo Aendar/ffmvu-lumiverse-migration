@@ -1,12 +1,12 @@
 {
   "name": "ffmvu-lumiverse-migration-core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "scripts": {
     "check:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('spindle.json','utf8')); console.log('spindle.json OK')\"",
     "build": "tsc -p tsconfig.json",
-    "test": "npm run check:manifest && npm run build && node dist/tests/unit/run.js && node dist/tests/unit/phase2.js && node dist/tests/unit/phase3.js && node dist/tests/unit/phase4.js && node dist/tests/unit/phase5.js && node dist/tests/unit/phase6.js"
+    "test": "npm run check:manifest && npm run build && node dist/tests/unit/run.js && node dist/tests/unit/phase2.js && node dist/tests/unit/phase3.js && node dist/tests/unit/phase4.js && node dist/tests/unit/phase5.js && node dist/tests/unit/phase6.js && node dist/tests/unit/phase7.js"
   },
   "devDependencies": {
     "lumiverse-spindle-types": "0.6.16",
