@@ -16,7 +16,7 @@ export function setup(ctx) {
     const row = document.createElement('div');
     row.className = 'ffmvu-row';
     const title = document.createElement('div');
-    title.innerHTML = '<div class="ffmvu-title">v0.8.0 migration bridge</div><div class="ffmvu-muted">When armed, the bridge commits model state through the proven lifecycle path. Assistant history is annotated with in-world World.Date/World.Time metadata and net off-screen RecentChanges.</div>';
+    title.innerHTML = '<div class="ffmvu-title">v0.9.0 migration bridge</div><div class="ffmvu-muted">When armed, model generations and typed GUI intents commit through the same branch-aware StateService journal. Assistant history keeps in-world timestamps and net off-screen RecentChanges.</div>';
     const button = document.createElement('button');
     button.className = 'ffmvu-button';
     button.textContent = 'Loading…';
@@ -52,7 +52,7 @@ export function setup(ctx) {
         probeButton.disabled = !enabled || value?.noPatchProbeArmed === true;
         probeButton.textContent = value?.noPatchProbeArmed === true ? 'No-patch probe armed' : 'Arm no-patch probe';
         status.textContent = JSON.stringify(value ?? {}, null, 2);
-        tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict', 'swipe_navigation_error', 'swipe_navigation_unreconciled', 'stopped_unreconciled', 'stopped_reconciliation_error'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : value?.phase === 'swipe_navigated' ? 'NAV' : value?.phase === 'stopped_durable' ? 'STOP' : value?.phase === 'continue_probe_complete' ? 'CONT' : enabled ? 'DEV' : null);
+        tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict', 'swipe_navigation_error', 'swipe_navigation_unreconciled', 'stopped_unreconciled', 'stopped_reconciliation_error', 'gui_committed_unbound', 'gui_binding_error', 'gui_commit_error'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : value?.phase === 'swipe_navigated' ? 'NAV' : value?.phase === 'stopped_durable' ? 'STOP' : value?.phase === 'continue_probe_complete' ? 'CONT' : enabled ? 'DEV' : null);
     }
     button.addEventListener('click', () => { button.disabled = true; ctx.sendToBackend({ type: 'ffmvu_set_enabled', enabled: !enabled }); });
     probeButton.addEventListener('click', () => { probeButton.disabled = true; ctx.sendToBackend({ type: 'ffmvu_arm_no_patch_probe' }); });
