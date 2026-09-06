@@ -132,6 +132,7 @@ export interface TranscriptAttempt {
     rawPatchPayloadHash?: string;
     canonicalPatchHash?: string;
     storedMessageTextHash: string;
+    resolvesAttemptId?: string;
     createdAt: string;
 }
 export interface AnchorRecord {

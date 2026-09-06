@@ -11,3 +11,10 @@ export interface FinalJsonPatchEvidence {
     selected: ExtractedModelPatch | null;
 }
 export declare function resolveFinalJsonPatchEvidence(rawOutput: string | undefined, storedOutput: string): FinalJsonPatchEvidence;
+export interface ContinueJsonPatchEvidence {
+    appendedSegment: string;
+    hostContentMode: 'full' | 'segment' | 'unavailable';
+    selected: ExtractedModelPatch | null;
+    selectedCrossesBoundary: boolean;
+}
+export declare function resolveContinueJsonPatchEvidence(preStoredOutput: string, generationEndedContent: string | undefined, storedOutput: string): ContinueJsonPatchEvidence;

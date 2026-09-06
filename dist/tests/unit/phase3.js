@@ -112,6 +112,51 @@ async function main() {
     const resolver2 = new HeadResolver(contService.store, contService.materializer, anchorStore, new TranscriptAttemptStore(contStorage), vi);
     const rr = await resolver2.resolve(scope, g.nodeId, [{ id: 'continue', role: 'assistant', content: 'full-content', swipes: ['full-content'], swipeId: 0 }]);
     assert(rr.health === 'ok' && rr.nodeId === second.commitId, 'Continue accepts same-lineage GUI descendant base');
+    // A stopped partial may be explicitly resolved by a later Continue attempt on the same VariantId.
+    const recoverStorage = new MemoryJsonStorage();
+    const recoverService = new StateService(recoverStorage, createReducerRegistry(), createProjectionRegistry());
+    const recoverBase = await recoverService.createGenesis(scope);
+    const recoverVariants = new VariantIndexStore(recoverStorage);
+    const finalText = 'prose <JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":1}]</JSONPatch>';
+    const recoverIndex = await recoverVariants.create(scope, 'recover', [{ text: finalText }]);
+    const recoverVariant = recoverIndex.bySwipeIndex[0];
+    const partialText = 'prose <JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":';
+    const stoppedAttemptId = createId('attempt');
+    const projection0 = await recoverService.getProjectionForNode(scope, recoverBase.nodeId);
+    const stoppedAttempt = {
+        id: stoppedAttemptId, scope, variantId: recoverVariant, messageId: 'recover', generationType: 'normal', ordinal: 1,
+        baseNodeId: recoverBase.nodeId, baseStateHash: recoverBase.stateHash,
+        projectionSourceKind: 'node', projectionSourceNodeId: recoverBase.nodeId, projectionSourceStateHash: recoverBase.stateHash,
+        projectionVersion: projection0.projectionVersion, promptProtocolVersion: projection0.promptProtocolVersion, promptViewHash: projection0.viewHash,
+        modelCommitId: null, status: 'stopped', storedMessageTextHash: await canonicalHash(partialText), createdAt: isoNow(),
+    };
+    const recoverAttempts = new TranscriptAttemptStore(recoverStorage);
+    await recoverAttempts.append(stoppedAttempt);
+    const continueAttemptId = createId('attempt');
+    const recoveredCommit = await recoverService.commitPatch(scope, {
+        parentNodeId: recoverBase.nodeId, kind: 'model',
+        anchor: { messageId: 'recover', variantId: recoverVariant, attemptId: continueAttemptId, lineageAnchorId: recoverVariant, messageRole: 'assistant' },
+        patch: [{ op: 'replace', path: '/Narrative/Turn', value: 1 }],
+    });
+    const continueAttempt = {
+        id: continueAttemptId, scope, variantId: recoverVariant, messageId: 'recover', generationType: 'continue', ordinal: 2,
+        baseNodeId: recoverBase.nodeId, baseStateHash: recoverBase.stateHash,
+        projectionSourceKind: 'node', projectionSourceNodeId: recoverBase.nodeId, projectionSourceStateHash: recoverBase.stateHash,
+        projectionVersion: projection0.projectionVersion, promptProtocolVersion: projection0.promptProtocolVersion, promptViewHash: projection0.viewHash,
+        modelCommitId: recoveredCommit.nodeId, status: 'committed', storedMessageTextHash: await canonicalHash(finalText),
+        resolvesAttemptId: stoppedAttemptId, createdAt: isoNow(),
+    };
+    await recoverAttempts.append(continueAttempt);
+    await new AnchorStore(recoverStorage).put({
+        variantId: recoverVariant, scope, messageId: 'recover', observedSwipeIndex: 0,
+        initialBaseNodeId: recoverBase.nodeId, initialBaseStateHash: recoverBase.stateHash,
+        attemptIds: [stoppedAttemptId, continueAttemptId], lastAttemptId: continueAttemptId,
+        storedMessageTextHash: await canonicalHash(finalText), tipNodeId: recoveredCommit.nodeId,
+        status: 'committed', createdAt: isoNow(), updatedAt: isoNow(),
+    });
+    const recoverResolver = new HeadResolver(recoverService.store, recoverService.materializer, new AnchorStore(recoverStorage), recoverAttempts, recoverVariants);
+    const recovered = await recoverResolver.resolve(scope, recoverBase.nodeId, [{ id: 'recover', role: 'assistant', content: finalText, swipes: [finalText], swipeId: 0 }]);
+    assert(recovered.health === 'ok' && recovered.nodeId === recoveredCommit.nodeId, 'linked Continue attempt resolves a stopped predecessor without rewriting its forensic evidence');
     console.log(`phase3 tests passed: ${passed}`);
 }
 void main();
