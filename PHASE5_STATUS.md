@@ -123,3 +123,15 @@ v0.6.0 now publishes `phase: swipe_navigated` for a true existing-swipe navigati
 - Continue is rejected if message identity, swipe identity, prefix, transcript shape, VariantIndex, Anchor, or frozen base evidence changes.
 
 Lifecycle parity work is now sufficient for migration implementation. Remaining work is legacy import/GameStart, gameplay/GUI intents, native StatusMenu, and production cutover hardening.
+
+
+# Phase 6 — User-facing migration foundation (v0.7.0)
+
+- Portable snapshot format: `FFMVU-Portable-Snapshot-v1`.
+- Export is taken from a committed semantic node, not physical StoreRevision chronology.
+- Snapshot stores full authoritative state plus the exact projection currently bound to that node.
+- Import into a fresh chat creates a new `BaseSnapshot(kind=fork)` with a `base-seed` projection, preserving exact next-turn MODEL_STATE continuity without copying old event history.
+- Legacy import accepts either a wrapper containing `stat_data` or direct stat_data. Only stat_data becomes authoritative state.
+- Existing `ff_mvu_prompt_view`, when present, is retained only as `legacy-exact` first-turn projection seed.
+- `ff_mvu_snapshot_meta` is provenance only.
+- New Game uses existing GameStart v1.4 formulas and creates a normal genesis. Loading/import never reruns GameStart formulas.
