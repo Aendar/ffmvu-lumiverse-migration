@@ -11,6 +11,7 @@ Architecture and correctness remain governed by `docs/FFMVU_Lumiverse_Migration_
 - Make only changes required by Lumiverse/Spindle platform integration, correctness, or basic usability.
 - Do not redesign cards/tabs/FF State simply because a cleaner design is possible.
 - The v0.11 composer placement and fixed-height internally scrolling panel are accepted platform/usability changes.
+- A uniform host-level compact scale (currently 0.78) is also an accepted usability adjustment because it preserves the canonical internal DOM/CSS instead of redesigning individual elements.
 - A broader UI redesign is intentionally deferred until migration correctness, import/export, and long-session testing are stable.
 - FF State in particular is known to be useful but visually/ergonomically awkward; redesign it later as a separate task.
 
