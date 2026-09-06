@@ -1,4 +1,4 @@
-import { type GuiIntent } from '../shared/domain/gui-intents.js';
+import type { GuiIntent } from '../shared/domain/gui-intents.js';
 import type { FFMVUState } from '../shared/state-schema.js';
 export interface VariablesEditorOptions {
     state: FFMVUState;
