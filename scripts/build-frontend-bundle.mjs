@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const parts = [
   'dist/src/shared/domain/value-utils.js',
+  'dist/src/shared/domain/gui-variable-policy.js',
   'dist/src/lumi/statusmenu-model.js',
   'dist/src/lumi/statusmenu-legacy-template.js',
   'dist/src/lumi/variables-editor.js',
@@ -14,20 +15,19 @@ function stripSourceMap(text) {
 }
 
 function stripKnownImports(_path, text) {
-  const localDependencies = [
+  const localDependencies = new Set([
     '../shared/domain/value-utils.js',
+    '../shared/domain/gui-variable-policy.js',
     './statusmenu-model.js',
     './statusmenu-legacy-template.js',
     './variables-editor.js',
     './statusmenu-legacy-view.js',
-  ];
-  let out = text;
-  for (const dependency of localDependencies) {
-    const escaped = dependency.replace(/[.*+?^$()|[\\]\\\\]/g, '\\$&');
-    const pattern = '^import\\s+[\\s\\S]*?\\s+from\\s+[\\\"\\\']' + escaped + '[\\\"\\\'];?\\s*$';
-    out = out.replace(new RegExp(pattern, 'gm'), '');
-  }
-  return out;
+  ]);
+
+  return text.replace(
+    /^import\s+[^;]+?\s+from\s+['"]([^'"]+)['"];?\s*$/gm,
+    (statement, dependency) => localDependencies.has(dependency) ? '' : statement,
+  );
 }
 
 const chunks = [];
@@ -43,6 +43,9 @@ if (/^\s*import\s/m.test(bundle)) {
 }
 if (!/export function setup\s*\(/.test(bundle)) {
   throw new Error('Frontend bundle does not export setup().');
+}
+if (!/function isGuiVariableDynamicCollectionPath\s*\(/.test(bundle)) {
+  throw new Error('Frontend bundle is missing the Variables collection policy helper.');
 }
 
 const declared = [];
