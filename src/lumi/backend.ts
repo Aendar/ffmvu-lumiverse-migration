@@ -21,7 +21,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.5';
+const BRIDGE_VERSION = '0.13.6';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -1617,7 +1617,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.5 bridge armed. Legacy image/map edits and Familiar Present/BattleTeam controls now use branch-safe typed GUI writes; committed assistant message content remains freely editable.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.6 bridge armed. Legacy Quest/Buff/Ailment delete controls now use validated branch-safe GUI writes; image/Familiar controls and post-commit message edit safety remain active.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1657,4 +1657,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.5 legacy image/Familiar controls + post-commit message edit safety + canonical StatusMenu + safe Variables editor).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.6 legacy Quest/Buff/Ailment deletes + image/Familiar controls + canonical StatusMenu + safe Variables editor).`);
