@@ -1,11 +1,11 @@
 {
-  "version": "0.5.3",
+  "version": "0.5.4",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse state bridge with model commits, stopped-attempt reconciliation, swipe/head diagnostics, and a one-shot no-patch live probe that exercises the normal finalize path without post-generation patch tampering.",
+  "description": "FF+MVU Lumiverse state bridge. v0.5.4 keeps stateful Continue fail-closed but adds a one-shot no-state-write Continue spike to observe real host message/swipe append semantics and raw segment correlation.",
   "permissions": [
     "context_handler",
     "interceptor",
