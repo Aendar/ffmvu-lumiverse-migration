@@ -1158,8 +1158,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     }
   });
 
-  const activeChatUnsub = ctx.state.subscribe<{ chatId: string | null }>('chat.active', value => {
-    const next = value?.chatId ?? null;
+  function applyActiveChat(next: string | null): void {
     if (next === activeChatId) return;
     activeChatId = next;
     snapshot = null;
@@ -1171,10 +1170,15 @@ export function setup(ctx: SpindleFrontendContextLite) {
     ffSearch = '';
     render();
     requestState();
+  }
+
+  const chatSwitchUnsub = ctx.events.on('CHAT_SWITCHED', (payload: { chatId?: string | null }) => {
+    const next = typeof payload?.chatId === 'string' ? payload.chatId : null;
+    applyActiveChat(next);
   });
 
-  const initial = ctx.state.get<{ chatId: string | null }>('chat.active');
-  activeChatId = initial?.chatId ?? null;
+  const initial = ctx.getActiveChat();
+  activeChatId = initial.chatId ?? null;
   syncPanelVisibility();
   render();
   ctx.sendToBackend({ type: 'ffmvu_get_status' });
@@ -1182,7 +1186,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
 
   return () => {
     backendUnsub();
-    activeChatUnsub();
+    chatSwitchUnsub();
     toggle.remove();
     app.remove();
     removeStyle();
