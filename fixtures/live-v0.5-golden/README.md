@@ -65,3 +65,10 @@ Files:
 - `reload-fail-closed-proof.json`
 
 The extension was reloaded during generation. Lumi kept the assistant output, but the bridge lost its in-memory AttemptContext. The next stateful generation was blocked before provider dispatch because the durable assistant had no proven VariantIndex/Anchor finalize evidence. This is the required v2.4 fail-closed behavior.
+
+## P0-C Continue host-semantics proof
+
+File:
+- `continue-v0.5.4-probe-status.json`
+
+The live probe proved that Lumi appends Continue output to the same message and swipe while `GENERATION_ENDED.content` contains the full post-Continue message. The pre-Continue stored message is an exact prefix, so the generated suffix is deterministically derived from the frozen prefix boundary. v0.6.0 uses this rule for stateful Continue and supports JSONPatch envelopes that cross the append boundary.

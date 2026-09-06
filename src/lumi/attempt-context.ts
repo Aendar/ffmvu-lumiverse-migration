@@ -33,6 +33,7 @@ export interface FrozenAttemptContext {
   continuePreStoredTextHash?: string;
   continuePreSwipeCount?: number;
   continuePreMessageCount?: number;
+  continueResolvesAttemptId?: string;
 }
 
 export class AttemptContextRegistry {

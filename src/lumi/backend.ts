@@ -5,11 +5,11 @@ import { HeadResolver } from '../head-resolver.js';
 import { StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
-import { resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
+import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
-import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
+import { AttemptContextRegistry, EarlyGenerationRegistry, type FrozenAttemptContext } from './attempt-context.js';
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import type { GenerationEndedPayload, GenerationStartedPayload, GenerationStoppedPayload, LumiChatMessage, SpindleApiLite, SwipeEventPayload } from './spindle-lite.js';
@@ -17,7 +17,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.5.4';
+const BRIDGE_VERSION = '0.6.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -102,9 +102,11 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
   const scope: StateScope = { userId: context.userId, chatId: context.chatId };
   knownScopeByChat.set(context.chatId, scope);
   if (contexts.getForScope(scope)) return { ok: false, reason: 'pending_generation_exists' };
+
   const rt = runtime(context.userId);
   const rawAll = await spindle.chat.getMessages(context.chatId);
-  const diagnosticContinueProbe = context.generationType === 'continue' && continueProbeUsers.has(context.userId);
+  const isContinue = context.generationType === 'continue';
+  const diagnosticContinueProbe = isContinue && continueProbeUsers.has(context.userId);
   let continueSnapshot: {
     messageId: string;
     swipeId: number;
@@ -116,7 +118,7 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     sourceIndex: number;
   } | null = null;
 
-  if (diagnosticContinueProbe) {
+  if (isContinue) {
     for (let i = rawAll.length - 1; i >= 0; i--) {
       const candidate = rawAll[i];
       if (candidate.role !== 'assistant') continue;
@@ -130,39 +132,77 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
       const storedText = Array.isArray(candidate.swipes) && candidate.swipes[swipeId] !== undefined
         ? String(candidate.swipes[swipeId])
         : String(candidate.content ?? '');
+      const storedTextHash = await canonicalHash(storedText);
+      if (anchor.storedMessageTextHash !== storedTextHash || index.swipeFingerprints[variantId]?.storedMessageTextHash !== storedTextHash) continue;
       continueSnapshot = {
         messageId: candidate.id,
         swipeId,
         variantId,
         storedText,
-        storedTextHash: await canonicalHash(storedText),
+        storedTextHash,
         swipeCount: Array.isArray(candidate.swipes) ? candidate.swipes.length : 1,
         messageCount: rawAll.length,
         sourceIndex: i,
       };
       break;
     }
-    if (!continueSnapshot) return { ok: false, reason: 'continue_probe_source_variant_missing' };
+    if (!continueSnapshot) return { ok: false, reason: 'continue_source_variant_missing_or_dirty' };
+    if (continueSnapshot.sourceIndex !== rawAll.length - 1) return { ok: false, reason: 'continue_target_must_be_last_transcript_message' };
   }
 
-  const raw = diagnosticContinueProbe && continueSnapshot
+  const raw = isContinue && continueSnapshot
     ? rawAll.slice(0, continueSnapshot.sourceIndex + 1)
     : filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
   const baseId = await ensureBootstrap(scope, raw);
-  const head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
-  if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
+  let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
+  let continueResolvesAttemptId: string | undefined;
+
+  if (head.health !== 'ok') {
+    const recoverableHealth = head.health === 'stopped_uncommitted' || head.health === 'failed_patch';
+    if (!isContinue || !continueSnapshot || !recoverableHealth || head.variantId !== continueSnapshot.variantId) {
+      return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
+    }
+
+    const anchor = await rt.anchors.read(scope, continueSnapshot.variantId);
+    if (!anchor?.lastAttemptId) return { ok: false, reason: 'continue_recovery_attempt_missing' };
+    const lastAttempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+    if (!lastAttempt || lastAttempt.variantId !== continueSnapshot.variantId) return { ok: false, reason: 'continue_recovery_attempt_mismatch' };
+    const unclosedJsonPatch =
+      continueSnapshot.storedText.toLowerCase().lastIndexOf('<jsonpatch>') >
+      continueSnapshot.storedText.toLowerCase().lastIndexOf('</jsonpatch>');
+    const recoverableStopped = head.health === 'stopped_uncommitted' && lastAttempt.status === 'stopped';
+    const recoverableFailed = head.health === 'failed_patch' && lastAttempt.status === 'failed_patch' && unclosedJsonPatch;
+    if (!recoverableStopped && !recoverableFailed) {
+      return { ok: false, reason: `${head.health}: active failed/stopped attempt is not append-recoverable` };
+    }
+    if (head.nodeId !== lastAttempt.baseNodeId || head.stateHash !== lastAttempt.baseStateHash) {
+      return { ok: false, reason: 'continue_recovery_base_mismatch' };
+    }
+    continueResolvesAttemptId = lastAttempt.id;
+    head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
+  }
+
   const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
   const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-  const diagnosticNoPatchProbe = !diagnosticContinueProbe && noPatchProbeUsers.has(context.userId);
+  const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
   contexts.create({
-    scope, generationType: context.generationType, baseNodeId: head.nodeId, baseStateHash: head.stateHash,
+    scope,
+    generationType: context.generationType,
+    baseNodeId: head.nodeId,
+    baseStateHash: head.stateHash,
     projectionSourceKind: projection.sourceKind,
     ...(projection.sourceNodeId ? { projectionSourceNodeId: projection.sourceNodeId } : {}),
     ...(projection.sourceStateHash ? { projectionSourceStateHash: projection.sourceStateHash } : {}),
     ...(projection.sourceBaseId ? { projectionSourceBaseId: projection.sourceBaseId } : {}),
-    projectionVersion: projection.projectionVersion, promptProtocolVersion: projection.promptProtocolVersion,
-    reducerVersion: projection.reducerVersion, projectionView: projection.view, promptViewHash: projection.viewHash,
-    frozenAuthorization, presetVersion: PRESET_VERSION, diagnosticNoPatchProbe, diagnosticContinueProbe,
+    projectionVersion: projection.projectionVersion,
+    promptProtocolVersion: projection.promptProtocolVersion,
+    reducerVersion: projection.reducerVersion,
+    projectionView: projection.view,
+    promptViewHash: projection.viewHash,
+    frozenAuthorization,
+    presetVersion: PRESET_VERSION,
+    diagnosticNoPatchProbe,
+    diagnosticContinueProbe,
     ...(continueSnapshot ? {
       continuePreMessageId: continueSnapshot.messageId,
       continuePreSwipeId: continueSnapshot.swipeId,
@@ -172,27 +212,341 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
       continuePreSwipeCount: continueSnapshot.swipeCount,
       continuePreMessageCount: continueSnapshot.messageCount,
     } : {}),
+    ...(continueResolvesAttemptId ? { continueResolvesAttemptId } : {}),
   });
+
   if (diagnosticNoPatchProbe) noPatchProbeUsers.delete(context.userId);
   if (diagnosticContinueProbe) continueProbeUsers.delete(context.userId);
   publish(context.userId, {
-    phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash,
-    promptViewHash: projection.viewHash, diagnosticNoPatchProbe, diagnosticContinueProbe,
-    noPatchProbeArmed: noPatchProbeUsers.has(context.userId), continueProbeArmed: continueProbeUsers.has(context.userId),
+    phase: 'frozen',
+    chatId: context.chatId,
+    headNodeId: head.nodeId,
+    headStateHash: head.stateHash,
+    promptViewHash: projection.viewHash,
+    diagnosticNoPatchProbe,
+    diagnosticContinueProbe,
+    noPatchProbeArmed: noPatchProbeUsers.has(context.userId),
+    continueProbeArmed: continueProbeUsers.has(context.userId),
     ...(continueSnapshot ? {
       continuePreMessageId: continueSnapshot.messageId,
       continuePreSwipeId: continueSnapshot.swipeId,
       continuePreVariantId: continueSnapshot.variantId,
       continuePreStoredTextHash: continueSnapshot.storedTextHash,
     } : {}),
+    ...(continueResolvesAttemptId ? { continueResolvesAttemptId } : {}),
   });
   return { ok: true };
+}
+
+async function finalizeContinueModelCommit(payload: GenerationEndedPayload, pending: FrozenAttemptContext): Promise<void> {
+  const userId = pending.scope.userId;
+  const rt = runtime(userId);
+
+  try {
+    if (payload.error) {
+      publish(userId, { phase: 'generation_error', chatId: payload.chatId, generationId: payload.generationId, error: payload.error });
+      return;
+    }
+    if (
+      !pending.continuePreMessageId ||
+      !Number.isInteger(pending.continuePreSwipeId) ||
+      !pending.continuePreVariantId ||
+      pending.continuePreStoredText === undefined ||
+      !pending.continuePreStoredTextHash
+    ) throw new Error('CONTINUE_CONTEXT_INCOMPLETE');
+
+    const messages = await spindle.chat.getMessages(payload.chatId);
+    if (pending.continuePreMessageCount !== undefined && messages.length !== pending.continuePreMessageCount) {
+      throw new Error('CONTINUE_TRANSCRIPT_SHAPE_CHANGED: message count changed during generation');
+    }
+
+    const saved = messages.find(message => message.id === pending.continuePreMessageId);
+    if (!saved) throw new Error('CONTINUE_TARGET_MESSAGE_MISSING');
+    if (payload.messageId && payload.messageId !== saved.id) throw new Error('CONTINUE_MESSAGE_ID_CHANGED');
+
+    const swipeId = Number.isInteger(saved.swipe_id) ? saved.swipe_id : 0;
+    if (swipeId !== pending.continuePreSwipeId) throw new Error('CONTINUE_ACTIVE_SWIPE_CHANGED');
+    const swipeCount = Array.isArray(saved.swipes) ? saved.swipes.length : 1;
+    if (pending.continuePreSwipeCount !== undefined && swipeCount !== pending.continuePreSwipeCount) {
+      throw new Error('CONTINUE_SWIPE_SET_CHANGED');
+    }
+
+    const indexBefore = await rt.variants.read(pending.scope, saved.id);
+    if (!indexBefore) throw new Error('CONTINUE_VARIANT_INDEX_MISSING');
+    if (indexBefore.bySwipeIndex[swipeId] !== pending.continuePreVariantId) throw new Error('CONTINUE_VARIANT_ID_CHANGED');
+    if (indexBefore.swipeFingerprints[pending.continuePreVariantId]?.storedMessageTextHash !== pending.continuePreStoredTextHash) {
+      throw new Error('CONTINUE_PRE_FINGERPRINT_CHANGED');
+    }
+    const oldAnchor = await rt.anchors.read(pending.scope, pending.continuePreVariantId);
+    if (!oldAnchor || oldAnchor.messageId !== saved.id || oldAnchor.storedMessageTextHash !== pending.continuePreStoredTextHash) {
+      throw new Error('CONTINUE_PRE_ANCHOR_CHANGED');
+    }
+
+    const postText = Array.isArray(saved.swipes) && saved.swipes[swipeId] !== undefined
+      ? String(saved.swipes[swipeId])
+      : String(saved.content ?? '');
+    const postStoredTextHash = await canonicalHash(postText);
+
+    const writeContinueEvidence = async (
+      status: 'committed' | 'no_patch' | 'failed_patch' | 'unreconciled',
+      modelCommitId: string | null,
+      tipNodeId: string,
+      hashes: { rawGenerationHash?: string; rawPatchPayloadHash?: string; canonicalPatchHash?: string },
+      resolvesAttemptId?: string,
+    ): Promise<void> => {
+      const currentAnchor = await rt.anchors.read(pending.scope, pending.continuePreVariantId!);
+      if (!currentAnchor) throw new Error('CONTINUE_ANCHOR_MISSING_AT_EVIDENCE_WRITE');
+      const ordinal = currentAnchor.attemptIds.length + 1;
+      const attempt: TranscriptAttempt = {
+        id: pending.attemptId,
+        scope: pending.scope,
+        variantId: pending.continuePreVariantId!,
+        messageId: saved.id,
+        generationId: payload.generationId,
+        generationType: 'continue',
+        ordinal,
+        baseNodeId: pending.baseNodeId,
+        baseStateHash: pending.baseStateHash,
+        projectionSourceKind: pending.projectionSourceKind,
+        ...(pending.projectionSourceNodeId ? { projectionSourceNodeId: pending.projectionSourceNodeId } : {}),
+        ...(pending.projectionSourceStateHash ? { projectionSourceStateHash: pending.projectionSourceStateHash } : {}),
+        ...(pending.projectionSourceBaseId ? { projectionSourceBaseId: pending.projectionSourceBaseId } : {}),
+        projectionVersion: pending.projectionVersion,
+        promptProtocolVersion: pending.promptProtocolVersion,
+        promptViewHash: pending.promptViewHash,
+        ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
+        modelCommitId,
+        status,
+        ...hashes,
+        storedMessageTextHash: postStoredTextHash,
+        ...(resolvesAttemptId ? { resolvesAttemptId } : {}),
+        createdAt: pending.createdAt,
+      };
+      await rt.attempts.append(attempt);
+
+      const observation = {
+        text: postText,
+        ...(saved.swipe_dates?.[swipeId] !== undefined ? { swipeDate: String(saved.swipe_dates[swipeId]) } : {}),
+      };
+      const preservedVariant = await rt.variants.applyUpdated(pending.scope, saved.id, swipeId, observation);
+      if (preservedVariant !== pending.continuePreVariantId) throw new Error('CONTINUE_VARIANT_ID_NOT_PRESERVED');
+
+      currentAnchor.observedSwipeIndex = swipeId;
+      currentAnchor.attemptIds = [...currentAnchor.attemptIds, attempt.id];
+      currentAnchor.lastAttemptId = attempt.id;
+      currentAnchor.storedMessageTextHash = postStoredTextHash;
+      currentAnchor.tipNodeId = tipNodeId;
+      currentAnchor.status = status;
+      currentAnchor.updatedAt = isoNow();
+      await rt.anchors.put(currentAnchor);
+    };
+
+    let evidence: ReturnType<typeof resolveContinueJsonPatchEvidence>;
+    try {
+      evidence = resolveContinueJsonPatchEvidence(
+        pending.continuePreStoredText,
+        payload.content !== undefined ? String(payload.content) : undefined,
+        postText,
+      );
+    } catch (error) {
+      const message = String(error);
+      const evidenceMismatch =
+        message.includes('OUTPUT_PATCH_EVIDENCE_MISMATCH') ||
+        message.includes('CONTINUE_PREFIX_MISMATCH') ||
+        message.includes('CONTINUE_');
+      await writeContinueEvidence(evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, {});
+      publish(userId, {
+        phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch',
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        messageId: saved.id,
+        variantId: pending.continuePreVariantId,
+        generationType: 'continue',
+        error: message,
+      });
+      return;
+    }
+
+    if (pending.continueResolvesAttemptId) {
+      const resolvedAttempt = await rt.attempts.read(pending.scope, pending.continueResolvesAttemptId);
+      if (!resolvedAttempt) throw new Error('CONTINUE_RESOLUTION_ATTEMPT_MISSING');
+      if (resolvedAttempt.status === 'failed_patch' && (!evidence.selected || !evidence.selectedCrossesBoundary)) {
+        await writeContinueEvidence('failed_patch', null, pending.baseNodeId, {
+          rawGenerationHash: await canonicalHash(evidence.appendedSegment),
+        });
+        publish(userId, {
+          phase: 'failed_patch',
+          chatId: payload.chatId,
+          generationId: payload.generationId,
+          messageId: saved.id,
+          variantId: pending.continuePreVariantId,
+          generationType: 'continue',
+          error: 'CONTINUE_FAILED_PATCH_NOT_COMPLETED_ACROSS_BOUNDARY',
+        });
+        return;
+      }
+    }
+
+    const segmentHash = await canonicalHash(evidence.appendedSegment);
+    const rawPatchPayloadHash = evidence.selected ? await canonicalHash(evidence.selected.rawPayload) : undefined;
+    const baseEvidenceHashes = {
+      rawGenerationHash: segmentHash,
+      ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}),
+    };
+
+    const root = await rt.anchors.readRoot(pending.scope);
+    if (!root) throw new Error('ROOT_ANCHOR_MISSING_AT_CONTINUE_FINALIZE');
+    const preMessages = structuredClone(messages);
+    const preSaved = preMessages.find(message => message.id === pending.continuePreMessageId);
+    if (!preSaved) throw new Error('CONTINUE_PRE_TRANSCRIPT_TARGET_MISSING');
+    if (Array.isArray(preSaved.swipes) && preSaved.swipes.length) {
+      preSaved.swipes[swipeId] = pending.continuePreStoredText;
+    } else {
+      preSaved.swipes = [pending.continuePreStoredText];
+    }
+    preSaved.swipe_id = swipeId;
+    preSaved.content = pending.continuePreStoredText;
+
+    const compatible = await rt.resolver.resolve(pending.scope, root.baseNodeId, toHostTranscript(preMessages));
+    if (pending.continueResolvesAttemptId) {
+      const prior = await rt.attempts.read(pending.scope, pending.continueResolvesAttemptId);
+      const expectedHealth = prior?.status === 'stopped' ? 'stopped_uncommitted' : prior?.status === 'failed_patch' ? 'failed_patch' : null;
+      if (
+        !expectedHealth ||
+        compatible.health !== expectedHealth ||
+        compatible.variantId !== pending.continuePreVariantId ||
+        compatible.nodeId !== pending.baseNodeId ||
+        compatible.stateHash !== pending.baseStateHash
+      ) {
+        await writeContinueEvidence('unreconciled', null, pending.baseNodeId, baseEvidenceHashes);
+        publish(userId, {
+          phase: 'model_commit_conflict',
+          chatId: payload.chatId,
+          generationId: payload.generationId,
+          messageId: saved.id,
+          variantId: pending.continuePreVariantId,
+          expectedBaseNodeId: pending.baseNodeId,
+          currentCompatibleNodeId: compatible.nodeId,
+          health: compatible.health,
+          generationType: 'continue',
+        });
+        return;
+      }
+    } else if (
+      compatible.health !== 'ok' ||
+      compatible.nodeId !== pending.baseNodeId ||
+      compatible.stateHash !== pending.baseStateHash ||
+      compatible.variantId !== pending.continuePreVariantId
+    ) {
+      await writeContinueEvidence('unreconciled', null, pending.baseNodeId, baseEvidenceHashes);
+      publish(userId, {
+        phase: 'model_commit_conflict',
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        messageId: saved.id,
+        variantId: pending.continuePreVariantId,
+        expectedBaseNodeId: pending.baseNodeId,
+        currentCompatibleNodeId: compatible.nodeId,
+        health: compatible.health,
+        generationType: 'continue',
+      });
+      return;
+    }
+
+    let finalized;
+    try {
+      finalized = await rt.state.finalizeModelAttempt(pending.scope, {
+        expectedParentNodeId: pending.baseNodeId,
+        expectedParentStateHash: pending.baseStateHash,
+        patch: evidence.selected?.operations ?? null,
+        authorization: pending.frozenAuthorization,
+        projectionVersion: pending.projectionVersion,
+        promptProtocolVersion: pending.promptProtocolVersion,
+        anchor: {
+          messageId: saved.id,
+          variantId: pending.continuePreVariantId,
+          generationId: payload.generationId,
+          attemptId: pending.attemptId,
+          messageRole: 'assistant',
+          lineageAnchorId: pending.continuePreVariantId,
+        },
+        requestId: pending.attemptId,
+        rawGenerationHash: segmentHash,
+        ...(rawPatchPayloadHash ? { rawPatchPayloadHash } : {}),
+        storedMessageTextHash: postStoredTextHash,
+        ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
+      });
+    } catch (error) {
+      await writeContinueEvidence('failed_patch', null, pending.baseNodeId, baseEvidenceHashes);
+      publish(userId, {
+        phase: 'failed_patch',
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        messageId: saved.id,
+        variantId: pending.continuePreVariantId,
+        generationType: 'continue',
+        error: String(error),
+      });
+      return;
+    }
+
+    await writeContinueEvidence(
+      finalized.status,
+      finalized.modelCommitId,
+      finalized.nodeId,
+      {
+        ...baseEvidenceHashes,
+        ...(finalized.canonicalPatchHash ? { canonicalPatchHash: finalized.canonicalPatchHash } : {}),
+      },
+      pending.continueResolvesAttemptId,
+    );
+
+    publish(userId, {
+      phase: 'commit_complete',
+      chatId: payload.chatId,
+      generationId: payload.generationId,
+      messageId: saved.id,
+      variantId: pending.continuePreVariantId,
+      generationType: 'continue',
+      status: finalized.status,
+      modelCommitId: finalized.modelCommitId,
+      systemCommitId: finalized.systemCommitId,
+      transactionId: finalized.transactionId,
+      committedNodeIds: finalized.committedNodeIds,
+      finalNodeId: finalized.nodeId,
+      finalStateHash: finalized.stateHash,
+      deliveredPromptViewHash: pending.promptViewHash,
+      nextPromptViewHash: finalized.nextPromptViewHash,
+      injectionMode: pending.injectionMode ?? 'interceptor_missed',
+      continueHostContentMode: evidence.hostContentMode,
+      continueAppendedSegmentHash: segmentHash,
+      continueAppendedSegmentLength: evidence.appendedSegment.length,
+      continuePatchCrossedBoundary: evidence.selectedCrossesBoundary,
+      ...(pending.continueResolvesAttemptId ? { resolvedAttemptId: pending.continueResolvesAttemptId } : {}),
+    });
+  } catch (error) {
+    spindle.log.error('[FFMVU] Continue finalization failed', error);
+    publish(userId, {
+      phase: 'commit_error',
+      chatId: payload.chatId,
+      generationId: payload.generationId,
+      generationType: 'continue',
+      error: String(error),
+    });
+  } finally {
+    contexts.release(pending);
+  }
 }
 
 async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<void> {
   const pending = contexts.claimFinalization(payload.generationId);
   if (!pending) return;
   const userId = pending.scope.userId;
+
+  if (pending.generationType === 'continue' && !pending.diagnosticContinueProbe) {
+    await finalizeContinueModelCommit(payload, pending);
+    return;
+  }
 
   if (pending.diagnosticContinueProbe) {
     try {
@@ -640,10 +994,6 @@ async function reconcileSwipePayload(payload: SwipeEventPayload, callbackUserId?
 const contextHandler = async (context: import('./spindle-lite.js').ContextHandlerContext): Promise<import('./spindle-lite.js').ContextHandlerContext> => {
   const cfg = await config(context.userId);
   if (!cfg.enabled || context.dryRun || context.generationType === 'impersonate') return context;
-  if (context.generationType === 'continue' && !continueProbeUsers.has(context.userId)) {
-    publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'continue state commits are gated; arm the one-shot Continue probe to observe host append semantics without state writes' });
-    return { ...context, cancelGeneration: true };
-  }
   if (!spindle.permissions.has('chat_mutation')) {
     publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'chat_mutation permission missing' });
     return { ...context, cancelGeneration: true };
@@ -810,7 +1160,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.5.4 model commit pipeline armed. Continue remains state-write gated except for the one-shot diagnostic probe.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.6.0 model commit pipeline armed. Native Continue is stateful when append identity/boundary evidence is exact; ambiguous cases fail closed.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -850,4 +1200,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.4 model commit + one-shot Continue host-semantics spike).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.6.0 model commit + stateful Continue append semantics).`);
