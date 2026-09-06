@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 const parts = [
   'dist/src/shared/domain/value-utils.js',
   'dist/src/lumi/statusmenu-model.js',
+  'dist/src/lumi/statusmenu-legacy-template.js',
+  'dist/src/lumi/statusmenu-legacy-view.js',
   'dist/src/lumi/frontend.js',
 ];
 
@@ -18,13 +20,31 @@ function stripKnownImports(path, text) {
       '',
     );
   }
+  if (path.endsWith('statusmenu-legacy-view.js')) {
+    out = out.replace(
+      /^import \{ asRecord, isRecord \} from '\.\.\/shared\/domain\/value-utils\.js';\n/,
+      '',
+    );
+    out = out.replace(
+      /^import \{ statusItems, statusNumber, statusOwnerById, statusOwners, statusText \} from '\.\/statusmenu-model\.js';\n/,
+      '',
+    );
+    out = out.replace(
+      /^import \{ LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS \} from '\.\/statusmenu-legacy-template\.js';\n/,
+      '',
+    );
+  }
   if (path.endsWith('frontend.js')) {
     out = out.replace(
       /^import \{ asRecord, isRecord \} from '\.\.\/shared\/domain\/value-utils\.js';\n/,
       '',
     );
     out = out.replace(
-      /^import \{ statusCompactObject, statusCoreBudget, statusHphOverview, statusItems, statusNumber, statusOwnerById, statusOwners, statusText, \} from '\.\/statusmenu-model\.js';\n/,
+      /^import \{ statusCompactObject, statusCoreBudget, statusHphOverview, statusItems, statusNumber, statusOwnerById, statusOwners, statusPath, statusText, \} from '\.\/statusmenu-model\.js';\n/,
+      '',
+    );
+    out = out.replace(
+      /^import \{ renderLegacyStatusMenu \} from '\.\/statusmenu-legacy-view\.js';\n/,
       '',
     );
   }
