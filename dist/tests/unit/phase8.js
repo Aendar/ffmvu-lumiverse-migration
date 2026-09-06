@@ -67,6 +67,61 @@ async function main() {
     assert(Boolean(crossNext.Mainchar.Inventory.old), 'legacy cross-character auto-unequip returns displaced target gear to source inventory');
     const deleted = applyGuiIntent(crossNext, { type: 'inventory.delete', owner: { kind: 'player' }, itemKey: 'old' });
     assert(!deleted.Mainchar.Inventory.old, 'inventory delete removes exact dictionary key');
+    const variables = createDefaultState();
+    variables.Mainchar.Inventory['Серебро'] = { Type: 'Money', Qty: 54, Desc: 'Серебряные монеты' };
+    variables.Narrative.GM_Notes.Active = {
+        Guta_Info: { Type: 'Fact', Setup: 'Старая запись', Status: 'active' },
+    };
+    const renamedVariable = applyGuiIntent(variables, {
+        type: 'variable.rename',
+        path: ['Mainchar', 'Inventory', 'Серебро'],
+        newKey: 'Монеты',
+    });
+    assert(Boolean(renamedVariable.Mainchar.Inventory['Монеты']) && !renamedVariable.Mainchar.Inventory['Серебро'], 'Variables rename preserves entry value under a new key');
+    const editedVariable = applyGuiIntent(renamedVariable, {
+        type: 'variable.set',
+        path: ['Mainchar', 'Inventory', 'Монеты', 'Qty'],
+        value: 60,
+    });
+    assert(editedVariable.Mainchar.Inventory['Монеты'].Qty === 60, 'Variables set edits an exact primitive leaf');
+    const tupleEdited = applyGuiIntent(editedVariable, {
+        type: 'variable.set',
+        path: ['Mainchar', 'Name', '0'],
+        value: 'Андар Айнзем',
+    });
+    assert(tupleEdited.Mainchar.Name[0] === 'Андар Айнзем' && tupleEdited.Mainchar.Name[1] === 'Name', 'Variables set can edit tuple value without destroying its label');
+    const addedVariable = applyGuiIntent(tupleEdited, {
+        type: 'variable.add',
+        parentPath: ['Narrative', 'GM_Notes', 'Active'],
+        key: 'New_Note',
+        value: { Type: 'Fact', Setup: 'Новая запись', Status: 'active' },
+    });
+    assert(Boolean(addedVariable.Narrative.GM_Notes.Active.New_Note), 'Variables add creates an object child');
+    const deletedVariable = applyGuiIntent(addedVariable, {
+        type: 'variable.delete',
+        path: ['Narrative', 'GM_Notes', 'Active', 'New_Note'],
+    });
+    assert(!deletedVariable.Narrative.GM_Notes.Active.New_Note, 'Variables delete removes an exact object child');
+    let rootProtected = false;
+    try {
+        applyGuiIntent(deletedVariable, { type: 'variable.delete', path: ['Narrative'] });
+    }
+    catch (error) {
+        rootProtected = String(error).includes('GUI_VARIABLE_PROTECTED_ROOT');
+    }
+    assert(rootProtected, 'Variables editor cannot delete protected root state domains');
+    let collisionRejected = false;
+    try {
+        applyGuiIntent(deletedVariable, {
+            type: 'variable.rename',
+            path: ['Mainchar', 'Inventory', 'Монеты'],
+            newKey: 'Монеты',
+        });
+    }
+    catch (error) {
+        collisionRejected = String(error).includes('GUI_INTENT_NO_CHANGE');
+    }
+    assert(collisionRejected, 'Variables rename rejects a no-op key rename');
     const storage = new MemoryJsonStorage();
     const state = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
     const scope = { userId: 'u', chatId: 'gui' };
@@ -103,6 +158,18 @@ async function main() {
         staleRejected = String(error).includes('GUI_COMMIT_CONFLICT');
     }
     assert(staleRejected, 'stale GUI state hash fails closed');
+    const variableScope = { userId: 'u', chatId: 'variables-gui' };
+    const variableGenesis = await state.createGenesis(variableScope, { state: variables });
+    const variableCommit = await state.commitGuiIntent(variableScope, {
+        expectedParentNodeId: variableGenesis.nodeId,
+        expectedParentStateHash: variableGenesis.stateHash,
+        intent: { type: 'variable.rename', path: ['Mainchar', 'Inventory', 'Серебро'], newKey: 'Монеты' },
+        anchor: { lineageAnchorId: 'root' },
+        requestId: 'gui-variable-rename',
+    });
+    assert(Boolean(variableCommit.state.Mainchar.Inventory['Монеты']), 'StateService commits Variables edits as validated gui state');
+    const variableArtifact = await new EventStore(storage).readCommit(variableScope, variableCommit.nodeId);
+    assert(variableArtifact.kind === 'gui' && variableArtifact.note === 'gui-intent:variable.rename', 'Variables StateService commit remains an ordinary typed gui commit');
     console.log(`phase8 GUI intent tests passed: ${passed}`);
 }
 void main();

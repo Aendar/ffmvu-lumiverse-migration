@@ -1,11 +1,12 @@
 import type { JsonPatchOperation } from '../json-patch.js';
-import type { FFMVUState } from '../state-schema.js';
+import type { FFMVUState, JsonValue } from '../state-schema.js';
 export type GuiOwnerRef = {
     kind: 'player';
 } | {
     kind: 'familiar';
     id: string;
 };
+export type GuiPath = string[];
 export type GuiIntent = {
     type: 'outfit.move';
     owner: GuiOwnerRef;
@@ -24,6 +25,22 @@ export type GuiIntent = {
     type: 'equipment.unequip';
     owner: GuiOwnerRef;
     equipmentKey: string;
+} | {
+    type: 'variable.set';
+    path: GuiPath;
+    value: JsonValue;
+} | {
+    type: 'variable.rename';
+    path: GuiPath;
+    newKey: string;
+} | {
+    type: 'variable.delete';
+    path: GuiPath;
+} | {
+    type: 'variable.add';
+    parentPath: GuiPath;
+    key: string;
+    value: JsonValue;
 };
 export declare function assertGuiIntent(value: unknown): asserts value is GuiIntent;
 export declare function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState;

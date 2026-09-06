@@ -7,6 +7,40 @@ function isOwnerRef(value) {
         return true;
     return value.kind === 'familiar' && typeof value.id === 'string' && Boolean(value.id.trim());
 }
+const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
+const PROTECTED_ROOT_KEYS = new Set([
+    'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
+    'MVUStatMenu_DB_Ver', 'GameStarted',
+]);
+function assertSafeKey(key, label) {
+    if (typeof key !== 'string' || !key.trim() || key.length > 256 || FORBIDDEN_PATH_SEGMENTS.has(key)) {
+        throw new Error('GUI_VARIABLE_INVALID_' + label.toUpperCase());
+    }
+}
+function assertGuiPath(path, allowRoot = true) {
+    if (!Array.isArray(path) || (!allowRoot && path.length === 0) || path.length > 64) {
+        throw new Error('GUI_VARIABLE_INVALID_PATH');
+    }
+    for (const segment of path)
+        assertSafeKey(segment, 'path_segment');
+}
+function isJsonValue(value, depth = 0) {
+    if (depth > 64)
+        return false;
+    if (value === null || typeof value === 'string' || typeof value === 'boolean')
+        return true;
+    if (typeof value === 'number')
+        return Number.isFinite(value);
+    if (Array.isArray(value))
+        return value.every(child => isJsonValue(child, depth + 1));
+    if (!isRecord(value))
+        return false;
+    return Object.entries(value).every(([key, child]) => !FORBIDDEN_PATH_SEGMENTS.has(key) && isJsonValue(child, depth + 1));
+}
+function assertVariablePayload(value) {
+    if (!isJsonValue(value))
+        throw new Error('GUI_VARIABLE_VALUE_NOT_JSON');
+}
 export function assertGuiIntent(value) {
     if (!isRecord(value) || typeof value.type !== 'string')
         throw new Error('GUI_INTENT_INVALID');
@@ -30,6 +64,26 @@ export function assertGuiIntent(value) {
     if (value.type === 'equipment.unequip') {
         if (!isOwnerRef(value.owner) || typeof value.equipmentKey !== 'string' || !value.equipmentKey)
             throw new Error('GUI_INTENT_INVALID_UNEQUIP');
+        return;
+    }
+    if (value.type === 'variable.set') {
+        assertGuiPath(value.path, false);
+        assertVariablePayload(value.value);
+        return;
+    }
+    if (value.type === 'variable.rename') {
+        assertGuiPath(value.path, false);
+        assertSafeKey(value.newKey, 'new_key');
+        return;
+    }
+    if (value.type === 'variable.delete') {
+        assertGuiPath(value.path, false);
+        return;
+    }
+    if (value.type === 'variable.add') {
+        assertGuiPath(value.parentPath, true);
+        assertSafeKey(value.key, 'key');
+        assertVariablePayload(value.value);
         return;
     }
     throw new Error('GUI_INTENT_UNSUPPORTED: ' + value.type);
@@ -284,6 +338,103 @@ function equipmentUnequip(state, intent) {
     const inventory = requireCollection(owner, 'Inventory', true);
     reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
+function pathParent(root, path) {
+    if (!path.length)
+        throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
+    let current = root;
+    for (const segment of path.slice(0, -1)) {
+        if (Array.isArray(current)) {
+            const index = Number(segment);
+            if (!Number.isInteger(index) || index < 0 || index >= current.length)
+                throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+            current = current[index];
+            continue;
+        }
+        if (!isRecord(current) || !Object.prototype.hasOwnProperty.call(current, segment))
+            throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+        current = current[segment];
+    }
+    if (!isRecord(current) && !Array.isArray(current))
+        throw new Error('GUI_VARIABLE_PARENT_NOT_CONTAINER');
+    return { parent: current, key: path[path.length - 1] };
+}
+function hasContainerKey(parent, key) {
+    if (Array.isArray(parent)) {
+        const index = Number(key);
+        return Number.isInteger(index) && index >= 0 && index < parent.length;
+    }
+    return Object.prototype.hasOwnProperty.call(parent, key);
+}
+function protectedRootMutation(path) {
+    return path.length === 1 && PROTECTED_ROOT_KEYS.has(path[0]);
+}
+function variableSet(state, intent) {
+    if (protectedRootMutation(intent.path))
+        throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    const { parent, key } = pathParent(state, intent.path);
+    if (!hasContainerKey(parent, key))
+        throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+    if (Array.isArray(parent)) {
+        const index = Number(key);
+        if (!Number.isInteger(index))
+            throw new Error('GUI_VARIABLE_ARRAY_INDEX_INVALID');
+        parent[index] = clone(intent.value);
+    }
+    else {
+        parent[key] = clone(intent.value);
+    }
+}
+function variableRename(state, intent) {
+    if (protectedRootMutation(intent.path))
+        throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    const { parent, key } = pathParent(state, intent.path);
+    if (Array.isArray(parent))
+        throw new Error('GUI_VARIABLE_RENAME_ARRAY_UNSUPPORTED');
+    if (!Object.prototype.hasOwnProperty.call(parent, key))
+        throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+    if (key === intent.newKey)
+        throw new Error('GUI_INTENT_NO_CHANGE');
+    if (Object.prototype.hasOwnProperty.call(parent, intent.newKey))
+        throw new Error('GUI_VARIABLE_KEY_EXISTS');
+    parent[intent.newKey] = parent[key];
+    delete parent[key];
+}
+function variableDelete(state, intent) {
+    if (protectedRootMutation(intent.path))
+        throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    const { parent, key } = pathParent(state, intent.path);
+    if (!hasContainerKey(parent, key))
+        throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+    if (Array.isArray(parent)) {
+        const index = Number(key);
+        if (!Number.isInteger(index))
+            throw new Error('GUI_VARIABLE_ARRAY_INDEX_INVALID');
+        parent.splice(index, 1);
+    }
+    else {
+        delete parent[key];
+    }
+}
+function variableAdd(state, intent) {
+    let parent = state;
+    for (const segment of intent.parentPath) {
+        if (Array.isArray(parent)) {
+            const index = Number(segment);
+            if (!Number.isInteger(index) || index < 0 || index >= parent.length)
+                throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+            parent = parent[index];
+            continue;
+        }
+        if (!isRecord(parent) || !Object.prototype.hasOwnProperty.call(parent, segment))
+            throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
+        parent = parent[segment];
+    }
+    if (!isRecord(parent))
+        throw new Error('GUI_VARIABLE_ADD_PARENT_NOT_OBJECT');
+    if (Object.prototype.hasOwnProperty.call(parent, intent.key))
+        throw new Error('GUI_VARIABLE_KEY_EXISTS');
+    parent[intent.key] = clone(intent.value);
+}
 export function applyGuiIntent(input, intent) {
     const state = clone(input);
     if (intent.type === 'outfit.move')
@@ -294,6 +445,14 @@ export function applyGuiIntent(input, intent) {
         equipmentEquip(state, intent);
     else if (intent.type === 'equipment.unequip')
         equipmentUnequip(state, intent);
+    else if (intent.type === 'variable.set')
+        variableSet(state, intent);
+    else if (intent.type === 'variable.rename')
+        variableRename(state, intent);
+    else if (intent.type === 'variable.delete')
+        variableDelete(state, intent);
+    else if (intent.type === 'variable.add')
+        variableAdd(state, intent);
     else {
         const neverIntent = intent;
         throw new Error('GUI_INTENT_UNSUPPORTED: ' + JSON.stringify(neverIntent));

@@ -312,6 +312,7 @@ export function setup(ctx) {
     let selectedOwnerId = 'player';
     let equipTargetOwnerId = 'player';
     let ffSearch = '';
+    let variablesSearch = '';
     let notice = '';
     let panelOpen = false;
     let legacyImportOpen = false;
@@ -1113,6 +1114,8 @@ export function setup(ctx) {
                 mutationDisabled: mutationDisabled(),
                 onTab: tab => { activeTab = tab; },
                 onOwner: ownerId => { selectedOwnerId = ownerId; },
+                variablesSearch,
+                onVariablesSearch: value => { variablesSearch = value; },
                 onIntent: sendIntent,
                 onUnsupported: message => {
                     notice = message;
@@ -1243,6 +1246,7 @@ export function setup(ctx) {
         selectedOwnerId = 'player';
         equipTargetOwnerId = 'player';
         ffSearch = '';
+        variablesSearch = '';
         render();
         requestState();
     }
