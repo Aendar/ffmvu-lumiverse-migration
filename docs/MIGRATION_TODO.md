@@ -62,7 +62,7 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Import Hide Location.
 - [x] Import HideUpdateVar.
 - [x] Import Colorize.
-- [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import.
+- [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.
 - [x] Do NOT import legacy GameStartMenu.
 - [x] Do NOT import legacy StatusMenu.
 - [ ] Smoke-test rendering/order on real Lumiverse messages.
@@ -73,8 +73,20 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Same StatusMenu design mounted above the composer with a fixed-height scroll container.
 - [x] Tier-1 legacy import RPC wired to StateService.importLegacyState.
 - [x] Legacy import UI accepts stat_data + exact ff_mvu_prompt_view + snapshot metadata wrapper.
-- [ ] Live-test composer mount on the user's current Lumiverse build.
-- [ ] Import the user's real Turn 109 save and verify first post-import MODEL_STATE continuity.
+- [x] Live-test composer mount on the user's current Lumiverse build.
+- [x] Import the user's real Turn 109 legacy save into Lumiverse.
+- [ ] Verify first post-import MODEL_STATE continuity on a real generation.
+
+## DONE in v0.12 — canonical StatusMenu parity pass
+
+- [x] Frozen StatusMenu v2.8.1 DOM/CSS is the canonical initialized-game UI source.
+- [x] Original palette/text colors are isolated from Lumiverse host theme through Shadow DOM.
+- [x] Original tabs/layout/cards/templates are retained instead of approximate native replacements.
+- [x] Supported Wardrobe / Inventory / Equipment controls are rebound to typed StateService intents.
+- [x] Top-edge drag resize with one persisted height across tabs, hide/show, and reload.
+- [x] Unsupported legacy write controls remain visible but fail visibly instead of bypassing StateService.
+- [ ] Live visual smoke-test Overview / Attributes / Familiars / Wardrobe / Equipments / Items / Others / FF State in Lumiverse.
+- [ ] Add typed intents for preserved legacy controls still marked unsupported.
 
 ## Safe to start now — short gameplay tests
 
@@ -92,7 +104,7 @@ Use disposable/short chats first:
 
 ## Remaining before a permanent long campaign / production cutover
 
-- [ ] Live-test v0.11 composer-mounted StatusMenu against a real migrated state.
+- [ ] Live-test v0.12 canonical StatusMenu against the migrated Turn 109 state.
 - [ ] Add typed writes for currently read-only legacy controls if still wanted:
   - Skills / Talents;
   - Quests;
