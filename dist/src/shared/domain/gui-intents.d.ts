@@ -25,5 +25,6 @@ export type GuiIntent = {
     owner: GuiOwnerRef;
     equipmentKey: string;
 };
+export declare function assertGuiIntent(value: unknown): asserts value is GuiIntent;
 export declare function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState;
 export declare function buildGuiIntentPatch(before: FFMVUState, after: FFMVUState): JsonPatchOperation[];

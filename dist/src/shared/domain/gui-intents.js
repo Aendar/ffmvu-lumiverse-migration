@@ -1,5 +1,39 @@
 import { canonicalStringify } from '../hashing.js';
 import { asRecord, clone, isRecord, text, tupleValue } from './value-utils.js';
+function isOwnerRef(value) {
+    if (!isRecord(value))
+        return false;
+    if (value.kind === 'player')
+        return true;
+    return value.kind === 'familiar' && typeof value.id === 'string' && Boolean(value.id.trim());
+}
+export function assertGuiIntent(value) {
+    if (!isRecord(value) || typeof value.type !== 'string')
+        throw new Error('GUI_INTENT_INVALID');
+    if (value.type === 'outfit.move') {
+        if (!isOwnerRef(value.owner) || !['Worn', 'Wardrobe'].includes(String(value.from)) || typeof value.itemKey !== 'string' || !value.itemKey) {
+            throw new Error('GUI_INTENT_INVALID_OUTFIT_MOVE');
+        }
+        return;
+    }
+    if (value.type === 'inventory.delete') {
+        if (!isOwnerRef(value.owner) || typeof value.itemKey !== 'string' || !value.itemKey)
+            throw new Error('GUI_INTENT_INVALID_INVENTORY_DELETE');
+        return;
+    }
+    if (value.type === 'equipment.equip') {
+        if (!isOwnerRef(value.sourceOwner) || !isOwnerRef(value.targetOwner) || typeof value.itemKey !== 'string' || !value.itemKey) {
+            throw new Error('GUI_INTENT_INVALID_EQUIP');
+        }
+        return;
+    }
+    if (value.type === 'equipment.unequip') {
+        if (!isOwnerRef(value.owner) || typeof value.equipmentKey !== 'string' || !value.equipmentKey)
+            throw new Error('GUI_INTENT_INVALID_UNEQUIP');
+        return;
+    }
+    throw new Error('GUI_INTENT_UNSUPPORTED: ' + value.type);
+}
 const EQUIP_STAT_MAP = {
     StrBonus: 'Strength',
     AgiBonus: 'Agility',
