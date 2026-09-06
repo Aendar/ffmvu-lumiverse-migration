@@ -10,13 +10,14 @@ import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
 import { assertGuiIntent } from '../shared/domain/gui-intents.js';
+import { validateGameStartPayload } from '../shared/domain/gamestart.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
 import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.9.0';
+const BRIDGE_VERSION = '0.10.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -1195,6 +1196,66 @@ spindle.onFrontendMessage(async (payload, userId) => {
         spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId) } }, userId);
         return;
     }
+    if (payload?.type === 'ffmvu_start_new_game') {
+        const chatId = String(payload.chatId ?? '');
+        const requestId = String(payload.requestId ?? createId('newgame'));
+        if (!chatId) {
+            spindle.sendToFrontend({ type: 'ffmvu_new_game_result', ok: false, requestId, reason: 'NEW_GAME_CHAT_ID_REQUIRED' }, userId);
+            return;
+        }
+        const cfg = await config(userId);
+        if (!cfg.enabled) {
+            spindle.sendToFrontend({ type: 'ffmvu_new_game_result', ok: false, requestId, chatId, reason: 'NEW_GAME_BRIDGE_DISABLED' }, userId);
+            return;
+        }
+        const scope = { userId, chatId };
+        knownScopeByChat.set(chatId, scope);
+        if (contexts.getForScope(scope)) {
+            spindle.sendToFrontend({ type: 'ffmvu_new_game_result', ok: false, requestId, chatId, reason: 'NEW_GAME_BLOCKED_DURING_GENERATION' }, userId);
+            return;
+        }
+        try {
+            const rt = runtime(userId);
+            const existingRoot = await rt.anchors.readRoot(scope);
+            if (existingRoot) {
+                spindle.sendToFrontend({ type: 'ffmvu_new_game_result', ok: false, requestId, chatId, reason: 'NEW_GAME_ALREADY_INITIALIZED' }, userId);
+                return;
+            }
+            const gameStart = payload.gameStart;
+            const validationErrors = validateGameStartPayload(gameStart);
+            if (validationErrors.length) {
+                spindle.sendToFrontend({
+                    type: 'ffmvu_new_game_result', ok: false, requestId, chatId,
+                    reason: 'NEW_GAME_INVALID_PAYLOAD', validationErrors,
+                }, userId);
+                return;
+            }
+            const messages = await spindle.chat.getMessages(chatId);
+            const transcript = toHostTranscript(messages);
+            const last = transcript.at(-1);
+            const boundary = last ? {
+                throughMessageId: last.id,
+                activePrefixHash: await activePrefixHash(transcript, last.id),
+                fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+            } : undefined;
+            const created = await rt.state.startNewGame(scope, gameStart, boundary);
+            publish(userId, {
+                phase: 'new_game_complete', chatId, requestId,
+                finalNodeId: created.nodeId, finalStateHash: created.stateHash,
+                gameStarted: true,
+            });
+            spindle.sendToFrontend({
+                type: 'ffmvu_new_game_result', ok: true, requestId, chatId,
+                headNodeId: created.nodeId, headStateHash: created.stateHash,
+                variantId: null, generationPending: false, state: created.state,
+            }, userId);
+        }
+        catch (error) {
+            publish(userId, { phase: 'new_game_error', chatId, requestId, error: String(error) });
+            spindle.sendToFrontend({ type: 'ffmvu_new_game_result', ok: false, requestId, chatId, reason: String(error) }, userId);
+        }
+        return;
+    }
     if (payload?.type === 'ffmvu_gui_get_state') {
         const chatId = String(payload.chatId ?? '');
         if (!chatId) {
@@ -1352,7 +1413,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             continueProbeUsers.delete(userId);
         }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.9.0 bridge armed. Model lifecycle and branch-safe typed GUI intents share the same StateService journal; assistant history keeps narrative timestamps and net off-screen changes.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.10.0 bridge armed. Native StatusMenu/New Game use the same branch-aware StateService journal as model generations.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1391,5 +1452,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.9.0 model lifecycle + branch-safe GUI intents + narrative history context).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.10.0 native StatusMenu/New Game + branch-safe GUI intents + narrative history context).`);
 //# sourceMappingURL=backend.js.map
