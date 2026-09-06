@@ -89,9 +89,14 @@ async function main() {
     await dup.create(scope, 'd', [{ text: 'same' }, { text: 'same' }, { text: 'z' }]);
     const ambiguity = await dup.reconcileWholesale(scope, 'd', [{ text: 'x' }, { text: 'y' }, { text: 'same' }]);
     assert(ambiguity.status === 'ambiguous', 'duplicate fingerprint reconciliation fails closed');
-    // A content-only host edit must be detected even if AnchorRecord and VariantIndex still agree with each other.
-    const edited = await resolver.resolve(scope, genesis.nodeId, [{ id: 'm1', role: 'assistant', content: 'edited-outside-index', swipes: ['edited-outside-index'], swipeId: 0 }]);
-    assert(edited.health === 'unreconciled', 'content-only transcript edit is detected against VariantIndex');
+    // Once the assistant variant has committed state provenance, later prose edits are transcript-only.
+    // They may even remove the old machine envelope; state reachability stays bound to VariantId/attempt/commit evidence.
+    const edited = await resolver.resolve(scope, genesis.nodeId, [{ id: 'm1', role: 'assistant', content: 'edited prose only', swipes: ['edited prose only', 'B'], swipeId: 0 }]);
+    assert(edited.health === 'ok' && edited.nodeId === pA, 'content-only transcript edit preserves committed state lineage even with stale text fingerprints');
+    const updatedVariantId = await variants.applyUpdated(scope, 'm1', 0, { text: 'edited again with no JSONPatch envelope' });
+    assert(updatedVariantId === a, 'explicit swipe content update preserves VariantId identity');
+    const editedAgain = await resolver.resolve(scope, genesis.nodeId, [{ id: 'm1', role: 'assistant', content: 'edited again with no JSONPatch envelope', swipes: ['edited again with no JSONPatch envelope', 'B'], swipeId: 0 }]);
+    assert(editedAgain.health === 'ok' && editedAgain.nodeId === pA, 'removing generated patch text after commit does not alter authoritative state');
     // Continue may start from a same-lineage GUI descendant, not necessarily previous model commit.
     const contStorage = new MemoryJsonStorage();
     const contService = new StateService(contStorage, createReducerRegistry(), createProjectionRegistry());

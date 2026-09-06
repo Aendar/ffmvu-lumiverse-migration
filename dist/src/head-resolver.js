@@ -1,5 +1,4 @@
-import { activeMessageContent, activePrefixHash } from './transcript-fingerprint.js';
-import { canonicalHash } from './shared/hashing.js';
+import { activePrefixHash } from './transcript-fingerprint.js';
 import { ACTIVE_PREFIX_FINGERPRINT_VERSION } from './persistence/types.js';
 export class HeadResolver {
     eventStore;
@@ -117,12 +116,8 @@ export class HeadResolver {
                         return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'invalid post-attempt lineage' };
                     current = await this.materializer.materialize(scope, anchor.tipNodeId);
                 }
-                const activeHash = index.swipeFingerprints[variantId]?.storedMessageTextHash;
-                const actualHash = await canonicalHash(activeMessageContent(message));
-                if (!activeHash || activeHash !== actualHash)
-                    return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'active transcript content differs from VariantIndex' };
-                if (activeHash !== anchor.storedMessageTextHash)
-                    return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'stored message fingerprint differs from anchor' };
+                // Once a VariantId has immutable attempt/commit provenance, current assistant prose is mutable transcript
+                // presentation. Text fingerprints remain rebuildable diagnostics and must not gate state reachability.
                 terminalVariant = variantId;
             }
             return { health: 'ok', nodeId: current.nodeId, stateHash: current.stateHash, ...(terminalVariant ? { variantId: terminalVariant } : {}) };
