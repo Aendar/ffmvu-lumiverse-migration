@@ -148,3 +148,17 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - Initial domains: Outfit (player + Familiar), Inventory, Equipment, World.Location, core/current combat stats, and Relationships.
 - `RecentChanges` is prompt-only context; it is not written into authoritative state and does not alter MODEL_STATE hashes or patch authorization.
 - Current MODEL_STATE remains authoritative; RecentChanges only explains off-screen transitions.
+
+
+# Phase 8 — Branch-safe GUI intents (v0.9.0)
+
+- StatusMenu writes no longer need to replace an entire `stat_data` snapshot.
+- Initial typed intents: `outfit.move`, `inventory.delete`, `equipment.equip`, `equipment.unequip`.
+- Outfit parity preserves the legacy atomic Wardrobe behavior: Wardrobe -> Worn replaces matching non-Extra `Slot + Layer`, returning displaced items to Wardrobe with collision-safe keys.
+- Equipment parity preserves legacy slot limits, global accessory cap=3, Qty semantics, attribute bonuses, derived-stat recalculation, and automatic unequip ordering.
+- Cross-character equip intentionally preserves the old StatusMenu rule where an automatic displaced item returns to the inventory that supplied the newly equipped item.
+- `StateService.commitGuiIntent` requires the exact expected semantic parent node + state hash and writes a `kind=gui` commit with direct-self projection binding.
+- Backend `ffmvu_gui_intent` re-resolves the active transcript branch before commit, blocks while a model generation is pending, and refuses stale UI state.
+- After the journal commit, the backend re-resolves the transcript again before moving the root/Variant anchor tip. If the user changed swipe/branch in the meantime, the durable commit is left unbound and reported explicitly instead of silently rebasing.
+- A successful bind is resolved once more and must reproduce the committed node/state hash.
+- GUI changes therefore become ordinary semantic ancestors and automatically appear in `RecentChanges` on the next model turn.
