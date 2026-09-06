@@ -1,0 +1,37 @@
+{
+  "bridgeVersion": "0.5.3",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "at": "2026-09-06T11:59:46.908Z",
+  "phase": "commit_complete",
+  "chatId": "75d62b47-da2f-4cbb-b4fa-d6e495b6c51e",
+  "generationId": "805a5bfd-ea8d-4340-9fad-0d692559d46e",
+  "messageId": "6ef1bd7d-ef3b-4d94-9692-1d4855403422",
+  "variantId": "variant_198092b1-8a61-4e21-9996-9f2735d33d29",
+  "status": "committed",
+  "modelCommitId": "node_575d5174-ddee-4a14-8f2c-b7576f0a1165",
+  "systemCommitId": "node_44465fb8-b5f8-4f46-a108-1e333a1102fb",
+  "transactionId": "tx_2b7df70f-ecc3-4f8f-94b9-1b43ea50f744",
+  "committedNodeIds": [
+    "node_575d5174-ddee-4a14-8f2c-b7576f0a1165",
+    "node_44465fb8-b5f8-4f46-a108-1e333a1102fb"
+  ],
+  "finalNodeId": "node_44465fb8-b5f8-4f46-a108-1e333a1102fb",
+  "finalStateHash": "2306d9da4ef5d1d4588f6c6230022a1dcc906624c5ea8bf598befdb73ccfec07",
+  "deliveredPromptViewHash": "1b1b47724f5a752e1341d4b3450db1399e6bcbd3dd941997079f8255653286ca",
+  "nextPromptViewHash": "edb68edf7f5e7fcfee0aba2593821bd512b03f8180954b7396eb49a22ebe8461",
+  "injectionMode": "sentinel",
+  "diagnosticNoPatchProbe": false,
+  "enabled": true,
+  "noPatchProbeArmed": false
+}
