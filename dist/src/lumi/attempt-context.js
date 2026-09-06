@@ -17,13 +17,15 @@ export class AttemptContextRegistry {
         return matches.length === 1 ? matches[0] : null;
     }
     getForScope(scope) { return this.byScope.get(this.key(scope)) ?? null; }
-    bindGeneration(chatId, generationId, targetMessageId) {
+    bindGeneration(chatId, generationId, targetMessageId, targetSwipeId) {
         const value = this.getForChat(chatId);
         if (!value)
             return null;
         value.generationId = generationId;
         if (targetMessageId)
             value.targetMessageId = targetMessageId;
+        if (Number.isInteger(targetSwipeId))
+            value.targetSwipeId = targetSwipeId;
         this.byGeneration.set(generationId, value);
         return value;
     }

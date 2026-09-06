@@ -20,6 +20,7 @@ export interface FrozenAttemptContext {
     createdAt: string;
     generationId?: string;
     targetMessageId?: string;
+    targetSwipeId?: number;
     injectionMode?: 'sentinel' | 'block' | 'fallback';
 }
 export declare class AttemptContextRegistry {
@@ -30,7 +31,7 @@ export declare class AttemptContextRegistry {
     create(input: Omit<FrozenAttemptContext, 'attemptId' | 'createdAt'>): FrozenAttemptContext;
     getForChat(chatId: string): FrozenAttemptContext | null;
     getForScope(scope: StateScope): FrozenAttemptContext | null;
-    bindGeneration(chatId: string, generationId: string, targetMessageId?: string): FrozenAttemptContext | null;
+    bindGeneration(chatId: string, generationId: string, targetMessageId?: string, targetSwipeId?: number): FrozenAttemptContext | null;
     getByGeneration(generationId: string): FrozenAttemptContext | null;
     claimFinalization(generationId: string): FrozenAttemptContext | null;
     isFinalizing(generationId: string): boolean;
@@ -41,6 +42,7 @@ export interface EarlyGenerationStart {
     generationId: string;
     chatId: string;
     targetMessageId?: string;
+    targetSwipeId?: number;
     generationType?: string;
 }
 export declare class EarlyGenerationRegistry {
