@@ -1,4 +1,5 @@
-import { isGuiVariableDynamicCollectionPath, type GuiIntent, type GuiPath } from '../shared/domain/gui-intents.js';
+import type { GuiIntent, GuiPath } from '../shared/domain/gui-intents.js';
+import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../shared/state-schema.js';
 import { isRecord } from '../shared/domain/value-utils.js';
 
