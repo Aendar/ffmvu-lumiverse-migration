@@ -9,6 +9,7 @@ import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from 
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
+import { assertGuiIntent } from '../shared/domain/gui-intents.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
 import { AttemptContextRegistry, EarlyGenerationRegistry, type FrozenAttemptContext } from './attempt-context.js';
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
@@ -19,7 +20,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.8.0';
+const BRIDGE_VERSION = '0.9.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -80,6 +81,51 @@ function publish(userId: string, status: Record<string, unknown>): void {
   const value = { bridgeVersion: BRIDGE_VERSION, at: isoNow(), ...registrationSnapshot(), ...status };
   lastStatusByUser.set(userId, value);
   spindle.sendToFrontend({ type: 'ffmvu_status', status: value }, userId);
+}
+
+async function resolveGuiHead(rt: UserRuntime, scope: StateScope): Promise<{
+  root: import('../persistence/types.js').RootAnchorRecord;
+  messages: LumiChatMessage[];
+  head: import('../head-resolver.js').HeadResolution;
+}> {
+  const root = await rt.anchors.readRoot(scope);
+  if (!root) throw new Error('GUI_STATE_NOT_INITIALIZED');
+  const messages = await spindle.chat.getMessages(scope.chatId);
+  const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
+  return { root, messages, head };
+}
+
+function sameGuiHead(
+  a: import('../head-resolver.js').HeadResolution,
+  b: import('../head-resolver.js').HeadResolution,
+): boolean {
+  return a.health === 'ok' && b.health === 'ok' &&
+    a.nodeId === b.nodeId &&
+    a.stateHash === b.stateHash &&
+    (a.variantId ?? null) === (b.variantId ?? null);
+}
+
+async function bindGuiCommit(
+  rt: UserRuntime,
+  scope: StateScope,
+  prior: import('../head-resolver.js').HeadResolution,
+  committedNodeId: string,
+): Promise<void> {
+  if (prior.variantId) {
+    const anchor = await rt.anchors.read(scope, prior.variantId);
+    if (!anchor) throw new Error('GUI_LINEAGE_ANCHOR_MISSING');
+    if (anchor.tipNodeId !== prior.nodeId) throw new Error('GUI_LINEAGE_TIP_CHANGED');
+    anchor.tipNodeId = committedNodeId;
+    anchor.updatedAt = isoNow();
+    await rt.anchors.put(anchor);
+    return;
+  }
+  const root = await rt.anchors.readRoot(scope);
+  if (!root) throw new Error('GUI_ROOT_ANCHOR_MISSING');
+  if (root.tipNodeId !== prior.nodeId) throw new Error('GUI_ROOT_TIP_CHANGED');
+  root.tipNodeId = committedNodeId;
+  root.updatedAt = isoNow();
+  await rt.anchors.putRoot(root);
 }
 
 async function buildNarrativeHistoryContext(
@@ -1226,6 +1272,159 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId) } }, userId);
     return;
   }
+  if (payload?.type === 'ffmvu_gui_get_state') {
+    const chatId = String(payload.chatId ?? '');
+    if (!chatId) {
+      spindle.sendToFrontend({ type: 'ffmvu_gui_state', ok: false, reason: 'GUI_CHAT_ID_REQUIRED' }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    try {
+      const rt = runtime(userId);
+      const root = await rt.anchors.readRoot(scope);
+      if (!root) {
+        spindle.sendToFrontend({ type: 'ffmvu_gui_state', ok: true, initialized: false, chatId }, userId);
+        return;
+      }
+      const resolved = await resolveGuiHead(rt, scope);
+      if (resolved.head.health !== 'ok') {
+        spindle.sendToFrontend({
+          type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
+          headHealth: resolved.head.health, headNodeId: resolved.head.nodeId,
+          headStateHash: resolved.head.stateHash, reason: resolved.head.reason ?? 'head unresolved',
+        }, userId);
+        return;
+      }
+      const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
+      spindle.sendToFrontend({
+        type: 'ffmvu_gui_state', ok: true, initialized: true, chatId,
+        headNodeId: materialized.nodeId, headStateHash: materialized.stateHash,
+        variantId: resolved.head.variantId ?? null,
+        generationPending: Boolean(contexts.getForScope(scope)),
+        state: materialized.state,
+      }, userId);
+    } catch (error) {
+      spindle.sendToFrontend({ type: 'ffmvu_gui_state', ok: false, chatId, reason: String(error) }, userId);
+    }
+    return;
+  }
+  if (payload?.type === 'ffmvu_gui_intent') {
+    const chatId = String(payload.chatId ?? '');
+    const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+    const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+    const requestId = String(payload.requestId ?? createId('gui'));
+    if (!chatId || !expectedHeadNodeId || !expectedHeadStateHash) {
+      spindle.sendToFrontend({ type: 'ffmvu_gui_result', ok: false, requestId, reason: 'GUI_EXPECTED_HEAD_REQUIRED' }, userId);
+      return;
+    }
+    const cfg = await config(userId);
+    if (!cfg.enabled) {
+      spindle.sendToFrontend({ type: 'ffmvu_gui_result', ok: false, requestId, chatId, reason: 'GUI_BRIDGE_DISABLED' }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    if (contexts.getForScope(scope)) {
+      spindle.sendToFrontend({ type: 'ffmvu_gui_result', ok: false, requestId, chatId, reason: 'GUI_BLOCKED_DURING_GENERATION' }, userId);
+      return;
+    }
+    try {
+      assertGuiIntent(payload.intent);
+      const rt = runtime(userId);
+      const before = await resolveGuiHead(rt, scope);
+      if (
+        before.head.health !== 'ok' ||
+        before.head.nodeId !== expectedHeadNodeId ||
+        before.head.stateHash !== expectedHeadStateHash
+      ) {
+        spindle.sendToFrontend({
+          type: 'ffmvu_gui_result', ok: false, requestId, chatId,
+          reason: 'GUI_STALE_HEAD',
+          currentHeadHealth: before.head.health,
+          currentHeadNodeId: before.head.nodeId,
+          currentHeadStateHash: before.head.stateHash,
+          currentVariantId: before.head.variantId ?? null,
+        }, userId);
+        return;
+      }
+
+      const lineageAnchorId = before.head.variantId ?? 'root';
+      const lineageAnchor = before.head.variantId ? await rt.anchors.read(scope, before.head.variantId) : null;
+      if (before.head.variantId && !lineageAnchor) throw new Error('GUI_LINEAGE_ANCHOR_MISSING');
+
+      const committed = await rt.state.commitGuiIntent(scope, {
+        expectedParentNodeId: before.head.nodeId,
+        expectedParentStateHash: before.head.stateHash,
+        intent: payload.intent,
+        anchor: {
+          lineageAnchorId,
+          ...(before.head.variantId ? { variantId: before.head.variantId } : {}),
+          ...(lineageAnchor?.messageId ? { messageId: lineageAnchor.messageId, messageRole: 'assistant' as const } : {}),
+        },
+        requestId,
+      });
+
+      // State is durable now, but it is intentionally not visible in semantic replay
+      // until the same transcript branch is proven still active.
+      const afterPhysical = await resolveGuiHead(rt, scope);
+      if (!sameGuiHead(before.head, afterPhysical.head)) {
+        publish(userId, {
+          phase: 'gui_committed_unbound', chatId, requestId,
+          committedNodeId: committed.nodeId, committedStateHash: committed.stateHash,
+          reason: 'active transcript branch changed before GUI lineage binding',
+        });
+        spindle.sendToFrontend({
+          type: 'ffmvu_gui_result', ok: false, requestId, chatId,
+          reason: 'GUI_COMMITTED_UNBOUND_BRANCH_CHANGED',
+          committedNodeId: committed.nodeId,
+          committedStateHash: committed.stateHash,
+        }, userId);
+        return;
+      }
+
+      await bindGuiCommit(rt, scope, before.head, committed.nodeId);
+      const verified = await resolveGuiHead(rt, scope);
+      if (verified.head.health !== 'ok' || verified.head.nodeId !== committed.nodeId || verified.head.stateHash !== committed.stateHash) {
+        publish(userId, {
+          phase: 'gui_binding_error', chatId, requestId,
+          committedNodeId: committed.nodeId, committedStateHash: committed.stateHash,
+          resolvedHeadHealth: verified.head.health,
+          resolvedHeadNodeId: verified.head.nodeId,
+          reason: verified.head.reason ?? 'GUI lineage binding did not become active head',
+        });
+        spindle.sendToFrontend({
+          type: 'ffmvu_gui_result', ok: false, requestId, chatId,
+          reason: 'GUI_BINDING_VERIFICATION_FAILED',
+          committedNodeId: committed.nodeId,
+          committedStateHash: committed.stateHash,
+        }, userId);
+        return;
+      }
+
+      publish(userId, {
+        phase: 'gui_commit_complete', chatId, requestId,
+        intentType: payload.intent.type,
+        lineageAnchorId,
+        variantId: before.head.variantId ?? null,
+        previousNodeId: before.head.nodeId,
+        finalNodeId: committed.nodeId,
+        finalStateHash: committed.stateHash,
+      });
+      spindle.sendToFrontend({
+        type: 'ffmvu_gui_result', ok: true, requestId, chatId,
+        intentType: payload.intent.type,
+        headNodeId: committed.nodeId,
+        headStateHash: committed.stateHash,
+        variantId: before.head.variantId ?? null,
+        state: committed.state,
+      }, userId);
+    } catch (error) {
+      publish(userId, { phase: 'gui_commit_error', chatId, requestId, error: String(error) });
+      spindle.sendToFrontend({ type: 'ffmvu_gui_result', ok: false, requestId, chatId, reason: String(error) }, userId);
+    }
+    return;
+  }
   if (payload?.type === 'ffmvu_set_enabled') {
     const enabled = payload.enabled === true;
     await setConfig(userId, { enabled });
@@ -1234,7 +1433,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.8.0 model commit pipeline armed. Assistant history receives in-world narrative timestamps and net off-screen state changes; lifecycle ambiguity still fails closed.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.9.0 bridge armed. Model lifecycle and branch-safe typed GUI intents share the same StateService journal; assistant history keeps narrative timestamps and net off-screen changes.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1274,4 +1473,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.8.0 model commit + narrative history timestamps + RecentChanges context).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.9.0 model lifecycle + branch-safe GUI intents + narrative history context).`);
