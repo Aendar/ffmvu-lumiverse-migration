@@ -89,7 +89,7 @@ async function main(): Promise<void> {
     target: { kind: 'player-avatar' },
     value: 'https://example.com/player.jpg',
   });
-  assert(playerImage.Mainchar.Image[0] === 'https://example.com/player.jpg' && playerImage.Mainchar.Image[1] === 'Image', 'player avatar URL preserves labeled tuple shape');
+  assert(playerImage.Mainchar.Image[0] === 'https://example.com/player.jpg' && playerImage.Mainchar.Image[1] === controls.Mainchar.Image[1], 'player avatar URL preserves the existing labeled tuple metadata');
 
   const familiarImage = applyGuiIntent(playerImage, {
     type: 'image.set',
