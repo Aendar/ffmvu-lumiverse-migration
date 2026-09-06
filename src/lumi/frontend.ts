@@ -130,16 +130,23 @@ export function setup(ctx: SpindleFrontendContextLite) {
       --ffsm-pink:#ff7ac8;
       --ffsm-border:rgba(0,229,255,.28);
       color:var(--lumiverse-text);
-      width:100%;
+      position:absolute;
+      left:0;
+      right:0;
+      bottom:calc(100% + 6px);
+      z-index:30;
+      width:auto;
       box-sizing:border-box;
       padding:0;
       display:none;
       min-height:0;
+      pointer-events:none;
     }
     .ffsm-app.open {
       display:block;
       height:520px;
       min-height:0;
+      pointer-events:auto;
     }
     .ffsm-panel-frame {
       width:100%;
@@ -321,6 +328,10 @@ export function setup(ctx: SpindleFrontendContextLite) {
   const panelMount = ctx.ui.mount('chat_composer_above') as HTMLElement;
   actionMount.style.display = 'contents';
   panelMount.style.display = 'contents';
+
+  const inputArea = actionMount.closest('[data-component="InputArea"]') as HTMLElement | null;
+  const previousInputOverflow = inputArea?.style.overflow ?? '';
+  if (inputArea) inputArea.style.overflow = 'visible';
 
   const toggle = make('button', 'ffsm-toolbar-btn') as HTMLButtonElement;
   toggle.type = 'button';
@@ -1320,6 +1331,10 @@ export function setup(ctx: SpindleFrontendContextLite) {
     window.removeEventListener('resize', viewportResize);
     toggle.remove();
     app.remove();
+    if (inputArea) {
+      if (previousInputOverflow) inputArea.style.overflow = previousInputOverflow;
+      else inputArea.style.removeProperty('overflow');
+    }
     removeStyle();
     ctx.dom.cleanup();
   };
