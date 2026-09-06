@@ -62,7 +62,7 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Import Hide Location.
 - [x] Import HideUpdateVar.
 - [x] Import Colorize.
-- [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.
+- [x] Patch MinimizeCombatLog `$0 -> - [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.` and import.
 - [x] Do NOT import legacy GameStartMenu.
 - [x] Do NOT import legacy StatusMenu.
 - [ ] Smoke-test rendering/order on real Lumiverse messages.
