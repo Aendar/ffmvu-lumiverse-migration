@@ -1,0 +1,21 @@
+{
+  "bridgeVersion": "0.5.1",
+  "at": "2026-09-06T10:50:14.313Z",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "phase": "stopped",
+  "chatId": "ee16b1d0-ed5e-44b7-943e-226d868e8d77",
+  "generationId": "f1aec85b-54b8-42cf-a62f-82a8505dee5b",
+  "partialContentHashPending": true,
+  "note": "No state commit. Durable stopped output, if saved by host, will fail closed as unreconciled."
+}

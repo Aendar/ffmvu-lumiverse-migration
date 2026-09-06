@@ -34,3 +34,13 @@ Additional live files:
 - `regenerate-vs-swipe-topology.json`
 
 These prove that Regenerate replaced the host assistant message, while later swipes were variants inside that replacement message. Existing-swipe navigation switched resolved semantic heads without creating a transaction.
+
+## Durable stopped-output discovery
+
+The v0.5.1 live STOP probe is stored as:
+- `stopped-v0.5.1-partial.txt`
+- `stopped-v0.5.1-runtime-status.json`
+
+Lumiverse preserved the partial assistant output after `GENERATION_STOPPED`. The captured machine envelope contains an unterminated JSONPatch/string. This fixture must never be fed into the state reducer as a completed model patch.
+
+v0.5.2 adds exact durable stopped-attempt reconciliation; a second live probe is required to prove `stopped_durable -> stopped_uncommitted`.
