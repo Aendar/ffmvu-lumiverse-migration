@@ -1,0 +1,17 @@
+{
+  "proof": "p0-u-inflight-extension-reload-fail-closed",
+  "observations": {
+    "extensionReloadedDuringGeneration": true,
+    "assistantOutputPersistedByHost": true,
+    "postReloadBridgePhase": "idle",
+    "nextUserMessageSavedInTranscript": true,
+    "nextProviderGenerationStarted": false,
+    "nextAttemptBlockedReason": "unreconciled: variant index missing for b144d52e-a229-4111-826f-9814b22bec78"
+  },
+  "assertions": {
+    "lostInMemoryAttemptNotReconstructed": true,
+    "savedAssistantWithoutAnchorIsUnreconciled": true,
+    "nextStatefulGenerationFailsClosedBeforeProvider": true,
+    "noSyntheticNoPatch": true
+  }
+}

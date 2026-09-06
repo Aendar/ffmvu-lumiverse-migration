@@ -90,4 +90,11 @@ v0.5.3 now publishes `phase: swipe_navigated` for a true existing-swipe navigati
 - `diagnosticNoPatchProbe = true` confirms the intended live probe was active.
 - Therefore no-patch + projection-refresh semantics are live-proven.
 
-Still open: extension reload during AttemptContext, Continue append semantics, and optional deeper stopped-regenerate recovery proof.
+### Live P0-U in-flight extension reload proof
+- Extension backend was reloaded while a stateful generation was in flight.
+- Lumi durably preserved the resulting assistant output, while the reloaded bridge returned to `phase=idle` with no in-memory AttemptContext.
+- A subsequent user message was saved to transcript, but Context Handler blocked the provider call with `unreconciled: variant index missing for b144d52e...`.
+- This proves the v2.4 safe rule: lost AttemptContext is not reconstructed from current head/cache; saved assistant output without proven finalize evidence is not synthesized as `no_patch`.
+- Persistent PendingAttempt remains an optional future optimization, not a v1 correctness requirement.
+
+Still open: Continue append semantics and optional deeper stopped-regenerate recovery proof.
