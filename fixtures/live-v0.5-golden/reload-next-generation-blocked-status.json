@@ -1,0 +1,20 @@
+{
+  "bridgeVersion": "0.5.3",
+  "at": "2026-09-06T12:10:21.545Z",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "phase": "blocked",
+  "chatId": "365701b0-0df5-4297-8545-36cf635f6ce9",
+  "generationId": "882b64e4-ceac-4c78-983d-37e2a7ac7f55",
+  "reason": "unreconciled: variant index missing for b144d52e-a229-4111-826f-9814b22bec78"
+}

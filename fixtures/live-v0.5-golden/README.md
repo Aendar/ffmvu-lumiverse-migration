@@ -57,3 +57,11 @@ Files:
 - `no-patch-projection-refresh-proof.json`
 
 The proof starts from a live C2 one-shot projection. The next turn intentionally emits no machine patch and finalizes as `no_patch`. No model commit is created, state hash remains unchanged, and exactly one empty system projection-refresh node converts the next binding to direct-self.
+
+## P0-U extension reload fail-closed proof
+
+Files:
+- `reload-next-generation-blocked-status.json`
+- `reload-fail-closed-proof.json`
+
+The extension was reloaded during generation. Lumi kept the assistant output, but the bridge lost its in-memory AttemptContext. The next stateful generation was blocked before provider dispatch because the durable assistant had no proven VariantIndex/Anchor finalize evidence. This is the required v2.4 fail-closed behavior.
