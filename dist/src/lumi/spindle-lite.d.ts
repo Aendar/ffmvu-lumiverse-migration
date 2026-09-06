@@ -53,6 +53,10 @@ export interface GenerationStoppedPayload {
     chatId: string;
     content: string;
 }
+export interface MessageEditedPayload {
+    chatId: string;
+    message: LumiChatMessage;
+}
 export interface SwipeEventPayload {
     chatId: string;
     action?: 'added' | 'updated' | 'deleted' | 'navigated' | string;
@@ -113,6 +117,7 @@ export interface SpindleApiLite {
     on(event: 'GENERATION_STARTED', handler: (payload: GenerationStartedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
     on(event: 'GENERATION_ENDED', handler: (payload: GenerationEndedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
     on(event: 'GENERATION_STOPPED', handler: (payload: GenerationStoppedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
+    on(event: 'MESSAGE_EDITED', handler: (payload: MessageEditedPayload, userId?: string) => void | Promise<void>): (() => void) | void;
     on(event: 'MESSAGE_SWIPED' | 'SWIPE_EDITED', handler: (payload: SwipeEventPayload, userId?: string) => void | Promise<void>): (() => void) | void;
     on(event: string, handler: (payload: any, userId?: string) => void | Promise<void>): (() => void) | void;
     onFrontendMessage(handler: (payload: any, userId: string) => void | Promise<void>): void;
