@@ -90,6 +90,12 @@ async function main(): Promise<void> {
     value: 'https://example.com/player.jpg',
   });
   assert(playerImage.Mainchar.Image[0] === 'https://example.com/player.jpg' && playerImage.Mainchar.Image[1] === controls.Mainchar.Image[1], 'player avatar URL preserves the existing labeled tuple metadata');
+  const clearedPlayerImage = applyGuiIntent(playerImage, {
+    type: 'image.set',
+    target: { kind: 'player-avatar' },
+    value: '',
+  });
+  assert(clearedPlayerImage.Mainchar.Image[0] === '' && clearedPlayerImage.Mainchar.Image[1] === controls.Mainchar.Image[1], 'switching to a browser-local image can clear a stale authoritative URL without losing tuple metadata');
 
   const familiarImage = applyGuiIntent(playerImage, {
     type: 'image.set',
