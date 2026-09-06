@@ -4,6 +4,7 @@ const parts = [
   'dist/src/shared/domain/value-utils.js',
   'dist/src/lumi/statusmenu-model.js',
   'dist/src/lumi/statusmenu-legacy-template.js',
+  'dist/src/lumi/variables-editor.js',
   'dist/src/lumi/statusmenu-legacy-view.js',
   'dist/src/lumi/frontend.js',
 ];
@@ -17,6 +18,7 @@ function stripKnownImports(_path, text) {
     '../shared/domain/value-utils.js',
     './statusmenu-model.js',
     './statusmenu-legacy-template.js',
+    './variables-editor.js',
     './statusmenu-legacy-view.js',
   ];
   let out = text;
