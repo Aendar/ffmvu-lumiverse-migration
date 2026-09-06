@@ -16,7 +16,7 @@ export function setup(ctx) {
     const row = document.createElement('div');
     row.className = 'ffmvu-row';
     const title = document.createElement('div');
-    title.innerHTML = '<div class="ffmvu-title">v0.5.3 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization, then commits a valid final JSONPatch as P1 with optional backend C2 consumption. Invalid or stale-parent patches fail closed.</div>';
+    title.innerHTML = '<div class="ffmvu-title">v0.5.4 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization, then commits a valid final JSONPatch as P1 with optional backend C2 consumption. Invalid or stale-parent patches fail closed.</div>';
     const button = document.createElement('button');
     button.className = 'ffmvu-button';
     button.textContent = 'Loading…';
@@ -25,10 +25,15 @@ export function setup(ctx) {
     probeButton.className = 'ffmvu-button';
     probeButton.textContent = 'Arm no-patch probe';
     probeButton.disabled = true;
+    const continueButton = document.createElement('button');
+    continueButton.className = 'ffmvu-button';
+    continueButton.textContent = 'Arm Continue probe';
+    continueButton.disabled = true;
     const buttonBox = document.createElement('div');
     buttonBox.style.display = 'flex';
     buttonBox.style.gap = '8px';
-    buttonBox.append(button, probeButton);
+    buttonBox.style.flexWrap = 'wrap';
+    buttonBox.append(button, probeButton, continueButton);
     row.append(title, buttonBox);
     controls.appendChild(row);
     const statusCard = document.createElement('div');
@@ -48,13 +53,16 @@ export function setup(ctx) {
             enabled = value.enabled;
         button.disabled = false;
         button.textContent = enabled ? 'Disarm commits' : 'Arm commits';
-        probeButton.disabled = !enabled || value?.noPatchProbeArmed === true;
+        probeButton.disabled = !enabled || value?.noPatchProbeArmed === true || value?.continueProbeArmed === true;
         probeButton.textContent = value?.noPatchProbeArmed === true ? 'No-patch probe armed' : 'Arm no-patch probe';
+        continueButton.disabled = !enabled || value?.continueProbeArmed === true || value?.noPatchProbeArmed === true;
+        continueButton.textContent = value?.continueProbeArmed === true ? 'Continue probe armed' : 'Arm Continue probe';
         status.textContent = JSON.stringify(value ?? {}, null, 2);
-        tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict', 'swipe_navigation_error', 'swipe_navigation_unreconciled', 'stopped_unreconciled', 'stopped_reconciliation_error'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : value?.phase === 'swipe_navigated' ? 'NAV' : value?.phase === 'stopped_durable' ? 'STOP' : enabled ? 'DEV' : null);
+        tab.setBadge(['blocked', 'unreconciled', 'failed_patch', 'commit_error', 'model_commit_conflict', 'swipe_navigation_error', 'swipe_navigation_unreconciled', 'stopped_unreconciled', 'stopped_reconciliation_error'].includes(value?.phase) ? '!' : value?.phase === 'commit_complete' ? 'OK' : value?.phase === 'swipe_navigated' ? 'NAV' : value?.phase === 'stopped_durable' ? 'STOP' : value?.phase === 'continue_probe_complete' ? 'CONT' : enabled ? 'DEV' : null);
     }
     button.addEventListener('click', () => { button.disabled = true; ctx.sendToBackend({ type: 'ffmvu_set_enabled', enabled: !enabled }); });
     probeButton.addEventListener('click', () => { probeButton.disabled = true; ctx.sendToBackend({ type: 'ffmvu_arm_no_patch_probe' }); });
+    continueButton.addEventListener('click', () => { continueButton.disabled = true; ctx.sendToBackend({ type: 'ffmvu_arm_continue_probe' }); });
     const unsub = ctx.onBackendMessage((payload) => { if (payload?.type === 'ffmvu_status')
         render(payload.status); });
     const refresh = () => ctx.sendToBackend({ type: 'ffmvu_get_status' });
