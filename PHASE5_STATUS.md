@@ -80,4 +80,14 @@ v0.5.3 now publishes `phase: swipe_navigated` for a true existing-swipe navigati
 - Final runtime status echoes `diagnosticNoPatchProbe=true` so the live result is attributable to the probe.
 - Intended live target: run from a non-direct/one-shot projection binding and verify `status=no_patch` plus backend `projection-refresh`.
 
-Still open: live no-patch refresh proof, extension reload during AttemptContext, Continue append semantics, and optional deeper stopped-regenerate recovery proof.
+### Live v0.5.3 no-patch projection-refresh proof
+- Turn 1 ended on consumption node `node_44465...` with `nextPromptViewHash = edb68edf...`.
+- The diagnostic no-patch turn received exactly that hash: `deliveredPromptViewHash = edb68edf...`.
+- It finalized as `status = no_patch`, `modelCommitId = null`.
+- Exactly one system node `node_879c...` was committed and became `finalNodeId`; this is the empty `projection-refresh`.
+- `finalStateHash` stayed exactly `2306d9...`, proving no semantic state mutation.
+- `nextPromptViewHash` changed to `a8c7e478...`, proving the projection binding was refreshed from one-shot/pre-consumption delivery to direct-self/post-consumption projection.
+- `diagnosticNoPatchProbe = true` confirms the intended live probe was active.
+- Therefore no-patch + projection-refresh semantics are live-proven.
+
+Still open: extension reload during AttemptContext, Continue append semantics, and optional deeper stopped-regenerate recovery proof.

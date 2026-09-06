@@ -48,3 +48,12 @@ v0.5.2 live proof is stored as:
 - `stopped-v0.5.2-blocked-next-generation.json`
 
 Together they prove `stopped_durable -> stopped_uncommitted`: the stopped partial is persisted as evidence without a state transaction, and a subsequent normal stateful generation is blocked until explicit resolution.
+
+## v0.5.3 no-patch / projection-refresh proof
+
+Files:
+- `no-patch-turn1-runtime-status.json`
+- `no-patch-probe-runtime-status.json`
+- `no-patch-projection-refresh-proof.json`
+
+The proof starts from a live C2 one-shot projection. The next turn intentionally emits no machine patch and finalizes as `no_patch`. No model commit is created, state hash remains unchanged, and exactly one empty system projection-refresh node converts the next binding to direct-self.
