@@ -13,6 +13,7 @@ import { EVENT_FORMAT_VERSION, PORTABLE_SNAPSHOT_FORMAT } from '../persistence/t
 import { ScopeMutex } from './scope-mutex.js';
 import { applyGameStartPayload } from '../shared/domain/gamestart.js';
 import { extractLegacyImport } from '../shared/domain/snapshot.js';
+import { applyGuiIntent, buildGuiIntentPatch } from '../shared/domain/gui-intents.js';
 export class StateService {
     storage;
     reducers;
@@ -175,6 +176,33 @@ export class StateService {
             },
         });
     }
+    async commitGuiIntent(scope, input) {
+        if (!input.anchor.lineageAnchorId)
+            throw new Error('GUI_LINEAGE_ANCHOR_REQUIRED');
+        const parent = await this.materializer.materialize(scope, input.expectedParentNodeId);
+        if (parent.stateHash !== input.expectedParentStateHash) {
+            throw new Error('GUI_COMMIT_CONFLICT: expected parent state hash mismatch');
+        }
+        const rawNext = applyGuiIntent(parent.state, input.intent);
+        const reducerArtifact = await this.store.readNode(scope, input.expectedParentNodeId);
+        const reducer = this.reducers.get(reducerArtifact.value.reducerVersion);
+        const next = reducer.normalize(rawNext);
+        const errors = reducer.validate(next);
+        if (errors.length)
+            throw new Error('Invalid GUI intent result: ' + errors.join('; '));
+        const patch = buildGuiIntentPatch(parent.state, next);
+        if (!patch.length)
+            throw new Error('GUI_INTENT_NO_CHANGE');
+        return this.commitPatch(scope, {
+            parentNodeId: input.expectedParentNodeId,
+            expectedParentStateHash: input.expectedParentStateHash,
+            patch,
+            kind: 'gui',
+            anchor: structuredClone(input.anchor),
+            requestId: input.requestId,
+            note: 'gui-intent:' + input.intent.type,
+        });
+    }
     async commitPatch(scope, input) {
         return this.mutex.run(scope, async () => {
             assertPatchResourceLimits(input.patch);
@@ -183,8 +211,12 @@ export class StateService {
                 throw new Error('STORE_NOT_WRITABLE: ' + physical.status);
             if (!await this.store.isNodeCommitted(scope, input.parentNodeId))
                 throw new Error('PARENT_NOT_COMMITTED');
+            const parentArtifact = await this.store.readNode(scope, input.parentNodeId);
             const parent = await this.materializer.materialize(scope, input.parentNodeId);
-            const reducer = this.reducers.get(LEGACY_REDUCER_VERSION);
+            if (input.expectedParentStateHash && parent.stateHash !== input.expectedParentStateHash) {
+                throw new Error('COMMIT_CONFLICT: expected parent state hash mismatch');
+            }
+            const reducer = this.reducers.get(parentArtifact.value.reducerVersion);
             const nextState = reducer.normalize(applyJsonPatch(parent.state, input.patch));
             const errors = reducer.validate(nextState);
             if (errors.length)
@@ -192,13 +224,15 @@ export class StateService {
             const resultStateHash = await canonicalHash(nextState);
             const commitId = createId('node');
             const transactionId = createId('tx');
-            const projection = this.projections.get(LEGACY_PROJECTION_VERSION).build(nextState);
+            const projectionVersion = parentArtifact.value.projectionBinding.projectionVersion;
+            const promptProtocolVersion = parentArtifact.value.projectionBinding.promptProtocolVersion;
+            const projection = this.projections.get(projectionVersion).build(nextState);
             const promptViewHash = await canonicalHash(projection);
             const patchHash = await canonicalHash(input.patch);
             const commit = {
                 eventFormatVersion: EVENT_FORMAT_VERSION, id: commitId, scope, kind: input.kind, anchor: structuredClone(input.anchor ?? {}), parentNodeId: parent.nodeId, parentStateHash: parent.stateHash,
-                patch: structuredClone(input.patch), patchHash, reducerVersion: LEGACY_REDUCER_VERSION, resultStateHash,
-                projectionBinding: { sourceKind: 'node', sourceNodeId: commitId, sourceStateHash: resultStateHash, projectionVersion: LEGACY_PROJECTION_VERSION, promptProtocolVersion: 'ffmvu-model-state-v1', promptViewHash },
+                patch: structuredClone(input.patch), patchHash, reducerVersion: parentArtifact.value.reducerVersion, resultStateHash,
+                projectionBinding: { sourceKind: 'node', sourceNodeId: commitId, sourceStateHash: resultStateHash, projectionVersion, promptProtocolVersion, promptViewHash },
                 transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash,
                 ...(input.requestId ? { requestId: input.requestId } : {}), ...(input.note ? { note: input.note } : {}), createdAt: isoNow(),
             };
