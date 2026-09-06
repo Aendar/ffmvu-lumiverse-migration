@@ -90,3 +90,30 @@ After migration/cutover stability, revisit as separate work:
 - any broader visual redesign.
 
 These later changes must not weaken D2/D3/D4 continuity semantics.
+
+
+## D6 — Editable Variables tree is a first-class maintenance tool
+
+A separate **Variables** tab should expose the authoritative FFMVU state as a human-friendly editable tree.
+
+Primary UX:
+- click a primitive value to edit it;
+- rename an object key without manually writing JSON paths;
+- delete an entry with confirmation;
+- add a child entry with a simple form;
+- when possible, offer an existing sibling as a structure/template for a new entry;
+- search/filter the tree;
+- keep raw JSON/path details secondary rather than making them the normal workflow.
+
+Typical intended uses include renaming currency/item keys, correcting descriptions or quantities, editing plot/GM-note records, and adding small state entries without waiting for the model.
+
+Architecture:
+- no direct browser-side `stat_data` replacement;
+- mutations must go through StateService with exact expected semantic head + state hash;
+- implement path-level GUI intents (set / rename / delete / add) and derive ordinary JSONPatch commits;
+- normalize + validate the whole resulting state before commit;
+- protect root/internal structural keys from destructive rename/delete;
+- schema-required fields may be edited only when the resulting state still validates;
+- every successful Variables edit is an ordinary `kind=gui` semantic ancestor and therefore participates in RecentChanges / branch behavior normally.
+
+This tab is intentionally a practical maintenance editor, not a developer/debug JSON editor.
