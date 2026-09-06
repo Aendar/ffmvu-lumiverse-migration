@@ -92,13 +92,24 @@ export function setup(ctx) {
       --ffsm-pink:#ff7ac8;
       --ffsm-border:rgba(0,229,255,.28);
       color:var(--lumiverse-text);
-      min-height:100%;
+      width:100%;
+      box-sizing:border-box;
       padding:8px;
+      display:none;
+    }
+    .ffsm-app.open {
+      display:block;
+      height:520px;
+      max-height:calc(100vh - 190px);
+      min-height:360px;
     }
     .ffsm-shell {
+      height:100%;
+      box-sizing:border-box;
       border:1px solid var(--ffsm-border);
       border-radius:10px;
-      overflow:hidden;
+      overflow:auto;
+      overscroll-behavior:contain;
       background:linear-gradient(150deg,rgba(0,31,63,.88),rgba(0,74,83,.72));
       box-shadow:0 12px 34px rgba(0,0,0,.2);
     }
@@ -119,6 +130,21 @@ export function setup(ctx) {
     .ffsm-btn:disabled { opacity:.4;cursor:not-allowed; }
     .ffsm-btn-danger { color:#ff9a9a;border-color:rgba(255,100,100,.35);background:rgba(255,90,90,.08); }
     .ffsm-btn-pink { color:#ffd9ef;border-color:rgba(255,122,200,.4);background:rgba(255,122,200,.1); }
+    .ffsm-toolbar-btn {
+      display:flex;align-items:center;justify-content:center;width:30px;height:26px;
+      border:0;border-radius:var(--lcs-radius-xs,6px);background:transparent;
+      color:var(--lumiverse-text-dim,rgba(230,230,240,.4));cursor:pointer;padding:0;
+      transition:color 120ms ease,background 120ms ease;
+    }
+    .ffsm-toolbar-btn:hover,.ffsm-toolbar-btn.active {
+      color:var(--lumiverse-text,rgba(230,230,240,.92));
+      background:var(--lumiverse-fill,rgba(255,255,255,.06));
+    }
+    .ffsm-toolbar-btn.active {
+      color:var(--ffsm-accent);
+      background:rgba(0,229,255,.1);
+    }
+    .ffsm-toolbar-btn svg { width:14px;height:14px;display:block; }
     .ffsm-statusline {
       padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.07);
       color:var(--lumiverse-text-muted);font-size:10px;display:flex;gap:8px;flex-wrap:wrap;
@@ -207,22 +233,26 @@ export function setup(ctx) {
     .ffsm-diag summary { cursor:pointer;padding:7px;color:var(--lumiverse-text-muted);font-size:9px; }
     .ffsm-diag pre { margin:0;padding:8px;max-height:220px;overflow:auto;font-size:8px;white-space:pre-wrap;word-break:break-word; }
     @media (max-width:560px) {
+      .ffsm-app.open { height:46vh;min-height:280px;max-height:520px; }
       .ffsm-grid2,.ffsm-grid3,.ffsm-formgrid { grid-template-columns:1fr; }
       .ffsm-head { flex-direction:column; }
       .ffsm-head-actions { justify-content:flex-start; }
       .ffsm-hph { grid-template-columns:repeat(2,minmax(0,1fr)); }
     }
   `);
-    const tab = ctx.ui.registerDrawerTab({
-        id: 'ffmvu-status',
-        title: 'FFMVU Status',
-        shortName: 'FFMVU',
-        headerTitle: 'FFMVU',
-        description: 'Native FF+MVU status, wardrobe, inventory, equipment and state',
-        keywords: ['mvu', 'status', 'wardrobe', 'inventory', 'equipment', 'state'],
-    });
+    const actionMount = ctx.ui.mount('chat_actions');
+    const panelMount = ctx.ui.mount('chat_composer_above');
+    actionMount.style.display = 'contents';
+    panelMount.style.display = 'contents';
+    const toggle = make('button', 'ffsm-toolbar-btn');
+    toggle.type = 'button';
+    toggle.title = 'FF + MVU StatusMenu';
+    toggle.setAttribute('aria-label', 'FF + MVU StatusMenu');
+    toggle.setAttribute('aria-pressed', 'false');
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>';
+    actionMount.appendChild(toggle);
     const app = make('div', 'ffsm-app');
-    tab.root.appendChild(app);
+    panelMount.appendChild(app);
     let activeChatId = null;
     let snapshot = null;
     let runtimeStatus = {};
@@ -233,6 +263,22 @@ export function setup(ctx) {
     let equipTargetOwnerId = 'player';
     let ffSearch = '';
     let notice = '';
+    let panelOpen = false;
+    let legacyImportOpen = false;
+    let legacyImportText = '';
+    function syncPanelVisibility() {
+        app.classList.toggle('open', panelOpen);
+        toggle.classList.toggle('active', panelOpen);
+        toggle.setAttribute('aria-pressed', String(panelOpen));
+    }
+    toggle.addEventListener('click', () => {
+        panelOpen = !panelOpen;
+        syncPanelVisibility();
+        if (panelOpen) {
+            ctx.sendToBackend({ type: 'ffmvu_get_status' });
+            requestState();
+        }
+    });
     function activeState() {
         return snapshot?.ok && snapshot.initialized && snapshot.state ? snapshot.state : null;
     }
@@ -732,6 +778,54 @@ export function setup(ctx) {
         const intro = card('New Game · GameStart v1.4');
         intro.appendChild(make('div', 'ffsm-head-sub', 'Core attributes: STR/AGI/CON/INT/WIS start at 5 and share up to 50 distributable points. Charisma is separate: 80–100.'));
         content.appendChild(intro);
+        const importCard = card('Continue Existing FF+MVU Save');
+        importCard.appendChild(make('div', 'ffsm-head-sub', 'Tier-1 legacy import. Paste the wrapper containing stat_data and, when available, ff_mvu_prompt_view + ff_mvu_snapshot_meta. The current Lumiverse transcript through its last message is treated as already represented by this snapshot.'));
+        const importToggle = make('button', 'ffsm-btn', legacyImportOpen ? 'Hide Legacy Import' : 'Import Legacy Save');
+        importToggle.type = 'button';
+        importToggle.style.marginTop = '8px';
+        importToggle.disabled = busy;
+        importToggle.addEventListener('click', () => {
+            legacyImportOpen = !legacyImportOpen;
+            render();
+        });
+        importCard.appendChild(importToggle);
+        if (legacyImportOpen) {
+            const legacyText = make('textarea', 'ffsm-textarea');
+            legacyText.placeholder = '{ "stat_data": { ... }, "ff_mvu_prompt_view": { ... }, "ff_mvu_snapshot_meta": { ... } }';
+            legacyText.value = legacyImportText;
+            legacyText.style.minHeight = '150px';
+            legacyText.addEventListener('input', () => { legacyImportText = legacyText.value; });
+            const importButton = make('button', 'ffsm-btn', 'Import as Legacy Base');
+            importButton.type = 'button';
+            importButton.style.width = '100%';
+            importButton.style.marginTop = '8px';
+            importButton.disabled = !enabled || busy;
+            importButton.addEventListener('click', () => {
+                if (!activeChatId || busy || !enabled)
+                    return;
+                let legacy;
+                try {
+                    legacy = JSON.parse(legacyText.value);
+                }
+                catch (error) {
+                    notice = 'Legacy JSON parse failed: ' + String(error);
+                    render();
+                    return;
+                }
+                legacyImportText = legacyText.value;
+                busy = true;
+                notice = 'Importing authoritative legacy state…';
+                render();
+                ctx.sendToBackend({
+                    type: 'ffmvu_import_legacy',
+                    chatId: activeChatId,
+                    requestId: requestId('legacy'),
+                    legacy,
+                });
+            });
+            importCard.append(legacyText, importButton);
+        }
+        content.appendChild(importCard);
         const form = document.createElement('form');
         form.className = 'ffsm-card';
         const grid = make('div', 'ffsm-formgrid');
@@ -904,7 +998,7 @@ export function setup(ctx) {
                 enabled = payload.status.enabled;
             const phase = String(payload.status?.phase ?? '');
             if (payload.status?.chatId === activeChatId && [
-                'commit_complete', 'swipe_navigated', 'gui_commit_complete', 'new_game_complete',
+                'commit_complete', 'swipe_navigated', 'gui_commit_complete', 'new_game_complete', 'legacy_import_complete',
                 'continue_commit_complete', 'no_patch', 'stopped_durable',
             ].includes(phase))
                 requestState();
@@ -970,6 +1064,33 @@ export function setup(ctx) {
                 notice = String(payload.reason ?? 'New Game failed') + errors;
                 render();
             }
+            return;
+        }
+        if (payload?.type === 'ffmvu_legacy_import_result') {
+            if (payload.chatId !== activeChatId)
+                return;
+            busy = false;
+            if (payload.ok) {
+                snapshot = {
+                    ok: true,
+                    initialized: true,
+                    chatId: payload.chatId,
+                    headNodeId: payload.headNodeId,
+                    headStateHash: payload.headStateHash,
+                    variantId: null,
+                    generationPending: false,
+                    state: payload.state,
+                };
+                legacyImportOpen = false;
+                legacyImportText = '';
+                notice = 'Legacy FF+MVU state imported.';
+                activeTab = 'overview';
+                render();
+            }
+            else {
+                notice = String(payload.reason ?? 'Legacy import failed');
+                render();
+            }
         }
     });
     const activeChatUnsub = ctx.state.subscribe('chat.active', value => {
@@ -987,22 +1108,17 @@ export function setup(ctx) {
         render();
         requestState();
     });
-    const activateUnsub = tab.onActivate(() => {
-        const active = ctx.state.get('chat.active');
-        activeChatId = active?.chatId ?? null;
-        ctx.sendToBackend({ type: 'ffmvu_get_status' });
-        requestState();
-    });
     const initial = ctx.state.get('chat.active');
     activeChatId = initial?.chatId ?? null;
+    syncPanelVisibility();
     render();
     ctx.sendToBackend({ type: 'ffmvu_get_status' });
     requestState();
     return () => {
         backendUnsub();
         activeChatUnsub();
-        activateUnsub();
-        tab.destroy();
+        toggle.remove();
+        app.remove();
         removeStyle();
         ctx.dom.cleanup();
     };

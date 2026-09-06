@@ -23,7 +23,7 @@
 
 ## DONE in v0.10 — playable UI foundation
 
-- [x] Persistent native Spindle Drawer StatusMenu.
+- [x] Native StatusMenu UI (v0.10 Drawer foundation; v0.11 composer-mounted toggle/panel).
 - [x] Active-chat / active-semantic-branch state loading.
 - [x] Overview: HP/MP/ST, World, character, avatar, quests.
 - [x] HPH overview from Narrative.Scene.HPH.player.
@@ -43,16 +43,25 @@
 
 - [x] Portability of all supplied legacy regexes reviewed.
 - [x] Colorize CSS dependency absorbed by v0.10.
-- [ ] Import SFX · Warm Accent.
-- [ ] Import HideCombatCalc.
-- [ ] Import HideStoryAnalysis.
-- [ ] Import Hide Location.
-- [ ] Import HideUpdateVar.
-- [ ] Import Colorize.
-- [ ] Patch MinimizeCombatLog $0 -> $& and import.
-- [ ] Do NOT import legacy GameStartMenu.
-- [ ] Do NOT import legacy StatusMenu.
+- [x] Import SFX · Warm Accent.
+- [x] Import HideCombatCalc.
+- [x] Import HideStoryAnalysis.
+- [x] Import Hide Location.
+- [x] Import HideUpdateVar.
+- [x] Import Colorize.
+- [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import.
+- [x] Do NOT import legacy GameStartMenu.
+- [x] Do NOT import legacy StatusMenu.
 - [ ] Smoke-test rendering/order on real Lumiverse messages.
+
+## DONE in v0.11 — composer UI + Tier-1 legacy import plumbing
+
+- [x] StatusMenu entry moved from Drawer to the native chat action row.
+- [x] Same StatusMenu design mounted above the composer with a fixed-height scroll container.
+- [x] Tier-1 legacy import RPC wired to StateService.importLegacyState.
+- [x] Legacy import UI accepts stat_data + exact ff_mvu_prompt_view + snapshot metadata wrapper.
+- [ ] Live-test composer mount on the user's current Lumiverse build.
+- [ ] Import the user's real Turn 109 save and verify first post-import MODEL_STATE continuity.
 
 ## Safe to start now — short gameplay tests
 
@@ -70,7 +79,7 @@ Use disposable/short chats first:
 
 ## Remaining before a permanent long campaign / production cutover
 
-- [ ] Live-test v0.10 native StatusMenu against a real migrated state.
+- [ ] Live-test v0.11 composer-mounted StatusMenu against a real migrated state.
 - [ ] Add typed writes for currently read-only legacy controls if still wanted:
   - Skills / Talents;
   - Quests;

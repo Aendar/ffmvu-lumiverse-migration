@@ -176,3 +176,13 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - New Game is native and calls `StateService.startNewGame`; it follows GameStart v1.4 source-of-truth: STR/AGI/CON/INT/WIS base 5 + up to 50 distributed points, Charisma separately constrained to 80–100.
 - The old Colorize palette is now extension-owned host CSS. The regex can keep emitting `--npc-color`; SillyTavern-only `#chat .mes_text` selectors are no longer required.
 - Diagnostics remain available in a collapsed section instead of occupying the whole extension tab.
+
+
+# Phase 10/11 cutover UI — Composer StatusMenu + Tier-1 legacy import (v0.11.0)
+
+- The v0.10 Drawer-only entry is replaced by host mount points `chat_actions` and `chat_composer_above`.
+- A compact FFMVU button lives in the native chat action row; it toggles the existing StatusMenu without changing its tab/card design.
+- The composer panel has a fixed 520px desktop height (viewport-capped) and scrolls internally, so tab changes do not resize the composer.
+- Tier-1 legacy import is now exposed through frontend/backend RPC and still delegates authoritative mutation to `StateService.importLegacyState`.
+- The import path refuses already initialized chats and in-flight generations, computes a current-chat TranscriptBaseBoundary, and preserves exact legacy `ff_mvu_prompt_view` as the existing base seed path when supplied.
+- Regex imports were completed in Lumiverse; real-message visual/order smoke-test remains pending.

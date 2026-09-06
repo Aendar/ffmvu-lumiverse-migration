@@ -89,7 +89,10 @@ export interface SpindleFrontendStateLite {
 }
 
 export interface SpindleFrontendContextLite {
-  ui: { registerDrawerTab(options: { id: string; title: string; shortName?: string; description?: string; keywords?: string[]; headerTitle?: string; iconSvg?: string }): FrontendDrawerTab };
+  ui: {
+    mount(point: string): Element;
+    registerDrawerTab(options: { id: string; title: string; shortName?: string; description?: string; keywords?: string[]; headerTitle?: string; iconSvg?: string }): FrontendDrawerTab;
+  };
   dom: { addStyle(css: string): () => void; cleanup(): void };
   state: SpindleFrontendStateLite;
   sendToBackend(payload: unknown): void;
