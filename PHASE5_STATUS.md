@@ -1,4 +1,4 @@
-# Phase 5 / Model Commit Pipeline Status — v0.5.1
+# Phase 5 / Model Commit Pipeline Status — v0.5.2
 
 Status: **LIVE NORMAL-GENERATION, REGENERATE REPLACEMENT-BRANCH, RIGHT-EDGE SWIPE GENERATION, AND EXISTING-SWIPE NAVIGATION PARITY PROVEN.**
 
@@ -45,10 +45,10 @@ This closes live parity for the basic normal-generation chain:
 
 The first manual "swipe right" at the end of the swipe list triggered a new model generation, producing another sibling commit from the same pre-message projection. That is branch-generation evidence, not navigation-only evidence.
 
-v0.5.1 now publishes `phase: swipe_navigated` for a true existing-swipe navigation event, including `variantId`, `headNodeId`, `headStateHash`, `headHealth`, and `noStateTransaction: true`. This makes navigation-only head changes directly observable without requiring another generation.
+v0.5.2 now publishes `phase: swipe_navigated` for a true existing-swipe navigation event, including `variantId`, `headNodeId`, `headStateHash`, `headHealth`, and `noStateTransaction: true`. This makes navigation-only head changes directly observable without requiring another generation.
 
 ### Existing-swipe navigation
-- v0.5.1 live navigation from swipe 0 -> 1 selected `variant_dbed...` / `node_f2a...` with `headHealth = ok` and `noStateTransaction = true`.
+- v0.5.2 live navigation from swipe 0 -> 1 selected `variant_dbed...` / `node_f2a...` with `headHealth = ok` and `noStateTransaction = true`.
 - Navigation back 1 -> 0 selected `variant_d9f...` / `node_96cc...` with the same guarantees.
 - No generation/commit identifiers were created by navigation.
 
@@ -59,4 +59,11 @@ v0.5.1 now publishes `phase: swipe_navigated` for a true existing-swipe navigati
 - The replaced original P2 branch remains durable in the semantic DAG even though the current Lumi swipe UI does not expose a route back to it in this observation.
 - See `docs/LUMIVERSE_TRANSCRIPT_TOPOLOGY.md`.
 
-Still open: no-patch live refresh, stopped durable output recovery, extension reload during AttemptContext, and Continue append semantics.
+### Durable stopped-output probe
+- v0.5.1 live probe proved that Lumiverse preserves a partial assistant output after `GENERATION_STOPPED`.
+- The captured partial contained an unterminated `<JSONPatch>` and therefore demonstrates why partial stream output must never be state-committed.
+- v0.5.2 records a durable stopped variant as immutable `TranscriptAttempt.status="stopped"` + `AnchorRecord.status="stopped"`, with `modelCommitId=null` and no `ChatStoreRevision`.
+- Exact target `messageId` and `targetSwipeId` are carried from `GENERATION_STARTED`; if identity cannot be proven, no stopped/no_patch evidence is fabricated.
+- An active stopped variant resolves as `stopped_uncommitted` and blocks normal stateful continuation until regenerate/delete/repair.
+
+Still open: live v0.5.2 stopped reconciliation proof, no-patch live refresh, extension reload during AttemptContext, and Continue append semantics.
