@@ -3,6 +3,7 @@ import type { GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusItems, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
+import { renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
 
 export type LegacyStatusTab =
   | 'overview'
@@ -12,7 +13,8 @@ export type LegacyStatusTab =
   | 'equipment'
   | 'items'
   | 'others'
-  | 'ffstate';
+  | 'ffstate'
+  | 'variables';
 
 export interface LegacyStatusViewOptions {
   state: FFMVUState;
@@ -21,6 +23,8 @@ export interface LegacyStatusViewOptions {
   mutationDisabled: boolean;
   onTab(tab: LegacyStatusTab): void;
   onOwner(ownerId: string): void;
+  variablesSearch: string;
+  onVariablesSearch(value: string): void;
   onIntent(intent: GuiIntent): void;
   onUnsupported(action: string): void;
 }
@@ -34,11 +38,12 @@ const TAB_IDS: Record<LegacyStatusTab, string> = {
   items: 'tab-tab-1770205420551',
   others: 'tab-tab-1770205502569',
   ffstate: 'tab-ff-state',
+  variables: 'tab-variables',
 };
 
 const TAB_ORDER: LegacyStatusTab[] = [
   'overview', 'attributes', 'familiars', 'wardrobe',
-  'equipment', 'items', 'others', 'ffstate',
+  'equipment', 'items', 'others', 'ffstate', 'variables',
 ];
 
 const EMPTY_TEXT: Record<string, string> = {
@@ -112,7 +117,8 @@ function shadowCss(): string {
     + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
     + '.tab-content{min-height:0;}'
     + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
-    + 'button,input,textarea,select{font-family:inherit;}';
+    + 'button,input,textarea,select{font-family:inherit;}'
+    + VARIABLES_EDITOR_CSS;
 }
 
 function bindValues(root: ParentNode, data: unknown): void {
@@ -823,6 +829,29 @@ function renderFfState(shadow: ShadowRoot, narrative: unknown): void {
   buttons[1]?.addEventListener('click', () => root.querySelectorAll<HTMLDetailsElement>('details').forEach(details => { details.open = false; }));
 }
 
+function installVariablesTab(shadow: ShadowRoot, options: LegacyStatusViewOptions): void {
+  const nav = shadow.querySelector<HTMLElement>('.tab-nav');
+  const container = shadow.querySelector<HTMLElement>('.status-container');
+  if (!nav || !container) return;
+
+  const button = document.createElement('div');
+  button.className = 'tab-btn';
+  button.textContent = 'Variables';
+  nav.appendChild(button);
+
+  const tab = document.createElement('div');
+  tab.id = 'tab-variables';
+  tab.className = 'tab-content';
+  tab.appendChild(renderVariablesEditor(shadow, {
+    state: options.state,
+    mutationDisabled: options.mutationDisabled,
+    search: options.variablesSearch,
+    onSearch: options.onVariablesSearch,
+    onIntent: options.onIntent,
+  }));
+  container.appendChild(tab);
+}
+
 function selectInitialTab(shadow: ShadowRoot, options: LegacyStatusViewOptions): void {
   const select = (tab: LegacyStatusTab, notify: boolean) => {
     shadow.querySelectorAll<HTMLElement>('.tab-content').forEach(element => element.classList.remove('active'));
@@ -853,6 +882,7 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
   body.className = 'status-body';
   body.innerHTML = LEGACY_STATUS_BODY_HTML;
   shadow.append(style, body);
+  installVariablesTab(shadow, options);
 
   shadow.querySelectorAll<HTMLElement>('[onclick]').forEach(element => element.removeAttribute('onclick'));
   bindValues(shadow, options.state);
