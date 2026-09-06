@@ -17,7 +17,7 @@ import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } fr
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.12.2';
+const BRIDGE_VERSION = '0.12.3';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -1465,7 +1465,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             continueProbeUsers.delete(userId);
         }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.12.2 bridge armed. Composer-mounted StatusMenu, New Game and legacy import use the same branch-aware StateService journal as model generations.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.12.3 bridge armed. Composer-mounted StatusMenu, New Game and legacy import use the same branch-aware StateService journal as model generations.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1504,5 +1504,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.12.2 canonical StatusMenu + legacy import + branch-safe GUI intents + narrative history context).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.12.3 canonical StatusMenu + legacy import + branch-safe GUI intents + narrative history context).`);
 //# sourceMappingURL=backend.js.map
