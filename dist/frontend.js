@@ -975,7 +975,16 @@ function renderList(shadow, container, rawData, owner, options) {
             const qty = qtyValue !== undefined && Number(qtyValue) >= 1 ? 'x' + String(qtyValue) : '';
             setSlot(fragment, 'title', title);
             setSlot(fragment, 'name', title);
-            setSlot(fragment, 'desc', desc);
+            if (listType === 'inventory') {
+                const hiddenDesc = fragment.querySelector('[data-slot="desc"]');
+                if (hiddenDesc) {
+                    hiddenDesc.textContent = desc;
+                    hiddenDesc.style.display = 'none';
+                }
+            }
+            else {
+                setSlot(fragment, 'desc', desc);
+            }
             setSlot(fragment, 'qty', qty);
             setSlot(fragment, 'difficulty', statusText(itemRecord.Difficulty ?? itemRecord.difficulty, ''));
             setSlot(fragment, 'reward-text', statusText(itemRecord.Reward ?? itemRecord.reward, ''));
