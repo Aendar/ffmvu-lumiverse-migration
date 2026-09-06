@@ -56,7 +56,7 @@ function record(value: unknown): MutableRecord {
   return isRecord(value) ? value : {};
 }
 
-function tupleValue(value: unknown): unknown {
+function legacyTupleValue(value: unknown): unknown {
   return Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string' ? value[0] : value;
 }
 
@@ -66,7 +66,7 @@ function getPath(root: unknown, path: string): unknown {
     if (!isRecord(value) && !Array.isArray(value)) return undefined;
     value = (value as Record<string, unknown>)[part];
   }
-  return tupleValue(value);
+  return legacyTupleValue(value);
 }
 
 function numberAt(root: unknown, path: string): number | null {
@@ -89,7 +89,7 @@ function setSlot(fragment: ParentNode, name: string, value: string): void {
 }
 
 function describe(raw: unknown): string {
-  const value = tupleValue(raw);
+  const value = legacyTupleValue(raw);
   if (value === null || value === undefined) return '';
   if (!isRecord(value)) return String(value);
   for (const key of ['Desc', 'description', 'name', 'type']) {
@@ -231,7 +231,7 @@ function showImage(root: ShadowRoot, src: string): void {
 }
 
 function formatDetail(container: HTMLElement, value: unknown, depth = 0): void {
-  const raw = tupleValue(value);
+  const raw = legacyTupleValue(value);
   if (!isRecord(raw) && !Array.isArray(raw)) {
     container.appendChild(document.createTextNode(raw === null || raw === undefined ? 'null' : String(raw)));
     return;
@@ -247,7 +247,7 @@ function formatDetail(container: HTMLElement, value: unknown, depth = 0): void {
     keyElement.textContent = key + ':';
     const valueElement = document.createElement('span');
     valueElement.className = 'detail-val';
-    if (isRecord(tupleValue(child)) || Array.isArray(tupleValue(child))) {
+    if (isRecord(legacyTupleValue(child)) || Array.isArray(legacyTupleValue(child))) {
       formatDetail(valueElement, child, depth + 1);
     } else {
       valueElement.textContent = statusText(child, 'null');
@@ -362,7 +362,7 @@ function renderList(
   const template = shadow.getElementById(templateId) as HTMLTemplateElement | null;
   if (!template) return;
 
-  const data = asRecord(tupleValue(rawData));
+  const data = asRecord(legacyTupleValue(rawData));
   const entries = Object.entries(data).filter(([key]) => !['$meta', '$key', 'template'].includes(key));
   container.replaceChildren();
   container.className = listType === 'inventory' ? 'list-inventory-view' : listType === 'grid' ? 'list-grid-view' : '';
@@ -386,7 +386,7 @@ function renderList(
     const visible = paged ? entries.slice(page * pageSize, page * pageSize + pageSize) : entries;
     for (const [key, raw] of visible) {
       const fragment = template.content.cloneNode(true) as DocumentFragment;
-      const itemRecord = record(tupleValue(raw));
+      const itemRecord = record(legacyTupleValue(raw));
       const name = statusText(itemRecord.Name ?? itemRecord.name, key);
       const title = listType === 'inventory' || listType === 'grid' ? name : key;
       const desc = describe(raw);
