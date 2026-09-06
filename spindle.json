@@ -1,11 +1,11 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with portable snapshots, narrative history context, and branch-safe typed GUI intents for Outfit, Inventory, and Equipment. GUI mutations commit through StateService with optimistic state-hash checks and lineage-scoped gui nodes.",
+  "description": "FF+MVU Lumiverse migration bridge with native branch-aware StatusMenu/New Game UI, portable snapshots, narrative history context, and typed GUI intents for Outfit, Inventory, and Equipment.",
   "permissions": [
     "context_handler",
     "interceptor",
