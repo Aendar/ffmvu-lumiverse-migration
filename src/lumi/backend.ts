@@ -17,7 +17,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.5.1';
+const BRIDGE_VERSION = '0.5.2';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -258,6 +258,159 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
   }
 }
 
+async function reconcileStoppedGeneration(payload: GenerationStoppedPayload): Promise<void> {
+  const pending = contexts.claimFinalization(payload.generationId);
+  if (!pending) return;
+  const userId = pending.scope.userId;
+
+  try {
+    const rt = runtime(userId);
+    const rawPartial = String(payload.content ?? '');
+    const rawGenerationHash = await canonicalHash(rawPartial);
+    const messages = await spindle.chat.getMessages(payload.chatId);
+
+    let saved = pending.targetMessageId
+      ? messages.find(message => message.id === pending.targetMessageId && message.role === 'assistant')
+      : undefined;
+
+    if (!saved && rawPartial) {
+      const exactMatches = messages.filter(message => {
+        if (message.role !== 'assistant') return false;
+        const swipeId = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+        const storedText = Array.isArray(message.swipes) && message.swipes[swipeId] !== undefined
+          ? String(message.swipes[swipeId])
+          : String(message.content ?? '');
+        return storedText === rawPartial;
+      });
+      if (exactMatches.length === 1) saved = exactMatches[0];
+    }
+
+    if (!saved) {
+      publish(userId, {
+        phase: 'stopped',
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        targetMessageId: pending.targetMessageId ?? null,
+        targetSwipeId: Number.isInteger(pending.targetSwipeId) ? pending.targetSwipeId : null,
+        durableVariant: false,
+        rawPartialHash: rawGenerationHash,
+        noStateCommit: true,
+        note: 'No durable stopped assistant variant was provable at stop reconciliation time; no persistent attempt was invented.',
+      });
+      return;
+    }
+
+    const reconciled = await rt.variants.reconcileWholesale(pending.scope, saved.id, swipeObservations(saved));
+    if (reconciled.status !== 'ok' || !reconciled.index) {
+      publish(userId, {
+        phase: 'stopped_unreconciled',
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        messageId: saved.id,
+        reason: reconciled.reason ?? 'variant reconciliation ambiguous',
+        noStateCommit: true,
+      });
+      return;
+    }
+
+    const requestedSwipeId = Number.isInteger(pending.targetSwipeId) ? pending.targetSwipeId! : null;
+    const swipeId = requestedSwipeId !== null && reconciled.index.bySwipeIndex[requestedSwipeId]
+      ? requestedSwipeId
+      : Number.isInteger(saved.swipe_id) ? saved.swipe_id : 0;
+    const variantId = reconciled.index.bySwipeIndex[swipeId];
+    if (!variantId) throw new Error('STOPPED_VARIANT_ID_MISSING');
+
+    const storedMessageTextHash = reconciled.index.swipeFingerprints[variantId]?.storedMessageTextHash;
+    if (!storedMessageTextHash) throw new Error('STOPPED_VARIANT_FINGERPRINT_MISSING');
+    const storedText = Array.isArray(saved.swipes) && saved.swipes[swipeId] !== undefined
+      ? String(saved.swipes[swipeId])
+      : String(saved.content ?? '');
+
+    const oldAnchor = await rt.anchors.read(pending.scope, variantId);
+    const ordinal = (oldAnchor?.attemptIds.length ?? 0) + 1;
+    const attempt: TranscriptAttempt = {
+      id: pending.attemptId,
+      scope: pending.scope,
+      variantId,
+      messageId: saved.id,
+      generationId: payload.generationId,
+      generationType: pending.generationType,
+      ordinal,
+      baseNodeId: pending.baseNodeId,
+      baseStateHash: pending.baseStateHash,
+      projectionSourceKind: pending.projectionSourceKind,
+      ...(pending.projectionSourceNodeId ? { projectionSourceNodeId: pending.projectionSourceNodeId } : {}),
+      ...(pending.projectionSourceStateHash ? { projectionSourceStateHash: pending.projectionSourceStateHash } : {}),
+      ...(pending.projectionSourceBaseId ? { projectionSourceBaseId: pending.projectionSourceBaseId } : {}),
+      projectionVersion: pending.projectionVersion,
+      promptProtocolVersion: pending.promptProtocolVersion,
+      promptViewHash: pending.promptViewHash,
+      ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
+      modelCommitId: null,
+      status: 'stopped',
+      rawGenerationHash,
+      storedMessageTextHash,
+      createdAt: pending.createdAt,
+    };
+    await rt.attempts.append(attempt);
+
+    const anchor: AnchorRecord = oldAnchor ?? {
+      variantId,
+      scope: pending.scope,
+      messageId: saved.id,
+      observedSwipeIndex: swipeId,
+      initialBaseNodeId: pending.baseNodeId,
+      initialBaseStateHash: pending.baseStateHash,
+      attemptIds: [],
+      storedMessageTextHash,
+      tipNodeId: pending.baseNodeId,
+      status: 'stopped',
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    };
+    anchor.observedSwipeIndex = swipeId;
+    anchor.attemptIds = [...anchor.attemptIds, attempt.id];
+    anchor.lastAttemptId = attempt.id;
+    anchor.storedMessageTextHash = storedMessageTextHash;
+    anchor.tipNodeId = pending.baseNodeId;
+    anchor.status = 'stopped';
+    anchor.updatedAt = isoNow();
+    await rt.anchors.put(anchor);
+
+    publish(userId, {
+      phase: 'stopped_durable',
+      chatId: payload.chatId,
+      generationId: payload.generationId,
+      messageId: saved.id,
+      swipeId,
+      variantId,
+      status: 'stopped',
+      transcriptHealth: 'stopped_uncommitted',
+      baseNodeId: pending.baseNodeId,
+      baseStateHash: pending.baseStateHash,
+      deliveredPromptViewHash: pending.promptViewHash,
+      rawPartialHash: rawGenerationHash,
+      storedMessageTextHash,
+      storedMatchesStoppedPayload: storedText === rawPartial,
+      modelCommitId: null,
+      transactionId: null,
+      noStateCommit: true,
+      note: 'Durable partial output recorded as stopped evidence. Stateful continuation is blocked until regenerate/delete/repair.',
+    });
+  } catch (error) {
+    spindle.log.error('[FFMVU] stopped generation reconciliation failed', error);
+    publish(userId, {
+      phase: 'stopped_reconciliation_error',
+      chatId: payload.chatId,
+      generationId: payload.generationId,
+      error: String(error),
+      noStateCommit: true,
+    });
+  } finally {
+    contexts.release(pending);
+  }
+}
+
 async function reconcileSwipePayload(payload: SwipeEventPayload, callbackUserId?: string): Promise<void> {
   const scope = callbackUserId ? { userId: callbackUserId, chatId: String(payload.chatId) } : knownScopeByChat.get(String(payload.chatId));
   if (!scope || !payload?.message) return;
@@ -328,7 +481,7 @@ const contextHandler = async (context: import('./spindle-lite.js').ContextHandle
       return { ...context, cancelGeneration: true };
     }
     if (early) {
-      const pending = contexts.bindGeneration(context.chatId, early.generationId, early.targetMessageId);
+      const pending = contexts.bindGeneration(context.chatId, early.generationId, early.targetMessageId, early.targetSwipeId);
       if (pending) {
         earlyGenerations.take(context.chatId);
         publish(context.userId, {
@@ -336,6 +489,7 @@ const contextHandler = async (context: import('./spindle-lite.js').ContextHandle
           chatId: context.chatId,
           generationId: early.generationId,
           targetMessageId: early.targetMessageId ?? null,
+          targetSwipeId: Number.isInteger(early.targetSwipeId) ? early.targetSwipeId : null,
           lifecycleOrder: 'generation_started_before_context_handler',
           injectionMode: pending.injectionMode ?? 'not_observed',
         });
@@ -389,12 +543,13 @@ function tryRegisterGenerationEvents(): void {
   if (generationUnsubs.length || !spindle.permissions.has('generation')) return;
   const add = (value: (() => void) | void) => { if (typeof value === 'function') generationUnsubs.push(value); };
   add(spindle.on('GENERATION_STARTED', (payload: GenerationStartedPayload) => {
-    const pending = contexts.bindGeneration(payload.chatId, payload.generationId, payload.targetMessageId);
+    const pending = contexts.bindGeneration(payload.chatId, payload.generationId, payload.targetMessageId, payload.targetSwipeId);
     if (!pending) {
       earlyGenerations.remember({
         generationId: payload.generationId,
         chatId: payload.chatId,
         ...(payload.targetMessageId ? { targetMessageId: payload.targetMessageId } : {}),
+        ...(Number.isInteger(payload.targetSwipeId) ? { targetSwipeId: payload.targetSwipeId } : {}),
         ...(payload.generationType ? { generationType: payload.generationType } : {}),
       });
       for (const userId of knownFrontendUsers) {
@@ -408,19 +563,15 @@ function tryRegisterGenerationEvents(): void {
       }
       return;
     }
-    publish(pending.scope.userId, { phase: 'generation_started', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, injectionMode: pending.injectionMode ?? 'not_observed' });
+    publish(pending.scope.userId, { phase: 'generation_started', chatId: payload.chatId, generationId: payload.generationId, targetMessageId: payload.targetMessageId ?? null, targetSwipeId: Number.isInteger(payload.targetSwipeId) ? payload.targetSwipeId : null, injectionMode: pending.injectionMode ?? 'not_observed' });
   }));
   add(spindle.on('GENERATION_ENDED', async (payload: GenerationEndedPayload) => {
     earlyGenerations.forgetGeneration(payload.generationId);
     await finalizeModelCommit(payload);
   }));
-  add(spindle.on('GENERATION_STOPPED', (payload: GenerationStoppedPayload) => {
+  add(spindle.on('GENERATION_STOPPED', async (payload: GenerationStoppedPayload) => {
     earlyGenerations.forgetGeneration(payload.generationId);
-    if (contexts.isFinalizing(payload.generationId)) return;
-    const pending = contexts.getByGeneration(payload.generationId);
-    if (!pending) return;
-    publish(pending.scope.userId, { phase: 'stopped', chatId: payload.chatId, generationId: payload.generationId, partialContentHashPending: true, note: 'No state commit. Durable stopped output, if saved by host, will fail closed as unreconciled.' });
-    contexts.release(pending);
+    await reconcileStoppedGeneration(payload);
   }));
   spindle.log.info('[FFMVU] Generation lifecycle subscriptions registered.');
 }
@@ -456,9 +607,9 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     const enabled = payload.enabled === true;
     await setConfig(userId, { enabled });
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, note: enabled ? 'v0.5 model commit pipeline armed. Invalid/conflicting patches fail closed.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, note: enabled ? 'v0.5.2 model commit pipeline armed. Invalid/conflicting/stopped outputs fail closed.' : 'Bridge will not touch generations.' });
   }
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.1 model commit + swipe navigation diagnostics).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.2 model commit + durable stopped reconciliation).`);
