@@ -43,5 +43,13 @@ if (!/export function setup\s*\(/.test(bundle)) {
   throw new Error('Frontend bundle does not export setup().');
 }
 
+const declared = [];
+for (const match of bundle.matchAll(/^(?:export\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/gm)) declared.push(match[1]);
+for (const match of bundle.matchAll(/^(?:export\s+)?(?:const|let|class)\s+([A-Za-z_$][\w$]*)\b/gm)) declared.push(match[1]);
+const duplicateDeclarations = [...new Set(declared.filter((name, index) => declared.indexOf(name) !== index))];
+if (duplicateDeclarations.length) {
+  throw new Error('Frontend bundle has duplicate top-level declarations: ' + duplicateDeclarations.join(', '));
+}
+
 await writeFile('dist/frontend.js', bundle, 'utf8');
 console.log('dist/frontend.js bundled OK');
