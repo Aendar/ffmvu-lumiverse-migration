@@ -17,7 +17,7 @@ import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } fr
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.13.3';
+const BRIDGE_VERSION = '0.13.4';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -182,14 +182,15 @@ async function prepareGeneration(context, targetMessageId) {
             if (!variantId)
                 continue;
             const anchor = await rt.anchors.read(scope, variantId);
-            if (!anchor)
+            if (!anchor || anchor.messageId !== candidate.id)
+                continue;
+            const refreshed = await refreshKnownVariantContent(rt, scope, candidate, swipeId);
+            if (!refreshed || refreshed.variantId !== variantId)
                 continue;
             const storedText = Array.isArray(candidate.swipes) && candidate.swipes[swipeId] !== undefined
                 ? String(candidate.swipes[swipeId])
                 : String(candidate.content ?? '');
-            const storedTextHash = await canonicalHash(storedText);
-            if (anchor.storedMessageTextHash !== storedTextHash || index.swipeFingerprints[variantId]?.storedMessageTextHash !== storedTextHash)
-                continue;
+            const storedTextHash = refreshed.storedMessageTextHash;
             continueSnapshot = {
                 messageId: candidate.id,
                 swipeId,
@@ -976,13 +977,85 @@ async function reconcileStoppedGeneration(payload) {
         contexts.release(pending);
     }
 }
+async function refreshKnownVariantContent(rt, scope, message, swipeId) {
+    if (message.role !== 'assistant')
+        return null;
+    const messageId = String(message.id);
+    const index = await rt.variants.read(scope, messageId);
+    if (!index)
+        return null;
+    const variantId = index.bySwipeIndex[swipeId];
+    if (!variantId)
+        return null;
+    const observation = swipeObservations(message)[swipeId];
+    if (!observation)
+        return null;
+    const preservedVariantId = await rt.variants.applyUpdated(scope, messageId, swipeId, observation);
+    if (preservedVariantId !== variantId)
+        throw new Error('VARIANT_ID_CHANGED_DURING_CONTENT_REFRESH');
+    const refreshedIndex = await rt.variants.read(scope, messageId);
+    const storedMessageTextHash = refreshedIndex?.swipeFingerprints[variantId]?.storedMessageTextHash;
+    if (!storedMessageTextHash)
+        throw new Error('REFRESHED_VARIANT_FINGERPRINT_MISSING');
+    const anchor = await rt.anchors.read(scope, variantId);
+    if (anchor) {
+        if (anchor.messageId !== messageId)
+            throw new Error('EDITED_VARIANT_ANCHOR_MESSAGE_MISMATCH');
+        anchor.observedSwipeIndex = swipeId;
+        anchor.storedMessageTextHash = storedMessageTextHash;
+        anchor.updatedAt = isoNow();
+        await rt.anchors.put(anchor);
+    }
+    return { variantId, storedMessageTextHash };
+}
+async function reconcileMessageEditPayload(payload, callbackUserId) {
+    const scope = callbackUserId ? { userId: callbackUserId, chatId: String(payload.chatId) } : knownScopeByChat.get(String(payload.chatId));
+    if (!scope || !payload?.message || payload.message.role !== 'assistant')
+        return;
+    try {
+        const swipeId = Number.isInteger(payload.message.swipe_id) ? payload.message.swipe_id : 0;
+        const refreshed = await refreshKnownVariantContent(runtime(scope.userId), scope, payload.message, swipeId);
+        if (!refreshed)
+            return;
+        publish(scope.userId, {
+            phase: 'assistant_content_edited',
+            chatId: scope.chatId,
+            messageId: payload.message.id,
+            swipeId,
+            variantId: refreshed.variantId,
+            storedMessageTextHash: refreshed.storedMessageTextHash,
+            noStateTransaction: true,
+            stateEvidenceImmutable: true,
+        });
+    }
+    catch (error) {
+        spindle.log.warn('[FFMVU] assistant content edit reconciliation failed', error);
+        publish(scope.userId, {
+            phase: 'assistant_content_edit_error',
+            chatId: scope.chatId,
+            messageId: payload.message.id,
+            error: String(error),
+            noStateTransaction: true,
+        });
+    }
+}
 async function reconcileSwipePayload(payload, callbackUserId) {
     const scope = callbackUserId ? { userId: callbackUserId, chatId: String(payload.chatId) } : knownScopeByChat.get(String(payload.chatId));
     if (!scope || !payload?.message)
         return;
     try {
         const rt = runtime(scope.userId);
-        const result = await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
+        let result;
+        if (payload.action === 'updated' && Number.isInteger(payload.swipeId)) {
+            const refreshed = await refreshKnownVariantContent(rt, scope, payload.message, Number(payload.swipeId));
+            const refreshedIndex = refreshed ? await rt.variants.read(scope, String(payload.message.id)) : null;
+            result = refreshed && refreshedIndex
+                ? { status: 'ok', index: refreshedIndex }
+                : await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
+        }
+        else {
+            result = await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
+        }
         if (result.status === 'ambiguous') {
             publish(scope.userId, { phase: 'variant_ambiguous', chatId: scope.chatId, messageId: payload.message.id, reason: result.reason });
             return;
@@ -1186,6 +1259,7 @@ spindle.permissions.onChanged(({ permission, granted }) => {
             stopGenerationEvents();
     }
 });
+spindle.on('MESSAGE_EDITED', (payload, userId) => reconcileMessageEditPayload(payload, userId));
 spindle.on('MESSAGE_SWIPED', (payload, userId) => reconcileSwipePayload(payload, userId));
 spindle.on('SWIPE_EDITED', (payload, userId) => reconcileSwipePayload(payload, userId));
 spindle.onFrontendMessage(async (payload, userId) => {
@@ -1465,7 +1539,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             continueProbeUsers.delete(userId);
         }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.3 bridge armed. Composer-mounted StatusMenu, New Game and legacy import use the same branch-aware StateService journal as model generations.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.4 bridge armed. Committed assistant message content is freely editable without changing StateService lineage; StatusMenu, New Game and legacy import remain branch-aware.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1504,5 +1578,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.3 canonical StatusMenu + safe Variables editor + legacy import + branch-safe GUI intents + narrative history context).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.4 post-commit message edit safety + canonical StatusMenu + safe Variables editor + branch-safe GUI intents).`);
 //# sourceMappingURL=backend.js.map
