@@ -120,6 +120,14 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Variables edits use the same exact-head/hash branch-safe GUI commit path as Wardrobe/Inventory/Equipment.
 - [ ] Live-test rename currency key, edit GM Note text, delete/add a disposable record, and verify next-turn state continuity.
 
+## DONE in v0.13.1 — Variables UX/safety hotfix
+
+- [x] Variables edit/rename modals are centered inside the StatusMenu overlay instead of viewport-positioned/clipped.
+- [x] Fixed schema fields expose value editing only.
+- [x] Rename/Delete/Add are restricted to known dynamic collections.
+- [x] State-layer rejects structural key mutation even if a raw GUI intent is sent manually.
+- [ ] Live visual confirmation of modal centering and simplified controls on the user's build.
+
 ## Safe to start now — short gameplay tests
 
 Use disposable/short chats first:
