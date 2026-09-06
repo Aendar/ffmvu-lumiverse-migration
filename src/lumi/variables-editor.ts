@@ -303,7 +303,7 @@ function veActionButtons(
   actions.className = 've-actions';
   const mutable = veCanMutateEntry(path);
 
-  if (value === null || typeof value !== 'object' || veIsTuple(value)) {
+  if (mutable && (value === null || typeof value !== 'object' || veIsTuple(value))) {
     const edit = veButton('Edit');
     edit.disabled = options.mutationDisabled;
     edit.addEventListener('click', event => {
