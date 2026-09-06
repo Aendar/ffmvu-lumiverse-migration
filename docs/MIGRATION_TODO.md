@@ -62,7 +62,7 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Import Hide Location.
 - [x] Import HideUpdateVar.
 - [x] Import Colorize.
-- [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.
+- [x] Patch MinimizeCombatLog `$0 -> - [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.` and import.
 - [x] Do NOT import legacy GameStartMenu.
 - [x] Do NOT import legacy StatusMenu.
 - [ ] Smoke-test rendering/order on real Lumiverse messages.
@@ -85,8 +85,22 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Supported Wardrobe / Inventory / Equipment controls are rebound to typed StateService intents.
 - [x] Top-edge drag resize with one persisted height across tabs, hide/show, and reload.
 - [x] Unsupported legacy write controls remain visible but fail visibly instead of bypassing StateService.
-- [ ] Live visual smoke-test Overview / Attributes / Familiars / Wardrobe / Equipments / Items / Others / FF State in Lumiverse.
+- [ ] Live visual smoke-test all canonical tabs in Lumiverse:
+  - [x] Overview on migrated Turn 109 state.
+  - [ ] Attributes.
+  - [ ] Familiars.
+  - [ ] Wardrobe.
+  - [ ] Equipments.
+  - [ ] Items.
+  - [ ] Others.
+  - [ ] FF State.
 - [ ] Add typed intents for preserved legacy controls still marked unsupported.
+
+## DONE in v0.12.2 — compact composer scale
+
+- [x] Compact 0.78 host-scale for the canonical StatusMenu without redesigning its internal DOM/CSS.
+- [x] Compensated virtual width/height keeps the scaled StatusMenu filling the composer viewport.
+- [ ] Live visual check of text readability and pointer/scroll behavior at 0.78 scale.
 
 ## Safe to start now — short gameplay tests
 
@@ -104,7 +118,7 @@ Use disposable/short chats first:
 
 ## Remaining before a permanent long campaign / production cutover
 
-- [ ] Live-test v0.12 canonical StatusMenu against the migrated Turn 109 state.
+- [x] Live-test canonical StatusMenu shell + Overview against the migrated Turn 109 state.
 - [ ] Add typed writes for currently read-only legacy controls if still wanted:
   - Skills / Talents;
   - Quests;
@@ -113,7 +127,7 @@ Use disposable/short chats first:
   - image/map edits;
   - selected World_Calc edits.
 - [ ] Decide which old StatusMenu editing features are intentionally dropped rather than ported.
-- [ ] Real legacy-save import test from the user's current FF+MVU campaign.
+- [x] Real legacy-save import test from the user's current FF+MVU Turn 109 campaign.
 - [ ] Portable snapshot export -> fresh-chat import -> next-generation hash continuity live test.
 - [ ] Multi-turn soak test mixing model commits, GUI commits, regenerate, swipe, and Continue.
 - [ ] Recovery UX for gui_committed_unbound / unreconciled cases.
