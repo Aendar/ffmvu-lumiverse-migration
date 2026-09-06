@@ -8,6 +8,7 @@ import { Materializer } from '../persistence/materializer.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
 import { type BaseSnapshotKind, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { type GameStartPayload } from '../shared/domain/gamestart.js';
+import { type GuiIntent } from '../shared/domain/gui-intents.js';
 export interface CreateGenesisInput {
     state?: unknown;
     kind?: BaseSnapshotKind;
@@ -17,11 +18,19 @@ export interface CreateGenesisInput {
 }
 export interface CommitPatchInput {
     parentNodeId: string;
+    expectedParentStateHash?: string;
     patch: JsonPatchOperation[];
     kind: StateCommitKind;
     anchor?: CommitAnchor;
     requestId?: string;
     note?: string;
+}
+export interface CommitGuiIntentInput {
+    expectedParentNodeId: string;
+    expectedParentStateHash: string;
+    intent: GuiIntent;
+    anchor: CommitAnchor;
+    requestId: string;
 }
 export interface FinalizeModelAttemptInput {
     expectedParentNodeId: string;
@@ -61,6 +70,7 @@ export declare class StateService {
     importLegacyState(scope: StateScope, input: unknown, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     exportPortableSnapshot(scope: StateScope, nodeId: string): Promise<PortableSnapshot>;
     importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
+    commitGuiIntent(scope: StateScope, input: CommitGuiIntentInput): Promise<MaterializedState>;
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;
     readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null>;
