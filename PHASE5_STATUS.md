@@ -66,4 +66,11 @@ v0.5.2 now publishes `phase: swipe_navigated` for a true existing-swipe navigati
 - Exact target `messageId` and `targetSwipeId` are carried from `GENERATION_STARTED`; if identity cannot be proven, no stopped/no_patch evidence is fabricated.
 - An active stopped variant resolves as `stopped_uncommitted` and blocks normal stateful continuation until regenerate/delete/repair.
 
-Still open: live v0.5.2 stopped reconciliation proof, no-patch live refresh, extension reload during AttemptContext, and Continue append semantics.
+### Live v0.5.2 stopped reconciliation proof
+- `stopped_durable` recorded the saved assistant partial as `TranscriptAttempt.status="stopped"`.
+- `rawPartialHash === storedMessageTextHash` and `storedMatchesStoppedPayload = true`.
+- `modelCommitId = null`, `transactionId = null`, and `noStateCommit = true`.
+- A subsequent normal stateful generation in the same chat was blocked with `stopped_uncommitted: durable stopped attempt is unresolved`.
+- Therefore STOP persistence + fail-closed continuation blocking are live-proven.
+
+Still open: regenerate recovery from an active stopped branch, no-patch live refresh, extension reload during AttemptContext, and Continue append semantics.

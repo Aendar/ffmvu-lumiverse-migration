@@ -1,0 +1,20 @@
+{
+  "bridgeVersion": "0.5.2",
+  "at": "2026-09-06T11:38:34.868Z",
+  "contract": 1,
+  "permissions": {
+    "context_handler": true,
+    "interceptor": true,
+    "generation": true,
+    "chat_mutation": true
+  },
+  "registrations": {
+    "context": true,
+    "interceptor": true,
+    "generation": true
+  },
+  "phase": "blocked",
+  "chatId": "b89d3730-81a9-4c3f-8b27-898ce0521798",
+  "generationId": "9cef1c61-cd6b-465a-80df-b8a07ad9ab9e",
+  "reason": "stopped_uncommitted: durable stopped attempt is unresolved"
+}
