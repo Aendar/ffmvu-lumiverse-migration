@@ -16,7 +16,7 @@ export function setup(ctx) {
     const row = document.createElement('div');
     row.className = 'ffmvu-row';
     const title = document.createElement('div');
-    title.innerHTML = '<div class="ffmvu-title">v0.6.0 model commit pipeline</div><div class="ffmvu-muted">When armed, the bridge freezes MODEL_STATE + authorization and commits normal/regenerate/swipe/Continue attempts through the same state transaction path. Continue preserves VariantId and proves its append boundary before patch extraction.</div>';
+    title.innerHTML = '<div class="ffmvu-title">v0.8.0 migration bridge</div><div class="ffmvu-muted">When armed, the bridge commits model state through the proven lifecycle path. Assistant history is annotated with in-world World.Date/World.Time metadata and net off-screen RecentChanges.</div>';
     const button = document.createElement('button');
     button.className = 'ffmvu-button';
     button.textContent = 'Loading…';

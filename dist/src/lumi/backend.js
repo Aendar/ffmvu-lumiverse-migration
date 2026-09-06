@@ -8,12 +8,14 @@ import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
+import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
 import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
+import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.6.0';
+const BRIDGE_VERSION = '0.8.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -61,6 +63,46 @@ function publish(userId, status) {
     const value = { bridgeVersion: BRIDGE_VERSION, at: isoNow(), ...registrationSnapshot(), ...status };
     lastStatusByUser.set(userId, value);
     spindle.sendToFrontend({ type: 'ffmvu_status', status: value }, userId);
+}
+async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId) {
+    const timestamps = {};
+    let baselineNodeId = null;
+    for (const message of messages) {
+        if (message.role !== 'assistant')
+            continue;
+        const index = await rt.variants.read(scope, message.id);
+        if (!index)
+            continue;
+        const swipeId = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+        const variantId = index.bySwipeIndex[swipeId];
+        if (!variantId)
+            continue;
+        const anchor = await rt.anchors.read(scope, variantId);
+        if (!anchor?.lastAttemptId)
+            continue;
+        const attempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+        if (!attempt)
+            continue;
+        if (attempt.narrativeTimestamp)
+            timestamps[message.id] = structuredClone(attempt.narrativeTimestamp);
+        if (attempt.finalNodeId &&
+            (attempt.status === 'committed' || attempt.status === 'no_patch'))
+            baselineNodeId = attempt.finalNodeId;
+    }
+    let recentChanges = null;
+    if (baselineNodeId && baselineNodeId !== currentHeadNodeId) {
+        try {
+            if (await rt.state.store.isNodeCommitted(scope, baselineNodeId)) {
+                const before = await rt.state.materializer.materialize(scope, baselineNodeId);
+                const after = await rt.state.materializer.materialize(scope, currentHeadNodeId);
+                recentChanges = computeRecentChanges(before.state, after.state);
+            }
+        }
+        catch (error) {
+            spindle.log.warn('[FFMVU] RecentChanges derivation skipped', error);
+        }
+    }
+    return { timestamps, recentChanges, baselineNodeId };
 }
 async function ensureBootstrap(scope, messages) {
     const rt = runtime(scope.userId);
@@ -160,6 +202,7 @@ async function prepareGeneration(context, targetMessageId) {
     }
     const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
+    const historyContext = await buildNarrativeHistoryContext(rt, scope, raw, head.nodeId);
     const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
     contexts.create({
         scope,
@@ -179,6 +222,8 @@ async function prepareGeneration(context, targetMessageId) {
         presetVersion: PRESET_VERSION,
         diagnosticNoPatchProbe,
         diagnosticContinueProbe,
+        assistantNarrativeTimestamps: historyContext.timestamps,
+        recentChanges: historyContext.recentChanges,
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -204,6 +249,8 @@ async function prepareGeneration(context, targetMessageId) {
         diagnosticContinueProbe,
         noPatchProbeArmed: noPatchProbeUsers.has(context.userId),
         continueProbeArmed: continueProbeUsers.has(context.userId),
+        narrativeHistoryTimestampCount: Object.keys(historyContext.timestamps).length,
+        recentChangeDomains: historyContext.recentChanges ? Object.keys(historyContext.recentChanges).filter(key => key !== 'observedAt') : [],
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -265,6 +312,7 @@ async function finalizeContinueModelCommit(payload, pending) {
             if (!currentAnchor)
                 throw new Error('CONTINUE_ANCHOR_MISSING_AT_EVIDENCE_WRITE');
             const ordinal = currentAnchor.attemptIds.length + 1;
+            const finalMaterialized = await rt.state.materializer.materialize(pending.scope, tipNodeId);
             const attempt = {
                 id: pending.attemptId,
                 scope: pending.scope,
@@ -287,6 +335,9 @@ async function finalizeContinueModelCommit(payload, pending) {
                 status,
                 ...hashes,
                 storedMessageTextHash: postStoredTextHash,
+                finalNodeId: tipNodeId,
+                finalStateHash: finalMaterialized.stateHash,
+                narrativeTimestamp: narrativeTimestampFromState(finalMaterialized.state),
                 ...(resolvesAttemptId ? { resolvesAttemptId } : {}),
                 createdAt: pending.createdAt,
             };
@@ -593,6 +644,7 @@ async function finalizeModelCommit(payload) {
         const rt = runtime(userId);
         const oldAnchor = await rt.anchors.read(pending.scope, variantId);
         const ordinal = (oldAnchor?.attemptIds.length ?? 0) + 1;
+        const finalMaterialized = await rt.state.materializer.materialize(pending.scope, tipNodeId);
         const attempt = {
             id: pending.attemptId, scope: pending.scope, variantId, messageId: saved.id,
             generationId: payload.generationId, generationType: pending.generationType, ordinal,
@@ -603,7 +655,11 @@ async function finalizeModelCommit(payload) {
             ...(pending.projectionSourceBaseId ? { projectionSourceBaseId: pending.projectionSourceBaseId } : {}),
             projectionVersion: pending.projectionVersion, promptProtocolVersion: pending.promptProtocolVersion, promptViewHash: pending.promptViewHash,
             ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
-            modelCommitId, status, ...hashes, storedMessageTextHash, createdAt: pending.createdAt,
+            modelCommitId, status, ...hashes, storedMessageTextHash,
+            finalNodeId: tipNodeId,
+            finalStateHash: finalMaterialized.stateHash,
+            narrativeTimestamp: narrativeTimestampFromState(finalMaterialized.state),
+            createdAt: pending.createdAt,
         };
         await rt.attempts.append(attempt);
         const anchor = oldAnchor ?? {
@@ -797,6 +853,7 @@ async function reconcileStoppedGeneration(payload) {
             : String(saved.content ?? '');
         const oldAnchor = await rt.anchors.read(pending.scope, variantId);
         const ordinal = (oldAnchor?.attemptIds.length ?? 0) + 1;
+        const stoppedBase = await rt.state.materializer.materialize(pending.scope, pending.baseNodeId);
         const attempt = {
             id: pending.attemptId,
             scope: pending.scope,
@@ -819,6 +876,9 @@ async function reconcileStoppedGeneration(payload) {
             status: 'stopped',
             rawGenerationHash,
             storedMessageTextHash,
+            finalNodeId: pending.baseNodeId,
+            finalStateHash: stoppedBase.stateHash,
+            narrativeTimestamp: narrativeTimestampFromState(stoppedBase.state),
             createdAt: pending.createdAt,
         };
         await rt.attempts.append(attempt);
@@ -990,12 +1050,15 @@ const interceptorHandler = async (messages, context) => {
         return messages;
     const injected = injectFrozenModelState(messages, pending.projectionView);
     pending.injectionMode = injected.mode;
-    const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(injected.messages) : injected.messages;
+    const historyMessages = injectNarrativeHistoryContext(injected.messages, pending.assistantNarrativeTimestamps ?? {}, pending.recentChanges ?? null);
+    const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(historyMessages) : historyMessages;
     publish(pending.scope.userId, {
         phase: 'injected', chatId: context.chatId, attemptId: pending.attemptId, mode: injected.mode,
         promptViewHash: pending.promptViewHash,
         diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
         diagnosticContinueProbe: pending.diagnosticContinueProbe === true,
+        narrativeHistoryTimestampCount: Object.keys(pending.assistantNarrativeTimestamps ?? {}).length,
+        recentChangeDomains: pending.recentChanges ? Object.keys(pending.recentChanges).filter(key => key !== 'observedAt') : [],
     });
     if (injected.mode !== 'fallback')
         return finalMessages;
@@ -1104,7 +1167,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             continueProbeUsers.delete(userId);
         }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.6.0 model commit pipeline armed. Native Continue is stateful when append identity/boundary evidence is exact; ambiguous cases fail closed.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.8.0 model commit pipeline armed. Assistant history receives in-world narrative timestamps and net off-screen state changes; lifecycle ambiguity still fails closed.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1143,5 +1206,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.6.0 model commit + stateful Continue append semantics).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.8.0 model commit + narrative history timestamps + RecentChanges context).`);
 //# sourceMappingURL=backend.js.map
