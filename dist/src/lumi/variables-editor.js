@@ -1,4 +1,4 @@
-import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-intents.js';
+import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import { isRecord } from '../shared/domain/value-utils.js';
 export const VARIABLES_EDITOR_CSS = `
   .ve-shell{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;color:var(--text-primary);}

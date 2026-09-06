@@ -42,7 +42,6 @@ export type GuiIntent = {
     key: string;
     value: JsonValue;
 };
-export declare function isGuiVariableDynamicCollectionPath(path: GuiPath): boolean;
 export declare function assertGuiIntent(value: unknown): asserts value is GuiIntent;
 export declare function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState;
 export declare function buildGuiIntentPatch(before: FFMVUState, after: FFMVUState): JsonPatchOperation[];
