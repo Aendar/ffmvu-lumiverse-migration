@@ -39,15 +39,17 @@ async function main() {
   const pending = contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } });
   let collision = false; try { contexts.create({ scope, generationType: 'normal', baseNodeId: 'b', baseStateHash: 'h', projectionSourceKind: 'node', projectionSourceNodeId: 'b', projectionSourceStateHash: 'h', projectionVersion: 'p', promptProtocolVersion: 'q', reducerVersion: 'r', projectionView: {}, promptViewHash: 'v', frozenAuthorization: { version: 'ffmvu-model-auth-v1', worldCalc: { Factions: [], Locations: [], Ruins: [], Events: [] }, familiarIds: [], npcIds: [], relationshipIds: [], gmNoteIds: [], chekhovIds: [], worldSimThreadIds: [], worldSimPressureIds: [], nextNpcId: 1 } }); } catch { collision = true; }
   assert(collision, 'one pending non-dryRun generation per scope');
-  assert(contexts.bindGeneration('c', 'g1')?.attemptId === pending.attemptId, 'generation id binds to frozen context');
+  const bound = contexts.bindGeneration('c', 'g1', 'staged-target', 2);
+  assert(bound?.attemptId === pending.attemptId && bound.targetMessageId === 'staged-target' && bound.targetSwipeId === 2, 'generation id + target message/swipe bind to frozen context');
   assert(contexts.claimFinalization('g1')?.attemptId === pending.attemptId, 'first GENERATION_ENDED claims finalization');
   assert(contexts.claimFinalization('g1') === null && contexts.isFinalizing('g1'), 'duplicate GENERATION_ENDED cannot claim the same attempt');
   contexts.release(pending); assert(contexts.getByGeneration('g1') === null && !contexts.isFinalizing('g1'), 'release clears correlation and finalization claim');
 
   const early = new EarlyGenerationRegistry();
-  early.remember({ chatId: 'c', generationId: 'g-early', targetMessageId: 'staged' });
+  early.remember({ chatId: 'c', generationId: 'g-early', targetMessageId: 'staged', targetSwipeId: 1 });
   assert(early.peek('c')?.generationId === 'g-early', 'early generation start is cached before context freeze');
-  assert(early.take('c')?.targetMessageId === 'staged' && early.peek('c') === null, 'early generation start is consumed exactly once');
+  const earlyTaken = early.take('c');
+  assert(earlyTaken?.targetMessageId === 'staged' && earlyTaken.targetSwipeId === 1 && early.peek('c') === null, 'early generation start preserves target swipe and is consumed exactly once');
 
   const transcript = [
     { id: 'u1', role: 'user' as const, content: 'hello', swipe_id: 0, swipes: ['hello'], swipe_dates: [] },
