@@ -1,5 +1,4 @@
-import { activeMessageContent, activePrefixHash, type HostTranscriptMessage } from './transcript-fingerprint.js';
-import { canonicalHash } from './shared/hashing.js';
+import { activePrefixHash, type HostTranscriptMessage } from './transcript-fingerprint.js';
 import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from './persistence/anchor-store.js';
 import type { EventStore } from './persistence/event-store.js';
 import type { Materializer } from './persistence/materializer.js';
@@ -81,10 +80,8 @@ export class HeadResolver {
           if (!path || !path.every(c => isAllowedLineageCommit(c, variantId))) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'invalid post-attempt lineage' };
           current = await this.materializer.materialize(scope, anchor.tipNodeId);
         }
-        const activeHash = index.swipeFingerprints[variantId]?.storedMessageTextHash;
-        const actualHash = await canonicalHash(activeMessageContent(message));
-        if (!activeHash || activeHash !== actualHash) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'active transcript content differs from VariantIndex' };
-        if (activeHash !== anchor.storedMessageTextHash) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'stored message fingerprint differs from anchor' };
+        // Once a VariantId has immutable attempt/commit provenance, current assistant prose is mutable transcript
+        // presentation. Text fingerprints remain rebuildable diagnostics and must not gate state reachability.
         terminalVariant = variantId;
       }
       return { health: 'ok', nodeId: current.nodeId, stateHash: current.stateHash, ...(terminalVariant ? { variantId: terminalVariant } : {}) };
