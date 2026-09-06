@@ -1,4 +1,4 @@
-# Phase 5 / Model Commit Pipeline Status — v0.6.0
+# Phase 5 / Model Commit Pipeline Status — v0.8.0
 
 Status: **LIVE NORMAL-GENERATION, REGENERATE REPLACEMENT-BRANCH, RIGHT-EDGE SWIPE GENERATION, AND EXISTING-SWIPE NAVIGATION PARITY PROVEN.**
 
@@ -135,3 +135,16 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - Existing `ff_mvu_prompt_view`, when present, is retained only as `legacy-exact` first-turn projection seed.
 - `ff_mvu_snapshot_meta` is provenance only.
 - New Game uses existing GameStart v1.4 formulas and creates a normal genesis. Loading/import never reruns GameStart formulas.
+
+
+# Phase 7 — Narrative history context (v0.8.0)
+
+- Assistant transcript timestamps are **in-world only**: `World.Date[0] + World.Time[0]`. Real-world/browser time is never shown to the model.
+- User messages are not timestamped.
+- Successful/no-patch assistant attempts persist `finalNodeId`, `finalStateHash`, and the narrative timestamp from their final semantic state.
+- STOP/failed evidence uses the frozen/base state's narrative time because no later state was authoritatively committed.
+- The interceptor adds `<narrative_time date="..." time="..."/>` only to assistant history messages with proven `sourceMessageId` metadata; missing identity is skipped rather than guessed.
+- `RecentChanges` is computed as a **net semantic diff** from the latest state already represented by an assistant response to the current head. Intermediate GUI clicks that revert before the next generation disappear naturally.
+- Initial domains: Outfit (player + Familiar), Inventory, Equipment, World.Location, core/current combat stats, and Relationships.
+- `RecentChanges` is prompt-only context; it is not written into authoritative state and does not alter MODEL_STATE hashes or patch authorization.
+- Current MODEL_STATE remains authoritative; RecentChanges only explains off-screen transitions.
