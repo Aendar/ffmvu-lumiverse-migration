@@ -94,7 +94,8 @@ export interface SpindleFrontendContextLite {
     registerDrawerTab(options: { id: string; title: string; shortName?: string; description?: string; keywords?: string[]; headerTitle?: string; iconSvg?: string }): FrontendDrawerTab;
   };
   dom: { addStyle(css: string): () => void; cleanup(): void };
-  state: SpindleFrontendStateLite;
+  events: { on(event: string, handler: (payload: any) => void): () => void };
+  getActiveChat(): { chatId: string | null; characterId: string | null };
   sendToBackend(payload: unknown): void;
   onBackendMessage(handler: (payload: any) => void): () => void;
 }
