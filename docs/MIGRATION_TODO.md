@@ -1,5 +1,18 @@
 # Migration TODO / gameplay readiness
 
+## Product decisions locked
+
+See `docs/PRODUCT_DECISIONS.md`.
+
+- [x] Preserve original FF+MVU UI/interaction language during cutover; redesign later.
+- [x] Assistant-only in-world narrative timestamps; never wall-clock timestamps and never user-message timestamps.
+- [x] NET off-screen Outfit/GUI changes for the next model turn; reverted intermediate changes collapse to no change.
+- [x] Portable snapshot backend preserves authoritative state + exact next projection.
+- [ ] Add Save Snapshot action to initialized StatusMenu.
+- [ ] Add Import Snapshot choice to uninitialized GameStart surface.
+- [ ] Live-test fresh-chat snapshot import as the anti-context-degradation workflow.
+
+
 ## DONE — core correctness
 
 - [x] Pure state normalization/validation and legacy tuple semantics.
@@ -13,11 +26,11 @@
 - [x] Durable stopped-output evidence and fail-closed unresolved continuation.
 - [x] Stateful Continue append semantics.
 - [x] Raw/stored JSONPatch evidence lock.
-- [x] Portable snapshot export/import and exact projection seed.
+- [x] Portable snapshot export/import core and exact projection seed (UI exposure still pending).
 - [x] Legacy stat_data import.
 - [x] GameStart v1.4 backend formulas.
-- [x] Assistant-only in-world narrative timestamps.
-- [x] Net RecentChanges for off-screen state mutations.
+- [x] Assistant-only in-world narrative timestamps (World.Date/World.Time; no user/wall-clock timestamps).
+- [x] Net RecentChanges for off-screen state mutations, including Outfit revert-collapse semantics.
 - [x] Branch-safe typed GUI intents for Outfit / Inventory / Equipment.
 - [x] Explicit stale-head and committed-unbound diagnostics.
 
