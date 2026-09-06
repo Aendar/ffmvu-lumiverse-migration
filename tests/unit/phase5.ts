@@ -3,7 +3,7 @@ import { StateService } from '../../src/service/state-service.js';
 import { createProjectionRegistry } from '../../src/shared/projection-registry.js';
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { buildModelPatchAuthorizationView, assertModelPatchAuthorization } from '../../src/shared/patch-policy.js';
-import { extractLastJsonPatch, resolveFinalJsonPatchEvidence } from '../../src/shared/model-output.js';
+import { extractLastJsonPatch, resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../../src/shared/model-output.js';
 import { EventStore } from '../../src/persistence/event-store.js';
 
 let passed = 0;
@@ -35,6 +35,27 @@ async function main() {
   let evidenceMismatch = false;
   try { resolveFinalJsonPatchEvidence(liveGoldenOutput, canonicalStoredOutput.replace('Дорога у городка Вязовый Брод', 'Другая дорога')); } catch { evidenceMismatch = true; }
   assert(evidenceMismatch, 'raw/stored semantic JSONPatch mismatch fails closed');
+
+  const oldPatch = '<JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":1}]</JSONPatch>';
+  const continuedNoPatch = resolveContinueJsonPatchEvidence(oldPatch, oldPatch + ' appended prose', oldPatch + ' appended prose');
+  assert(continuedNoPatch.appendedSegment === ' appended prose' && continuedNoPatch.selected === null && continuedNoPatch.hostContentMode === 'full', 'Continue ignores pre-existing completed JSONPatch when suffix has no new patch');
+
+  const continuedPatchPost = oldPatch + ' more prose <JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":2}]</JSONPatch>';
+  const continuedPatch = resolveContinueJsonPatchEvidence(oldPatch, continuedPatchPost, continuedPatchPost);
+  assert(continuedPatch.selected?.operations[0]?.value === 2 && !continuedPatch.selectedCrossesBoundary, 'Continue selects only a newly completed suffix JSONPatch');
+
+  const partial = '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":';
+  const completed = partial + '3}]</JSONPatch></UpdateVariable>';
+  const boundaryPatch = resolveContinueJsonPatchEvidence(partial, completed, completed);
+  assert(boundaryPatch.selected?.operations[0]?.value === 3 && boundaryPatch.selectedCrossesBoundary, 'Continue can complete a JSONPatch that started before the append boundary');
+
+  const suffixModePost = oldPatch + ' tail';
+  const suffixMode = resolveContinueJsonPatchEvidence(oldPatch, ' tail', suffixModePost);
+  assert(suffixMode.hostContentMode === 'segment' && suffixMode.appendedSegment === ' tail', 'Continue accepts hosts that report only the appended segment');
+
+  let continueMismatch = false;
+  try { resolveContinueJsonPatchEvidence(oldPatch, 'different', suffixModePost); } catch { continueMismatch = true; }
+  assert(continueMismatch, 'Continue lifecycle content mismatch fails closed');
   assertModelPatchAuthorization(genesis.state, extracted!.operations, authorization);
 
   const result = await state.finalizeModelAttempt(scope, {

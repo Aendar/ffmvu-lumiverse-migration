@@ -60,7 +60,13 @@ export class HeadResolver {
             current = await this.materializer.materialize(scope, model.id);
           } else if (attempt.status === 'no_patch') {
             // state remains on frozen attempt base
-          } else if (attempt.status === 'stopped') return { health: 'stopped_uncommitted', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'durable stopped attempt is unresolved' };
+          } else if (attempt.status === 'stopped') {
+            const next = ordered[n + 1];
+            if (!next || next.generationType !== 'continue' || next.resolvesAttemptId !== attempt.id) {
+              return { health: 'stopped_uncommitted', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'durable stopped attempt is unresolved' };
+            }
+            // Explicit same-variant Continue recovery may resolve a stopped segment without inventing a state mutation.
+          }
           else if (attempt.status === 'failed_patch') return { health: 'failed_patch', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'active attempt has failed patch' };
           else return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: `attempt status ${attempt.status} requires explicit resolution` };
         }
