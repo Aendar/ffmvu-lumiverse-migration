@@ -1,11 +1,11 @@
 {
-  "version": "0.12.3",
+  "version": "0.13.0",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with canonical v2.8.1 StatusMenu parity UI, centered overlay composer panel, compact 0.78 scale, persistent resize, Tier-1 legacy save import, portable snapshots, narrative history context, and typed GUI intents.",
+  "description": "FF+MVU Lumiverse migration bridge with canonical v2.8.1 StatusMenu, editable Variables tree, centered overlay composer panel, persistent resize, Tier-1 legacy import, portable snapshots, narrative history context, and branch-safe typed GUI intents.",
   "permissions": [
     "context_handler",
     "interceptor",
