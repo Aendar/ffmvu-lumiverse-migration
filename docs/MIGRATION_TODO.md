@@ -102,6 +102,15 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Compensated virtual width/height keeps the scaled StatusMenu filling the composer viewport.
 - [ ] Live visual check of text readability and pointer/scroll behavior at 0.78 scale.
 
+## Variables editor
+
+- [x] Product semantics locked: human-friendly editable tree, not raw stat_data replacement.
+- [ ] Add path-level typed GUI intents: value.set / key.rename / entry.delete / entry.add.
+- [ ] Protect root/internal structural keys and rely on reducer validation for schema-required values.
+- [ ] Add canonical StatusMenu `Variables` tab with search, inline value editing, rename/delete/add.
+- [ ] Add sibling/template-assisted creation for object records.
+- [ ] Live-test rename currency key, edit GM Note text, delete/add a disposable record, and verify next-turn state continuity.
+
 ## Safe to start now — short gameplay tests
 
 Use disposable/short chats first:
