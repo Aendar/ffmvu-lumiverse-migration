@@ -27,6 +27,27 @@ export interface ProjectionSeed {
   provenance: 'fork-exact' | 'legacy-exact';
 }
 
+export const PORTABLE_SNAPSHOT_FORMAT = 'FFMVU-Portable-Snapshot-v1';
+
+export interface PortableSnapshot {
+  format: typeof PORTABLE_SNAPSHOT_FORMAT;
+  createdAt: string;
+  source: {
+    chatId: string;
+    nodeId: string;
+    stateHash: string;
+    turn: number;
+    gameDate: string;
+    gameTime: string;
+  };
+  stateSchemaVersion: string;
+  reducerVersion: string;
+  state: FFMVUState;
+  stateHash: string;
+  projectionSeed: ProjectionSeed;
+  snapshotHash: string;
+}
+
 export interface ProjectionBinding {
   sourceKind: 'node' | 'base-seed';
   sourceNodeId?: string;

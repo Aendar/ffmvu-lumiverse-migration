@@ -12,10 +12,18 @@ import { Materializer } from '../persistence/materializer.js';
 import { createId, isoNow } from '../persistence/ids.js';
 import { materializedTipPath } from '../persistence/paths.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
-import { EVENT_FORMAT_VERSION, type BaseSnapshot, type ChatStoreRevision, type CommitAnchor, type MaterializedState, type StateCommit, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
+import { EVENT_FORMAT_VERSION, PORTABLE_SNAPSHOT_FORMAT, type BaseSnapshot, type BaseSnapshotKind, type ChatStoreRevision, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommit, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { ScopeMutex } from './scope-mutex.js';
+import { applyGameStartPayload, type GameStartPayload } from '../shared/domain/gamestart.js';
+import { extractLegacyImport } from '../shared/domain/snapshot.js';
 
-export interface CreateGenesisInput { state?: unknown; transcriptBoundary?: TranscriptBaseBoundary; provenance?: Record<string, unknown> }
+export interface CreateGenesisInput {
+  state?: unknown;
+  kind?: BaseSnapshotKind;
+  transcriptBoundary?: TranscriptBaseBoundary;
+  projectionSeed?: ProjectionSeed;
+  provenance?: Record<string, unknown>;
+}
 export interface CommitPatchInput { parentNodeId: string; patch: JsonPatchOperation[]; kind: StateCommitKind; anchor?: CommitAnchor; requestId?: string; note?: string }
 
 export interface FinalizeModelAttemptInput {
@@ -63,11 +71,34 @@ export class StateService {
       const reducer = this.reducers.get(LEGACY_REDUCER_VERSION); const state = reducer.normalize(input.state ?? createDefaultState());
       const errors = reducer.validate(state); if (errors.length) throw new Error('Invalid genesis state: ' + errors.join('; '));
       const stateHash = await canonicalHash(state); const baseId = createId('base'); const transactionId = createId('tx');
-      const view = this.projections.get(LEGACY_PROJECTION_VERSION).build(state); const promptViewHash = await canonicalHash(view);
+      const defaultView = this.projections.get(LEGACY_PROJECTION_VERSION).build(state);
+      const defaultPromptViewHash = await canonicalHash(defaultView);
+      let projectionBinding: BaseSnapshot['projectionBinding'];
+      let projectionSeed: ProjectionSeed | undefined;
+      if (input.projectionSeed) {
+        const seed = structuredClone(input.projectionSeed);
+        this.projections.get(seed.projectionVersion);
+        const seedHash = await canonicalHash(seed.projection);
+        if (seedHash !== seed.promptViewHash) throw new Error('GENESIS_PROJECTION_SEED_HASH_MISMATCH');
+        projectionSeed = seed;
+        projectionBinding = {
+          sourceKind: 'base-seed', sourceBaseId: baseId,
+          projectionVersion: seed.projectionVersion,
+          promptProtocolVersion: seed.promptProtocolVersion,
+          promptViewHash: seed.promptViewHash,
+        };
+      } else {
+        projectionBinding = {
+          sourceKind: 'node', sourceNodeId: baseId, sourceStateHash: stateHash,
+          projectionVersion: LEGACY_PROJECTION_VERSION,
+          promptProtocolVersion: 'ffmvu-model-state-v1',
+          promptViewHash: defaultPromptViewHash,
+        };
+      }
       const base: BaseSnapshot = {
-        eventFormatVersion: EVENT_FORMAT_VERSION, id: baseId, scope, kind: 'genesis', stateSchemaVersion: STATE_SCHEMA_VERSION,
-        reducerVersion: LEGACY_REDUCER_VERSION, state, stateHash,
-        projectionBinding: { sourceKind: 'node', sourceNodeId: baseId, sourceStateHash: stateHash, projectionVersion: LEGACY_PROJECTION_VERSION, promptProtocolVersion: 'ffmvu-model-state-v1', promptViewHash },
+        eventFormatVersion: EVENT_FORMAT_VERSION, id: baseId, scope, kind: input.kind ?? 'genesis', stateSchemaVersion: STATE_SCHEMA_VERSION,
+        reducerVersion: LEGACY_REDUCER_VERSION, state, stateHash, projectionBinding,
+        ...(projectionSeed ? { projectionSeed } : {}),
         ...(input.transcriptBoundary ? { transcriptBoundary: structuredClone(input.transcriptBoundary) } : {}),
         ...(input.provenance ? { provenance: structuredClone(input.provenance) } : {}),
         createdAt: isoNow(),
@@ -78,6 +109,89 @@ export class StateService {
       const result = { nodeId: baseId, stateHash, state }; await this.updateMaterializedTipCache(scope, result);
       await this.anchors.putRoot({ anchorId: 'root', scope, baseNodeId: baseId, tipNodeId: baseId, updatedAt: isoNow() });
       return result;
+    });
+  }
+
+  async startNewGame(scope: StateScope, payload: GameStartPayload, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState> {
+    const state = applyGameStartPayload(createDefaultState(), payload);
+    return this.createGenesis(scope, {
+      state,
+      kind: 'genesis',
+      ...(transcriptBoundary ? { transcriptBoundary } : {}),
+      provenance: { source: 'gamestart-v1.4', gameStarted: true },
+    });
+  }
+
+  async importLegacyState(scope: StateScope, input: unknown, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState> {
+    const extracted = await extractLegacyImport(input);
+    return this.createGenesis(scope, {
+      state: extracted.state,
+      kind: 'legacy-import',
+      ...(extracted.projectionSeed ? { projectionSeed: extracted.projectionSeed } : {}),
+      ...(transcriptBoundary ? { transcriptBoundary } : {}),
+      provenance: extracted.provenance,
+    });
+  }
+
+  async exportPortableSnapshot(scope: StateScope, nodeId: string): Promise<PortableSnapshot> {
+    if (!await this.store.isNodeCommitted(scope, nodeId)) throw new Error('SNAPSHOT_NODE_NOT_COMMITTED');
+    const materialized = await this.materializer.materialize(scope, nodeId);
+    const artifact = await this.store.readNode(scope, nodeId);
+    const projection = await this.getProjectionForNode(scope, nodeId);
+    const portableWithoutHash = {
+      format: PORTABLE_SNAPSHOT_FORMAT as typeof PORTABLE_SNAPSHOT_FORMAT,
+      createdAt: isoNow(),
+      source: {
+        chatId: scope.chatId,
+        nodeId,
+        stateHash: materialized.stateHash,
+        turn: Number(materialized.state.Narrative.Turn) || 0,
+        gameDate: String(materialized.state.World.Date?.[0] ?? ''),
+        gameTime: String(materialized.state.World.Time?.[0] ?? ''),
+      },
+      stateSchemaVersion: STATE_SCHEMA_VERSION,
+      reducerVersion: artifact.value.reducerVersion,
+      state: structuredClone(materialized.state),
+      stateHash: materialized.stateHash,
+      projectionSeed: {
+        projectionVersion: projection.projectionVersion,
+        promptProtocolVersion: projection.promptProtocolVersion,
+        projection: structuredClone(projection.view),
+        promptViewHash: projection.viewHash,
+        provenance: 'fork-exact' as const,
+      },
+    };
+    const snapshotHash = await canonicalHash(portableWithoutHash);
+    return { ...portableWithoutHash, snapshotHash };
+  }
+
+  async importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState> {
+    if (!snapshot || snapshot.format !== PORTABLE_SNAPSHOT_FORMAT) throw new Error('UNSUPPORTED_PORTABLE_SNAPSHOT_FORMAT');
+    const { snapshotHash, ...payload } = snapshot;
+    if (await canonicalHash(payload) !== snapshotHash) throw new Error('PORTABLE_SNAPSHOT_HASH_MISMATCH');
+    const normalized = this.reducers.get(LEGACY_REDUCER_VERSION).normalize(snapshot.state);
+    const errors = this.reducers.get(LEGACY_REDUCER_VERSION).validate(normalized);
+    if (errors.length) throw new Error('PORTABLE_SNAPSHOT_INVALID_STATE: ' + errors.join('; '));
+    if (await canonicalHash(normalized) !== snapshot.stateHash) throw new Error('PORTABLE_SNAPSHOT_STATE_HASH_MISMATCH');
+    if (await canonicalHash(snapshot.projectionSeed.projection) !== snapshot.projectionSeed.promptViewHash) {
+      throw new Error('PORTABLE_SNAPSHOT_PROJECTION_HASH_MISMATCH');
+    }
+    return this.createGenesis(scope, {
+      state: normalized,
+      kind: 'fork',
+      projectionSeed: {
+        ...structuredClone(snapshot.projectionSeed),
+        provenance: 'fork-exact',
+      },
+      ...(transcriptBoundary ? { transcriptBoundary } : {}),
+      provenance: {
+        source: 'portable-snapshot',
+        sourceChatId: snapshot.source.chatId,
+        sourceNodeId: snapshot.source.nodeId,
+        sourceStateHash: snapshot.source.stateHash,
+        sourceSnapshotHash: snapshot.snapshotHash,
+        sourceCreatedAt: snapshot.createdAt,
+      },
     });
   }
 

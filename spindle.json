@@ -1,11 +1,11 @@
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse state bridge with live-proven normal/regenerate/swipe/no-patch/STOP/reload safety and stateful Continue. Continue preserves host message/swipe VariantId, derives the exact append segment from a frozen prefix, supports boundary-spanning JSONPatch completion, and fails closed on ambiguity.",
+  "description": "FF+MVU Lumiverse migration bridge with stateful lifecycle parity plus portable fork snapshots, exact legacy stat_data import, and GameStart-backed new-game genesis. Snapshot loads preserve exact next-turn projection seeds across fresh chats.",
   "permissions": [
     "context_handler",
     "interceptor",

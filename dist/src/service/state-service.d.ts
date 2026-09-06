@@ -6,10 +6,13 @@ import { AnchorStore } from '../persistence/anchor-store.js';
 import { EventStore } from '../persistence/event-store.js';
 import { Materializer } from '../persistence/materializer.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
-import { type CommitAnchor, type MaterializedState, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
+import { type BaseSnapshotKind, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
+import { type GameStartPayload } from '../shared/domain/gamestart.js';
 export interface CreateGenesisInput {
     state?: unknown;
+    kind?: BaseSnapshotKind;
     transcriptBoundary?: TranscriptBaseBoundary;
+    projectionSeed?: ProjectionSeed;
     provenance?: Record<string, unknown>;
 }
 export interface CommitPatchInput {
@@ -54,6 +57,10 @@ export declare class StateService {
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
     private updateMaterializedTipCache;
     createGenesis(scope: StateScope, input?: CreateGenesisInput): Promise<MaterializedState>;
+    startNewGame(scope: StateScope, payload: GameStartPayload, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
+    importLegacyState(scope: StateScope, input: unknown, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
+    exportPortableSnapshot(scope: StateScope, nodeId: string): Promise<PortableSnapshot>;
+    importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;
     readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null>;
