@@ -198,3 +198,17 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - The composer StatusMenu has a top-edge drag handle. One panel height is persisted in browser local storage and reused across tab changes, hide/show, and reload; viewport changes clamp it safely.
 - Tier-1 legacy import of the user's real Turn 109 save is live-proven. First post-import MODEL_STATE/projection continuity still requires a real generation test.
 - Remaining UI work is live visual smoke-testing and typed migration of intentionally retained legacy mutation controls.
+
+
+# Phase 13 — Variables editor (v0.13.0)
+
+- Adds a ninth canonical StatusMenu tab, `Variables`, without replacing the frozen v2.8.1 visual tabs.
+- The editor is a human-facing recursive tree rather than a raw JSON textarea: search, primitive edit, object-key rename, delete, and add-child actions are exposed directly.
+- Labeled tuple values are presented as one logical field; editing changes tuple index 0 and preserves the descriptive label at index 1.
+- New object entries can start as an empty object/text/number/boolean or clone an existing sibling as a practical schema/template shortcut.
+- Typed GUI intents are `variable.set`, `variable.rename`, `variable.delete`, and `variable.add`.
+- Prototype-pollution path segments are rejected; destructive mutation of protected root domains is rejected.
+- Browser UI never replaces full `stat_data`. Every Variables action is sent with the exact active semantic node + state hash through the existing `ffmvu_gui_intent` endpoint.
+- `StateService.commitGuiIntent` applies the typed mutation, reducer-normalizes and validates the resulting full state, derives the ordinary JSONPatch, and writes a normal `kind=gui` semantic commit.
+- Consequently Variables edits inherit stale-head protection, committed-unbound handling, branch lineage, snapshot compatibility, and next-turn RecentChanges behavior.
+- Live UI validation on the migrated Turn 109 state remains the next proof target.

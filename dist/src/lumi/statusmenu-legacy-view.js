@@ -1,6 +1,7 @@
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusItems, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
+import { renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
 const TAB_IDS = {
     overview: 'tab-tab-1',
     attributes: 'tab-tab-1770046656361',
@@ -10,10 +11,11 @@ const TAB_IDS = {
     items: 'tab-tab-1770205420551',
     others: 'tab-tab-1770205502569',
     ffstate: 'tab-ff-state',
+    variables: 'tab-variables',
 };
 const TAB_ORDER = [
     'overview', 'attributes', 'familiars', 'wardrobe',
-    'equipment', 'items', 'others', 'ffstate',
+    'equipment', 'items', 'others', 'ffstate', 'variables',
 ];
 const EMPTY_TEXT = {
     simple: 'None',
@@ -84,7 +86,8 @@ function shadowCss() {
         + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
         + '.tab-content{min-height:0;}'
         + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
-        + 'button,input,textarea,select{font-family:inherit;}';
+        + 'button,input,textarea,select{font-family:inherit;}'
+        + VARIABLES_EDITOR_CSS;
 }
 function bindValues(root, data) {
     root.querySelectorAll('[data-bind-val]').forEach(element => {
@@ -840,6 +843,27 @@ function renderFfState(shadow, narrative) {
     buttons[0]?.addEventListener('click', () => root.querySelectorAll('details').forEach(details => { details.open = true; }));
     buttons[1]?.addEventListener('click', () => root.querySelectorAll('details').forEach(details => { details.open = false; }));
 }
+function installVariablesTab(shadow, options) {
+    const nav = shadow.querySelector('.tab-nav');
+    const container = shadow.querySelector('.status-container');
+    if (!nav || !container)
+        return;
+    const button = document.createElement('div');
+    button.className = 'tab-btn';
+    button.textContent = 'Variables';
+    nav.appendChild(button);
+    const tab = document.createElement('div');
+    tab.id = 'tab-variables';
+    tab.className = 'tab-content';
+    tab.appendChild(renderVariablesEditor(shadow, {
+        state: options.state,
+        mutationDisabled: options.mutationDisabled,
+        search: options.variablesSearch,
+        onSearch: options.onVariablesSearch,
+        onIntent: options.onIntent,
+    }));
+    container.appendChild(tab);
+}
 function selectInitialTab(shadow, options) {
     const select = (tab, notify) => {
         shadow.querySelectorAll('.tab-content').forEach(element => element.classList.remove('active'));
@@ -871,6 +895,7 @@ export function renderLegacyStatusMenu(options) {
     body.className = 'status-body';
     body.innerHTML = LEGACY_STATUS_BODY_HTML;
     shadow.append(style, body);
+    installVariablesTab(shadow, options);
     shadow.querySelectorAll('[onclick]').forEach(element => element.removeAttribute('onclick'));
     bindValues(shadow, options.state);
     const player = { kind: 'player' };

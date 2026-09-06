@@ -1,6 +1,6 @@
 import type { FFMVUState } from '../shared/state-schema.js';
 import type { GuiIntent } from '../shared/domain/gui-intents.js';
-export type LegacyStatusTab = 'overview' | 'attributes' | 'familiars' | 'wardrobe' | 'equipment' | 'items' | 'others' | 'ffstate';
+export type LegacyStatusTab = 'overview' | 'attributes' | 'familiars' | 'wardrobe' | 'equipment' | 'items' | 'others' | 'ffstate' | 'variables';
 export interface LegacyStatusViewOptions {
     state: FFMVUState;
     activeTab: LegacyStatusTab;
@@ -8,6 +8,8 @@ export interface LegacyStatusViewOptions {
     mutationDisabled: boolean;
     onTab(tab: LegacyStatusTab): void;
     onOwner(ownerId: string): void;
+    variablesSearch: string;
+    onVariablesSearch(value: string): void;
     onIntent(intent: GuiIntent): void;
     onUnsupported(action: string): void;
 }

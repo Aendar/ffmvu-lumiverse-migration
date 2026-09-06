@@ -62,7 +62,7 @@ See `docs/PRODUCT_DECISIONS.md`.
 - [x] Import Hide Location.
 - [x] Import HideUpdateVar.
 - [x] Import Colorize.
-- [x] Patch MinimizeCombatLog `$0 -> - [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.` and import.
+- [x] Patch MinimizeCombatLog `$0 -> - [x] Patch MinimizeCombatLog `$0 -> - [x] Patch MinimizeCombatLog $0 -> - [x] Patch MinimizeCombatLog $0 -> - [ ] Patch MinimizeCombatLog $0 -> $& and import. and import. and import.` and import.` and import.
 - [x] Do NOT import legacy GameStartMenu.
 - [x] Do NOT import legacy StatusMenu.
 - [ ] Smoke-test rendering/order on real Lumiverse messages.
@@ -96,19 +96,28 @@ See `docs/PRODUCT_DECISIONS.md`.
   - [ ] FF State.
 - [ ] Add typed intents for preserved legacy controls still marked unsupported.
 
+## DONE in v0.12.3 — overlay composer geometry
+
+- [x] StatusMenu no longer participates in Lumiverse InputArea layout.
+- [x] Composer stays at normal size while StatusMenu floats centered above it and may cover transcript content.
+- [x] Compact 0.78 scale and persisted drag height are retained.
+- [ ] Live visual confirmation of overlay geometry on the user's build.
+
 ## DONE in v0.12.2 — compact composer scale
 
 - [x] Compact 0.78 host-scale for the canonical StatusMenu without redesigning its internal DOM/CSS.
 - [x] Compensated virtual width/height keeps the scaled StatusMenu filling the composer viewport.
 - [ ] Live visual check of text readability and pointer/scroll behavior at 0.78 scale.
 
-## Variables editor
+## DONE in v0.13 — Variables editor
 
 - [x] Product semantics locked: human-friendly editable tree, not raw stat_data replacement.
-- [ ] Add path-level typed GUI intents: value.set / key.rename / entry.delete / entry.add.
-- [ ] Protect root/internal structural keys and rely on reducer validation for schema-required values.
-- [ ] Add canonical StatusMenu `Variables` tab with search, inline value editing, rename/delete/add.
-- [ ] Add sibling/template-assisted creation for object records.
+- [x] Add path-level typed GUI intents: variable.set / variable.rename / variable.delete / variable.add.
+- [x] Protect root structural keys; every resulting state still passes reducer normalize/validate before commit.
+- [x] Add canonical StatusMenu `Variables` tab with recursive search, primitive editing, rename/delete/add.
+- [x] Labeled tuples edit their value slot without destroying the label.
+- [x] Add sibling/template-assisted creation for object records plus simple empty object/text/number/boolean presets.
+- [x] Variables edits use the same exact-head/hash branch-safe GUI commit path as Wardrobe/Inventory/Equipment.
 - [ ] Live-test rename currency key, edit GM Note text, delete/add a disposable record, and verify next-turn state continuity.
 
 ## Safe to start now — short gameplay tests
