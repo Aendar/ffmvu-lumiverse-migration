@@ -1,5 +1,6 @@
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusCompactObject, statusCoreBudget, statusHphOverview, statusItems, statusNumber, statusOwnerById, statusOwners, statusText, } from './statusmenu-model.js';
+import { renderLegacyStatusMenu } from './statusmenu-legacy-view.js';
 const TAB_DEFS = [
     ['overview', 'Overview'],
     ['attributes', 'Attributes'],
@@ -94,14 +95,52 @@ export function setup(ctx) {
       color:var(--lumiverse-text);
       width:100%;
       box-sizing:border-box;
-      padding:8px;
+      padding:0;
       display:none;
+      min-height:0;
     }
     .ffsm-app.open {
       display:block;
       height:520px;
-      max-height:calc(100vh - 190px);
-      min-height:360px;
+      min-height:0;
+    }
+    .ffsm-panel-frame {
+      width:100%;
+      height:100%;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      box-sizing:border-box;
+    }
+    .ffsm-resize-grip {
+      flex:0 0 10px;
+      height:10px;
+      cursor:ns-resize;
+      touch-action:none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+    }
+    .ffsm-resize-grip::before {
+      content:'';
+      display:block;
+      width:64px;
+      height:3px;
+      border-radius:99px;
+      background:rgba(0,229,255,.38);
+      box-shadow:0 0 8px rgba(0,229,255,.12);
+    }
+    .ffsm-resize-grip:hover::before,
+    .ffsm-resize-grip.dragging::before {
+      background:rgba(0,229,255,.72);
+    }
+    .ffsm-panel-content {
+      flex:1 1 auto;
+      min-height:0;
+      width:100%;
+      overflow:hidden;
+      box-sizing:border-box;
     }
     .ffsm-shell {
       height:100%;
@@ -266,10 +305,78 @@ export function setup(ctx) {
     let panelOpen = false;
     let legacyImportOpen = false;
     let legacyImportText = '';
+    const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
+    const DEFAULT_PANEL_HEIGHT = 520;
+    let panelHeight = (() => {
+        try {
+            const stored = Number(window.localStorage.getItem(PANEL_HEIGHT_KEY));
+            return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_PANEL_HEIGHT;
+        }
+        catch {
+            return DEFAULT_PANEL_HEIGHT;
+        }
+    })();
+    function clampPanelHeight(value) {
+        const minimum = 280;
+        const maximum = Math.max(minimum, window.innerHeight - 110);
+        return Math.round(Math.max(minimum, Math.min(maximum, value)));
+    }
+    function applyPanelHeight() {
+        panelHeight = clampPanelHeight(panelHeight);
+        app.style.height = panelHeight + 'px';
+    }
+    function persistPanelHeight() {
+        try {
+            window.localStorage.setItem(PANEL_HEIGHT_KEY, String(panelHeight));
+        }
+        catch { }
+    }
+    function resizeGrip() {
+        const grip = make('div', 'ffsm-resize-grip');
+        grip.title = 'Drag to resize FFMVU StatusMenu';
+        grip.setAttribute('role', 'separator');
+        grip.setAttribute('aria-orientation', 'horizontal');
+        let dragging = false;
+        let startY = 0;
+        let startHeight = 0;
+        const finish = () => {
+            if (!dragging)
+                return;
+            dragging = false;
+            grip.classList.remove('dragging');
+            persistPanelHeight();
+        };
+        grip.addEventListener('pointerdown', event => {
+            if (event.button !== 0)
+                return;
+            event.preventDefault();
+            dragging = true;
+            startY = event.clientY;
+            startHeight = app.getBoundingClientRect().height || panelHeight;
+            grip.classList.add('dragging');
+            grip.setPointerCapture(event.pointerId);
+        });
+        grip.addEventListener('pointermove', event => {
+            if (!dragging)
+                return;
+            panelHeight = clampPanelHeight(startHeight + (startY - event.clientY));
+            applyPanelHeight();
+        });
+        grip.addEventListener('pointerup', finish);
+        grip.addEventListener('pointercancel', finish);
+        return grip;
+    }
+    const viewportResize = () => {
+        if (panelOpen)
+            applyPanelHeight();
+    };
+    window.addEventListener('resize', viewportResize);
     function syncPanelVisibility() {
         app.classList.toggle('open', panelOpen);
         toggle.classList.toggle('active', panelOpen);
         toggle.setAttribute('aria-pressed', String(panelOpen));
+        if (panelOpen)
+            applyPanelHeight();
     }
     toggle.addEventListener('click', () => {
         panelOpen = !panelOpen;
@@ -982,14 +1089,35 @@ export function setup(ctx) {
         shell.appendChild(details);
     }
     function render() {
-        const oldScroll = app.scrollTop;
         app.replaceChildren();
-        const shell = make('div', 'ffsm-shell');
-        renderHeader(shell);
-        renderBody(shell);
-        renderDiagnostics(shell);
-        app.appendChild(shell);
-        app.scrollTop = oldScroll;
+        const frame = make('div', 'ffsm-panel-frame');
+        const content = make('div', 'ffsm-panel-content');
+        frame.append(resizeGrip(), content);
+        const state = activeState();
+        if (state && snapshot?.ok && snapshot.initialized) {
+            content.appendChild(renderLegacyStatusMenu({
+                state,
+                activeTab,
+                selectedOwnerId,
+                mutationDisabled: mutationDisabled(),
+                onTab: tab => { activeTab = tab; },
+                onOwner: ownerId => { selectedOwnerId = ownerId; },
+                onIntent: sendIntent,
+                onUnsupported: message => {
+                    notice = message;
+                    window.alert(message);
+                },
+            }));
+        }
+        else {
+            const shell = make('div', 'ffsm-shell');
+            renderHeader(shell);
+            renderBody(shell);
+            renderDiagnostics(shell);
+            content.appendChild(shell);
+        }
+        app.appendChild(frame);
+        applyPanelHeight();
     }
     const backendUnsub = ctx.onBackendMessage((payload) => {
         if (payload?.type === 'ffmvu_status') {
@@ -1120,6 +1248,7 @@ export function setup(ctx) {
     return () => {
         backendUnsub();
         chatSwitchUnsub();
+        window.removeEventListener('resize', viewportResize);
         toggle.remove();
         app.remove();
         removeStyle();

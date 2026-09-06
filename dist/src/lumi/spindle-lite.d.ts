@@ -130,6 +130,7 @@ export interface SpindleFrontendStateLite {
 }
 export interface SpindleFrontendContextLite {
     ui: {
+        mount(point: string): Element;
         registerDrawerTab(options: {
             id: string;
             title: string;
@@ -144,7 +145,13 @@ export interface SpindleFrontendContextLite {
         addStyle(css: string): () => void;
         cleanup(): void;
     };
-    state: SpindleFrontendStateLite;
+    events: {
+        on(event: string, handler: (payload: any) => void): () => void;
+    };
+    getActiveChat(): {
+        chatId: string | null;
+        characterId: string | null;
+    };
     sendToBackend(payload: unknown): void;
     onBackendMessage(handler: (payload: any) => void): () => void;
 }
