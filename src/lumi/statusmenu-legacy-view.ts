@@ -875,7 +875,6 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
   renderFfState(shadow, options.state.Narrative);
   bindOverview(shadow, options.state);
   wireImages(shadow, options.onUnsupported);
-  wireCheckboxes(shadow, options.onUnsupported);
   wireCollapsibles(shadow);
   selectInitialTab(shadow, options);
 
