@@ -27,7 +27,7 @@ const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/20
 function record(value) {
     return isRecord(value) ? value : {};
 }
-function tupleValue(value) {
+function legacyTupleValue(value) {
     return Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string' ? value[0] : value;
 }
 function getPath(root, path) {
@@ -37,7 +37,7 @@ function getPath(root, path) {
             return undefined;
         value = value[part];
     }
-    return tupleValue(value);
+    return legacyTupleValue(value);
 }
 function numberAt(root, path) {
     const raw = getPath(root, path);
@@ -60,7 +60,7 @@ function setSlot(fragment, name, value) {
         element.style.display = '';
 }
 function describe(raw) {
-    const value = tupleValue(raw);
+    const value = legacyTupleValue(raw);
     if (value === null || value === undefined)
         return '';
     if (!isRecord(value))
@@ -211,7 +211,7 @@ function showImage(root, src) {
     root.appendChild(overlay);
 }
 function formatDetail(container, value, depth = 0) {
-    const raw = tupleValue(value);
+    const raw = legacyTupleValue(value);
     if (!isRecord(raw) && !Array.isArray(raw)) {
         container.appendChild(document.createTextNode(raw === null || raw === undefined ? 'null' : String(raw)));
         return;
@@ -228,7 +228,7 @@ function formatDetail(container, value, depth = 0) {
         keyElement.textContent = key + ':';
         const valueElement = document.createElement('span');
         valueElement.className = 'detail-val';
-        if (isRecord(tupleValue(child)) || Array.isArray(tupleValue(child))) {
+        if (isRecord(legacyTupleValue(child)) || Array.isArray(legacyTupleValue(child))) {
             formatDetail(valueElement, child, depth + 1);
         }
         else {
@@ -330,7 +330,7 @@ function renderList(shadow, container, rawData, owner, options) {
     const template = shadow.getElementById(templateId);
     if (!template)
         return;
-    const data = asRecord(tupleValue(rawData));
+    const data = asRecord(legacyTupleValue(rawData));
     const entries = Object.entries(data).filter(([key]) => !['$meta', '$key', 'template'].includes(key));
     container.replaceChildren();
     container.className = listType === 'inventory' ? 'list-inventory-view' : listType === 'grid' ? 'list-grid-view' : '';
@@ -351,7 +351,7 @@ function renderList(shadow, container, rawData, owner, options) {
         const visible = paged ? entries.slice(page * pageSize, page * pageSize + pageSize) : entries;
         for (const [key, raw] of visible) {
             const fragment = template.content.cloneNode(true);
-            const itemRecord = record(tupleValue(raw));
+            const itemRecord = record(legacyTupleValue(raw));
             const name = statusText(itemRecord.Name ?? itemRecord.name, key);
             const title = listType === 'inventory' || listType === 'grid' ? name : key;
             const desc = describe(raw);
