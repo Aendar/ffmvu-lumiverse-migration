@@ -1093,8 +1093,7 @@ export function setup(ctx) {
             }
         }
     });
-    const activeChatUnsub = ctx.state.subscribe('chat.active', value => {
-        const next = value?.chatId ?? null;
+    function applyActiveChat(next) {
         if (next === activeChatId)
             return;
         activeChatId = next;
@@ -1107,16 +1106,20 @@ export function setup(ctx) {
         ffSearch = '';
         render();
         requestState();
+    }
+    const chatSwitchUnsub = ctx.events.on('CHAT_SWITCHED', (payload) => {
+        const next = typeof payload?.chatId === 'string' ? payload.chatId : null;
+        applyActiveChat(next);
     });
-    const initial = ctx.state.get('chat.active');
-    activeChatId = initial?.chatId ?? null;
+    const initial = ctx.getActiveChat();
+    activeChatId = initial.chatId ?? null;
     syncPanelVisibility();
     render();
     ctx.sendToBackend({ type: 'ffmvu_get_status' });
     requestState();
     return () => {
         backendUnsub();
-        activeChatUnsub();
+        chatSwitchUnsub();
         toggle.remove();
         app.remove();
         removeStyle();
