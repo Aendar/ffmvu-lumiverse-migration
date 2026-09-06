@@ -1,11 +1,11 @@
 {
-  "version": "0.11.1",
+  "version": "0.11.2",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with self-contained composer StatusMenu frontend, Tier-1 legacy save import, portable snapshots, narrative history context, and typed GUI intents.",
+  "description": "FF+MVU Lumiverse migration bridge with self-contained composer StatusMenu frontend, public active-chat lifecycle integration, Tier-1 legacy save import, portable snapshots, narrative history context, and typed GUI intents.",
   "permissions": [
     "context_handler",
     "interceptor",
