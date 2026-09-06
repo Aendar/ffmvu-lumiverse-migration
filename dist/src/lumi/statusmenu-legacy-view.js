@@ -444,6 +444,8 @@ function openImageEditor(root, state, target, onIntent, mutationDisabled) {
                 browse.setAttribute('disabled', 'true');
                 const encoded = await compressLocalImage(file);
                 writeLocalImage(path, encoded);
+                if (current)
+                    onIntent({ type: 'image.set', target, value: '' });
                 const editButton = root.querySelector('.img-edit-btn[data-save-root="' + (target.kind === 'world-map' ? 'World' : target.kind === 'player-avatar' ? 'Mainchar' : 'Familiar') + '"]' + (target.kind === 'familiar-avatar' ? '[data-ffmvu-familiar-id="' + CSS.escape(target.id) + '"]' : ''));
                 const image = editButton?.closest('.img-wrapper')?.querySelector('img[data-bind-img]') ?? null;
                 if (image) {
