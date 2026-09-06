@@ -44,9 +44,9 @@ function main(): void {
   assert(hph?.bladder === 4 && hph?.erection === 8 && hph?.semenMl === 11, 'Overview reads canonical HPH physiology paths');
   assert(hph?.lengthCm === 19 && hph?.girthCm === 14, 'Overview reads canonical HPH penis dimensions');
 
-  const budget = statusCoreBudget({ str: 15, agi: 15, con: 15, int: 10, wis: 10 });
+  const budget = statusCoreBudget({ str: 15, agi: 15, con: 15, int: 15, wis: 15 });
   assert(budget.spent === 50 && budget.remaining === 0 && budget.valid, 'GameStart five-stat budget matches v1.4');
-  assert(statusCoreBudget({ str: 16, agi: 15, con: 15, int: 10, wis: 10 }).valid === false, 'GameStart budget rejects >50 spent points');
+  assert(statusCoreBudget({ str: 16, agi: 15, con: 15, int: 15, wis: 15 }).valid === false, 'GameStart budget rejects >50 spent points');
 
   assert(statusText(['08:00', 'Time']) === '08:00', 'StatusMenu display unwraps labeled tuples');
   assert(statusPath(state, 'Narrative.Scene.HPH.player.Physiology.Arousal') === 6, 'StatusMenu state path reader is deterministic');
