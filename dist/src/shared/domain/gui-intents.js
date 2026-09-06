@@ -8,6 +8,21 @@ function isOwnerRef(value) {
         return true;
     return value.kind === 'familiar' && typeof value.id === 'string' && Boolean(value.id.trim());
 }
+function isImageRef(value) {
+    if (!isRecord(value) || typeof value.kind !== 'string')
+        return false;
+    if (value.kind === 'player-avatar' || value.kind === 'world-map')
+        return true;
+    return value.kind === 'familiar-avatar' && typeof value.id === 'string' && Boolean(value.id.trim());
+}
+function validImageUrl(value) {
+    if (!value)
+        return true;
+    if (value.length > 4096)
+        return false;
+    const lower = value.toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+}
 const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 const PROTECTED_ROOT_KEYS = new Set([
     'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
@@ -65,6 +80,20 @@ export function assertGuiIntent(value) {
     if (value.type === 'equipment.unequip') {
         if (!isOwnerRef(value.owner) || typeof value.equipmentKey !== 'string' || !value.equipmentKey)
             throw new Error('GUI_INTENT_INVALID_UNEQUIP');
+        return;
+    }
+    if (value.type === 'image.set') {
+        if (!isImageRef(value.target) || typeof value.value !== 'string' || !validImageUrl(value.value.trim())) {
+            throw new Error('GUI_INTENT_INVALID_IMAGE');
+        }
+        return;
+    }
+    if (value.type === 'familiar.flag.set') {
+        if (typeof value.familiarId !== 'string' || !value.familiarId.trim()
+            || !['Is_present', 'Is_in_battle_team'].includes(String(value.field))
+            || typeof value.value !== 'boolean') {
+            throw new Error('GUI_INTENT_INVALID_FAMILIAR_FLAG');
+        }
         return;
     }
     if (value.type === 'variable.set') {
@@ -127,6 +156,32 @@ function requireCollection(owner, key, create = false) {
         throw new Error('GUI_COLLECTION_NOT_FOUND: ' + key);
     owner[key] = {};
     return owner[key];
+}
+function setScalarPreservingTuple(owner, key, value) {
+    const current = owner[key];
+    if (Array.isArray(current) && current.length >= 2 && typeof current[1] === 'string')
+        current[0] = value;
+    else
+        owner[key] = value;
+}
+function imageSet(state, intent) {
+    const value = intent.value.trim();
+    if (!validImageUrl(value))
+        throw new Error('GUI_IMAGE_URL_INVALID');
+    if (intent.target.kind === 'player-avatar') {
+        setScalarPreservingTuple(state.Mainchar, 'Image', value);
+        return;
+    }
+    if (intent.target.kind === 'world-map') {
+        setScalarPreservingTuple(state.World, 'MapImage', value);
+        return;
+    }
+    const familiar = ownerRecord(state, { kind: 'familiar', id: intent.target.id });
+    setScalarPreservingTuple(familiar, 'Image', value);
+}
+function familiarFlagSet(state, intent) {
+    const familiar = ownerRecord(state, { kind: 'familiar', id: intent.familiarId });
+    setScalarPreservingTuple(familiar, intent.field, intent.value);
 }
 function numericValue(owner, key, fallback = 0) {
     const n = Number(tupleValue(owner[key]));
@@ -452,6 +507,10 @@ export function applyGuiIntent(input, intent) {
         equipmentEquip(state, intent);
     else if (intent.type === 'equipment.unequip')
         equipmentUnequip(state, intent);
+    else if (intent.type === 'image.set')
+        imageSet(state, intent);
+    else if (intent.type === 'familiar.flag.set')
+        familiarFlagSet(state, intent);
     else if (intent.type === 'variable.set')
         variableSet(state, intent);
     else if (intent.type === 'variable.rename')

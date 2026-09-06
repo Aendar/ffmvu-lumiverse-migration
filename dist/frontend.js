@@ -639,6 +639,7 @@ const EMPTY_TEXT = {
 const OUTFIT_SLOT_ORDER = { Head: 0, Torso: 1, Legs: 2, Feet: 3, Extra: 4 };
 const OUTFIT_LAYER_ORDER = { Underwear: 0, Base: 1, Outerwear: 2 };
 const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect fill='%23e0e0e0' width='300' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='0.3em' fill='%23999' font-size='16' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E";
+const LOCAL_IMAGE_PREFIX = 'mzsb_img_';
 function record(value) {
     return isRecord(value) ? value : {};
 }
@@ -660,6 +661,96 @@ function numberAt(root, path) {
         return null;
     const value = Number(raw);
     return Number.isFinite(value) ? value : null;
+}
+function imageStoragePath(target) {
+    if (target.kind === 'player-avatar')
+        return 'Mainchar.Image';
+    if (target.kind === 'world-map')
+        return 'World.MapImage';
+    return 'Familiar.' + target.id + '.Image';
+}
+function imageStateValue(state, target) {
+    if (target.kind === 'player-avatar')
+        return statusText(state.Mainchar.Image, '');
+    if (target.kind === 'world-map')
+        return statusText(state.World.MapImage, '');
+    const familiar = asRecord(state.Familiar)[target.id];
+    return isRecord(familiar) ? statusText(familiar.Image, '') : '';
+}
+function readLocalImage(path) {
+    try {
+        return window.localStorage.getItem(LOCAL_IMAGE_PREFIX + path) || '';
+    }
+    catch {
+        return '';
+    }
+}
+function writeLocalImage(path, value) {
+    try {
+        window.localStorage.setItem(LOCAL_IMAGE_PREFIX + path, value);
+    }
+    catch {
+        throw new Error('LOCAL_IMAGE_STORAGE_FAILED');
+    }
+}
+function clearLocalImage(path) {
+    try {
+        window.localStorage.removeItem(LOCAL_IMAGE_PREFIX + path);
+    }
+    catch { }
+}
+function imageTargetForButton(button) {
+    const root = button.getAttribute('data-save-root');
+    const leaf = button.getAttribute('data-save-leaf');
+    if (root === 'Mainchar' && leaf === 'Image')
+        return { kind: 'player-avatar' };
+    if (root === 'World' && leaf === 'MapImage')
+        return { kind: 'world-map' };
+    if (root === 'Familiar' && leaf === 'Image') {
+        const id = button.dataset.ffmvuFamiliarId;
+        if (id)
+            return { kind: 'familiar-avatar', id };
+    }
+    return null;
+}
+function imageBytes(dataUrl) {
+    return Math.ceil((dataUrl.split(',')[1] || '').length * 3 / 4);
+}
+function compressLocalImage(file) {
+    return new Promise((resolve, reject) => {
+        if (!file)
+            return reject(new Error('no_file'));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('read_failed'));
+        reader.onload = () => {
+            const image = new Image();
+            image.onerror = () => reject(new Error('decode_failed'));
+            image.onload = () => {
+                const longest = Math.max(image.width, image.height) || 1;
+                const scale = Math.min(1, 1920 / longest);
+                const width = Math.max(1, Math.round(image.width * scale));
+                const height = Math.max(1, Math.round(image.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const context = canvas.getContext('2d');
+                if (!context)
+                    return reject(new Error('canvas_failed'));
+                context.drawImage(image, 0, 0, width, height);
+                let quality = 0.9;
+                let out = canvas.toDataURL('image/jpeg', quality);
+                while (imageBytes(out) > 1536 * 1024 && quality > 0.6) {
+                    quality = Math.max(0.6, quality - 0.1);
+                    out = canvas.toDataURL('image/jpeg', quality);
+                }
+                if (imageBytes(out) > 1536 * 1024)
+                    return reject(new Error('compressed_image_too_large'));
+                resolve(out);
+            };
+            image.src = String(reader.result || '');
+        };
+        reader.readAsDataURL(file);
+    });
 }
 function shownNumber(value) {
     if (value === null)
@@ -898,24 +989,156 @@ function showEquipTarget(root, state, sourceOwner, itemKey, onIntent) {
     overlay.appendChild(content);
     root.appendChild(overlay);
 }
-function wireImages(root, onUnsupported) {
+function openImageEditor(root, state, target, onIntent, mutationDisabled) {
+    root.getElementById('ffmvu-image-edit-overlay')?.remove();
+    const host = root.querySelector('.status-body');
+    if (!host)
+        return;
+    const overlay = document.createElement('div');
+    overlay.id = 'ffmvu-image-edit-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:60000;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.85);padding:12px;box-sizing:border-box;backdrop-filter:blur(2px);';
+    const content = document.createElement('div');
+    content.style.cssText = 'background:#001f3f;border:1px solid #00e5ff;padding:20px;border-radius:8px;width:90%;max-width:400px;max-height:90%;overflow:auto;color:#e0f7fa;box-shadow:0 0 20px rgba(0,0,0,.5);box-sizing:border-box;';
+    const title = document.createElement('h3');
+    title.textContent = target.kind === 'world-map' ? 'Edit Map Image' : 'Edit Avatar';
+    title.style.cssText = 'margin:0 0 14px;color:#00e5ff;';
+    const path = imageStoragePath(target);
+    const local = readLocalImage(path);
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.placeholder = local ? '(Local image currently set) Enter URL to replace...' : 'https://...';
+    const current = imageStateValue(state, target);
+    if (!local && /^https?:\/\//i.test(current))
+        urlInput.value = current;
+    urlInput.style.cssText = 'width:100%;padding:10px;background:rgba(255,255,255,.1);border:1px solid rgba(0,229,255,.3);color:#e0f7fa;border-radius:4px;box-sizing:border-box;';
+    const save = document.createElement('button');
+    save.textContent = 'Save URL';
+    save.disabled = mutationDisabled;
+    save.style.cssText = 'margin-top:8px;width:100%;padding:10px;background:rgba(0,229,255,.2);border:1px solid #00e5ff;color:#00e5ff;border-radius:4px;cursor:pointer;font-weight:bold;';
+    const divider = document.createElement('div');
+    divider.textContent = '— or —';
+    divider.style.cssText = 'text-align:center;color:#81d4fa;margin:14px 0;';
+    const browse = document.createElement('button');
+    browse.textContent = '📂 Browse Local File';
+    browse.style.cssText = 'width:100%;padding:10px;background:rgba(0,229,255,.1);border:1px dashed rgba(0,229,255,.4);color:#81d4fa;border-radius:4px;cursor:pointer;font-weight:bold;';
+    const hint = document.createElement('div');
+    hint.textContent = 'Local files are compressed and stored only in this browser (max 1920px, ~1.5MB), matching the legacy StatusMenu behavior.';
+    hint.style.cssText = 'font-size:.8em;color:rgba(129,212,250,.75);margin-top:6px;';
+    const close = document.createElement('button');
+    close.textContent = 'Cancel';
+    close.style.cssText = 'margin-top:14px;width:100%;padding:9px;background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.35);color:#ff9b9b;border-radius:4px;cursor:pointer;';
+    const finishUrl = () => {
+        const value = urlInput.value.trim();
+        if (!value)
+            return;
+        if (!/^https?:\/\//i.test(value)) {
+            window.alert('Image URL must start with http:// or https://');
+            return;
+        }
+        clearLocalImage(path);
+        onIntent({ type: 'image.set', target, value });
+        overlay.remove();
+    };
+    save.addEventListener('click', finishUrl);
+    urlInput.addEventListener('keydown', event => { if (event.key === 'Enter') {
+        event.preventDefault();
+        finishUrl();
+    } });
+    browse.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.addEventListener('change', async () => {
+            const file = input.files?.[0];
+            if (!file)
+                return;
+            try {
+                browse.textContent = 'Processing...';
+                browse.setAttribute('disabled', 'true');
+                const encoded = await compressLocalImage(file);
+                writeLocalImage(path, encoded);
+                if (current)
+                    onIntent({ type: 'image.set', target, value: '' });
+                const editButton = root.querySelector('.img-edit-btn[data-save-root="' + (target.kind === 'world-map' ? 'World' : target.kind === 'player-avatar' ? 'Mainchar' : 'Familiar') + '"]' + (target.kind === 'familiar-avatar' ? '[data-ffmvu-familiar-id="' + CSS.escape(target.id) + '"]' : ''));
+                const image = editButton?.closest('.img-wrapper')?.querySelector('img[data-bind-img]') ?? null;
+                if (image) {
+                    image.src = encoded;
+                    image.style.display = 'block';
+                    const placeholder = image.closest('.img-wrapper')?.querySelector('.ff25-avatar-placeholder');
+                    if (placeholder)
+                        placeholder.style.display = 'none';
+                }
+                overlay.remove();
+            }
+            catch (error) {
+                window.alert('Failed to process image: ' + String(error));
+                browse.textContent = '📂 Browse Local File';
+                browse.removeAttribute('disabled');
+            }
+        });
+        input.click();
+    });
+    close.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', event => { if (event.target === overlay)
+        overlay.remove(); });
+    content.append(title, urlInput, save, divider, browse, hint, close);
+    overlay.appendChild(content);
+    host.appendChild(overlay);
+    urlInput.focus();
+}
+function wireImages(root, state, onIntent, mutationDisabled, onUnsupported) {
     root.querySelectorAll('img[data-bind-img]').forEach(image => {
         image.removeAttribute('onclick');
-        image.addEventListener('click', () => showImage(root, image.src));
+        if (image.dataset.ffmvuImageViewBound !== '1') {
+            image.dataset.ffmvuImageViewBound = '1';
+            image.addEventListener('click', () => showImage(root, image.src));
+        }
     });
     root.querySelectorAll('.img-edit-btn').forEach(button => {
         button.removeAttribute('onclick');
+        if (button.dataset.ffmvuImageEditBound === '1')
+            return;
+        button.dataset.ffmvuImageEditBound = '1';
+        const target = imageTargetForButton(button);
+        if (!target) {
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                onUnsupported('This legacy image target is not mapped to a typed Lumiverse intent yet.');
+            });
+            return;
+        }
+        const local = readLocalImage(imageStoragePath(target));
+        if (local) {
+            const image = button.closest('.img-wrapper')?.querySelector('img[data-bind-img]');
+            if (image) {
+                image.src = local;
+                image.style.display = 'block';
+                const placeholder = image.closest('.img-wrapper')?.querySelector('.ff25-avatar-placeholder');
+                if (placeholder)
+                    placeholder.style.display = 'none';
+            }
+        }
+        button.toggleAttribute('aria-disabled', mutationDisabled);
         button.addEventListener('click', event => {
             event.stopPropagation();
-            onUnsupported('Image editing is visually preserved from StatusMenu v2.8.1 but its typed Lumiverse intent is not migrated yet.');
+            if (mutationDisabled)
+                return;
+            openImageEditor(root, state, target, onIntent, mutationDisabled);
         });
     });
 }
-function wireCheckboxes(root, onUnsupported) {
+function wireCheckboxes(root, onIntent, mutationDisabled) {
     root.querySelectorAll('.ar-checkbox-input').forEach(input => {
+        const familiarId = input.dataset.ffmvuFamiliarId;
+        const field = input.getAttribute('data-save-leaf');
+        if (!familiarId || (field !== 'Is_present' && field !== 'Is_in_battle_team'))
+            return;
+        input.disabled = mutationDisabled;
+        if (input.dataset.ffmvuCheckboxBound === '1')
+            return;
+        input.dataset.ffmvuCheckboxBound = '1';
         input.addEventListener('change', () => {
-            input.checked = !input.checked;
-            onUnsupported('Familiar Present/BattleTeam editing is not migrated to a typed StateService intent yet.');
+            onIntent({ type: 'familiar.flag.set', familiarId, field, value: input.checked });
         });
     });
 }
@@ -1122,7 +1345,7 @@ function instantiateRecordBlock(shadow, containerId, data, owner, options) {
     container.appendChild(wrapper);
     bindValues(wrapper, data);
     renderNestedLists(shadow, wrapper, data, owner, options);
-    wireCheckboxes(wrapper, options.onUnsupported);
+    wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
 }
 function familiarIdentity(state, id, member) {
     const explicit = statusText(member.Identity, '');
@@ -1224,7 +1447,9 @@ function renderFamiliars(shadow, options) {
                 corePoints.style.fontWeight = 'bold';
             }
             renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
-            wireCheckboxes(wrapper, options.onUnsupported);
+            wrapper.querySelectorAll('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
+            wrapper.querySelectorAll('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
+            wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
         }
         if (pageCount > 1)
             addPager('bottom');
@@ -1536,7 +1761,7 @@ export function renderLegacyStatusMenu(options) {
     renderWardrobe(shadow, options);
     renderFfState(shadow, options.state.Narrative);
     bindOverview(shadow, options.state);
-    wireImages(shadow, options.onUnsupported);
+    wireImages(shadow, options.state, options.onIntent, options.mutationDisabled, options.onUnsupported);
     wireCollapsibles(shadow);
     selectInitialTab(shadow, options);
     const close = shadow.getElementById('detail-close-btn');

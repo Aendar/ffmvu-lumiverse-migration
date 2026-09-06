@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord } from '../shared/state-schema.js';
-import type { GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
+import type { GuiImageRef, GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusItems, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
@@ -56,6 +56,7 @@ const EMPTY_TEXT: Record<string, string> = {
 const OUTFIT_SLOT_ORDER: Record<string, number> = { Head: 0, Torso: 1, Legs: 2, Feet: 3, Extra: 4 };
 const OUTFIT_LAYER_ORDER: Record<string, number> = { Underwear: 0, Base: 1, Outerwear: 2 };
 const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect fill='%23e0e0e0' width='300' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='0.3em' fill='%23999' font-size='16' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E";
+const LOCAL_IMAGE_PREFIX = 'mzsb_img_';
 
 function record(value: unknown): MutableRecord {
   return isRecord(value) ? value : {};
@@ -79,6 +80,83 @@ function numberAt(root: unknown, path: string): number | null {
   if (raw === null || raw === undefined || raw === '' || raw === '???') return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+function imageStoragePath(target: GuiImageRef): string {
+  if (target.kind === 'player-avatar') return 'Mainchar.Image';
+  if (target.kind === 'world-map') return 'World.MapImage';
+  return 'Familiar.' + target.id + '.Image';
+}
+
+function imageStateValue(state: FFMVUState, target: GuiImageRef): string {
+  if (target.kind === 'player-avatar') return statusText(state.Mainchar.Image, '');
+  if (target.kind === 'world-map') return statusText((state.World as MutableRecord).MapImage, '');
+  const familiar = asRecord(state.Familiar)[target.id];
+  return isRecord(familiar) ? statusText(familiar.Image, '') : '';
+}
+
+function readLocalImage(path: string): string {
+  try { return window.localStorage.getItem(LOCAL_IMAGE_PREFIX + path) || ''; }
+  catch { return ''; }
+}
+
+function writeLocalImage(path: string, value: string): void {
+  try { window.localStorage.setItem(LOCAL_IMAGE_PREFIX + path, value); }
+  catch { throw new Error('LOCAL_IMAGE_STORAGE_FAILED'); }
+}
+
+function clearLocalImage(path: string): void {
+  try { window.localStorage.removeItem(LOCAL_IMAGE_PREFIX + path); } catch {}
+}
+
+function imageTargetForButton(button: HTMLElement): GuiImageRef | null {
+  const root = button.getAttribute('data-save-root');
+  const leaf = button.getAttribute('data-save-leaf');
+  if (root === 'Mainchar' && leaf === 'Image') return { kind: 'player-avatar' };
+  if (root === 'World' && leaf === 'MapImage') return { kind: 'world-map' };
+  if (root === 'Familiar' && leaf === 'Image') {
+    const id = button.dataset.ffmvuFamiliarId;
+    if (id) return { kind: 'familiar-avatar', id };
+  }
+  return null;
+}
+
+function imageBytes(dataUrl: string): number {
+  return Math.ceil((dataUrl.split(',')[1] || '').length * 3 / 4);
+}
+
+function compressLocalImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('no_file'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read_failed'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('decode_failed'));
+      image.onload = () => {
+        const longest = Math.max(image.width, image.height) || 1;
+        const scale = Math.min(1, 1920 / longest);
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) return reject(new Error('canvas_failed'));
+        context.drawImage(image, 0, 0, width, height);
+        let quality = 0.9;
+        let out = canvas.toDataURL('image/jpeg', quality);
+        while (imageBytes(out) > 1536 * 1024 && quality > 0.6) {
+          quality = Math.max(0.6, quality - 0.1);
+          out = canvas.toDataURL('image/jpeg', quality);
+        }
+        if (imageBytes(out) > 1536 * 1024) return reject(new Error('compressed_image_too_large'));
+        resolve(out);
+      };
+      image.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function shownNumber(value: number | null): string {
@@ -313,25 +391,149 @@ function showEquipTarget(
   root.appendChild(overlay);
 }
 
-function wireImages(root: ShadowRoot, onUnsupported: (action: string) => void): void {
+function openImageEditor(
+  root: ShadowRoot,
+  state: FFMVUState,
+  target: GuiImageRef,
+  onIntent: (intent: GuiIntent) => void,
+  mutationDisabled: boolean,
+): void {
+  root.getElementById('ffmvu-image-edit-overlay')?.remove();
+  const host = root.querySelector<HTMLElement>('.status-body');
+  if (!host) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'ffmvu-image-edit-overlay';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:60000;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.85);padding:12px;box-sizing:border-box;backdrop-filter:blur(2px);';
+  const content = document.createElement('div');
+  content.style.cssText = 'background:#001f3f;border:1px solid #00e5ff;padding:20px;border-radius:8px;width:90%;max-width:400px;max-height:90%;overflow:auto;color:#e0f7fa;box-shadow:0 0 20px rgba(0,0,0,.5);box-sizing:border-box;';
+  const title = document.createElement('h3');
+  title.textContent = target.kind === 'world-map' ? 'Edit Map Image' : 'Edit Avatar';
+  title.style.cssText = 'margin:0 0 14px;color:#00e5ff;';
+  const path = imageStoragePath(target);
+  const local = readLocalImage(path);
+  const urlInput = document.createElement('input');
+  urlInput.type = 'text';
+  urlInput.placeholder = local ? '(Local image currently set) Enter URL to replace...' : 'https://...';
+  const current = imageStateValue(state, target);
+  if (!local && /^https?:\/\//i.test(current)) urlInput.value = current;
+  urlInput.style.cssText = 'width:100%;padding:10px;background:rgba(255,255,255,.1);border:1px solid rgba(0,229,255,.3);color:#e0f7fa;border-radius:4px;box-sizing:border-box;';
+  const save = document.createElement('button');
+  save.textContent = 'Save URL';
+  save.disabled = mutationDisabled;
+  save.style.cssText = 'margin-top:8px;width:100%;padding:10px;background:rgba(0,229,255,.2);border:1px solid #00e5ff;color:#00e5ff;border-radius:4px;cursor:pointer;font-weight:bold;';
+  const divider = document.createElement('div');
+  divider.textContent = '— or —';
+  divider.style.cssText = 'text-align:center;color:#81d4fa;margin:14px 0;';
+  const browse = document.createElement('button');
+  browse.textContent = '📂 Browse Local File';
+  browse.style.cssText = 'width:100%;padding:10px;background:rgba(0,229,255,.1);border:1px dashed rgba(0,229,255,.4);color:#81d4fa;border-radius:4px;cursor:pointer;font-weight:bold;';
+  const hint = document.createElement('div');
+  hint.textContent = 'Local files are compressed and stored only in this browser (max 1920px, ~1.5MB), matching the legacy StatusMenu behavior.';
+  hint.style.cssText = 'font-size:.8em;color:rgba(129,212,250,.75);margin-top:6px;';
+  const close = document.createElement('button');
+  close.textContent = 'Cancel';
+  close.style.cssText = 'margin-top:14px;width:100%;padding:9px;background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.35);color:#ff9b9b;border-radius:4px;cursor:pointer;';
+
+  const finishUrl = () => {
+    const value = urlInput.value.trim();
+    if (!value) return;
+    if (!/^https?:\/\//i.test(value)) {
+      window.alert('Image URL must start with http:// or https://');
+      return;
+    }
+    clearLocalImage(path);
+    onIntent({ type: 'image.set', target, value });
+    overlay.remove();
+  };
+  save.addEventListener('click', finishUrl);
+  urlInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); finishUrl(); } });
+  browse.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        browse.textContent = 'Processing...';
+        browse.setAttribute('disabled', 'true');
+        const encoded = await compressLocalImage(file);
+        writeLocalImage(path, encoded);
+        if (current) onIntent({ type: 'image.set', target, value: '' });
+        const editButton = root.querySelector<HTMLElement>('.img-edit-btn[data-save-root="' + (target.kind === 'world-map' ? 'World' : target.kind === 'player-avatar' ? 'Mainchar' : 'Familiar') + '"]' + (target.kind === 'familiar-avatar' ? '[data-ffmvu-familiar-id="' + CSS.escape(target.id) + '"]' : ''));
+        const image = editButton?.closest('.img-wrapper')?.querySelector<HTMLImageElement>('img[data-bind-img]') ?? null;
+        if (image) {
+          image.src = encoded;
+          image.style.display = 'block';
+          const placeholder = image.closest('.img-wrapper')?.querySelector<HTMLElement>('.ff25-avatar-placeholder');
+          if (placeholder) placeholder.style.display = 'none';
+        }
+        overlay.remove();
+      } catch (error) {
+        window.alert('Failed to process image: ' + String(error));
+        browse.textContent = '📂 Browse Local File';
+        browse.removeAttribute('disabled');
+      }
+    });
+    input.click();
+  });
+  close.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove(); });
+  content.append(title, urlInput, save, divider, browse, hint, close);
+  overlay.appendChild(content);
+  host.appendChild(overlay);
+  urlInput.focus();
+}
+
+function wireImages(root: ShadowRoot, state: FFMVUState, onIntent: (intent: GuiIntent) => void, mutationDisabled: boolean, onUnsupported: (action: string) => void): void {
   root.querySelectorAll<HTMLImageElement>('img[data-bind-img]').forEach(image => {
     image.removeAttribute('onclick');
-    image.addEventListener('click', () => showImage(root, image.src));
+    if (image.dataset.ffmvuImageViewBound !== '1') {
+      image.dataset.ffmvuImageViewBound = '1';
+      image.addEventListener('click', () => showImage(root, image.src));
+    }
   });
   root.querySelectorAll<HTMLElement>('.img-edit-btn').forEach(button => {
     button.removeAttribute('onclick');
+    if (button.dataset.ffmvuImageEditBound === '1') return;
+    button.dataset.ffmvuImageEditBound = '1';
+    const target = imageTargetForButton(button);
+    if (!target) {
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        onUnsupported('This legacy image target is not mapped to a typed Lumiverse intent yet.');
+      });
+      return;
+    }
+    const local = readLocalImage(imageStoragePath(target));
+    if (local) {
+      const image = button.closest('.img-wrapper')?.querySelector<HTMLImageElement>('img[data-bind-img]');
+      if (image) {
+        image.src = local;
+        image.style.display = 'block';
+        const placeholder = image.closest('.img-wrapper')?.querySelector<HTMLElement>('.ff25-avatar-placeholder');
+        if (placeholder) placeholder.style.display = 'none';
+      }
+    }
+    button.toggleAttribute('aria-disabled', mutationDisabled);
     button.addEventListener('click', event => {
       event.stopPropagation();
-      onUnsupported('Image editing is visually preserved from StatusMenu v2.8.1 but its typed Lumiverse intent is not migrated yet.');
+      if (mutationDisabled) return;
+      openImageEditor(root, state, target, onIntent, mutationDisabled);
     });
   });
 }
 
-function wireCheckboxes(root: ParentNode, onUnsupported: (action: string) => void): void {
+function wireCheckboxes(root: ParentNode, onIntent: (intent: GuiIntent) => void, mutationDisabled: boolean): void {
   root.querySelectorAll<HTMLInputElement>('.ar-checkbox-input').forEach(input => {
+    const familiarId = input.dataset.ffmvuFamiliarId;
+    const field = input.getAttribute('data-save-leaf');
+    if (!familiarId || (field !== 'Is_present' && field !== 'Is_in_battle_team')) return;
+    input.disabled = mutationDisabled;
+    if (input.dataset.ffmvuCheckboxBound === '1') return;
+    input.dataset.ffmvuCheckboxBound = '1';
     input.addEventListener('change', () => {
-      input.checked = !input.checked;
-      onUnsupported('Familiar Present/BattleTeam editing is not migrated to a typed StateService intent yet.');
+      onIntent({ type: 'familiar.flag.set', familiarId, field, value: input.checked });
     });
   });
 }
@@ -549,7 +751,7 @@ function instantiateRecordBlock(
   container.appendChild(wrapper);
   bindValues(wrapper, data);
   renderNestedLists(shadow, wrapper, data, owner, options);
-  wireCheckboxes(wrapper, options.onUnsupported);
+  wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
 }
 
 function familiarIdentity(state: FFMVUState, id: string, member: MutableRecord): string {
@@ -640,7 +842,9 @@ function renderFamiliars(shadow: ShadowRoot, options: LegacyStatusViewOptions): 
         corePoints.style.fontWeight = 'bold';
       }
       renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
-      wireCheckboxes(wrapper, options.onUnsupported);
+      wrapper.querySelectorAll<HTMLElement>('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
+      wrapper.querySelectorAll<HTMLInputElement>('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
+      wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
     }
     if (pageCount > 1) addPager('bottom');
   };
@@ -912,7 +1116,7 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
   renderWardrobe(shadow, options);
   renderFfState(shadow, options.state.Narrative);
   bindOverview(shadow, options.state);
-  wireImages(shadow, options.onUnsupported);
+  wireImages(shadow, options.state, options.onIntent, options.mutationDisabled, options.onUnsupported);
   wireCollapsibles(shadow);
   selectInitialTab(shadow, options);
 

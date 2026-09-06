@@ -10,11 +10,20 @@ export type GuiOwnerRef =
 
 export type GuiPath = string[];
 
+export type GuiImageRef =
+  | { kind: 'player-avatar' }
+  | { kind: 'familiar-avatar'; id: string }
+  | { kind: 'world-map' };
+
+export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
+
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
   | { type: 'inventory.delete'; owner: GuiOwnerRef; itemKey: string }
   | { type: 'equipment.equip'; sourceOwner: GuiOwnerRef; targetOwner: GuiOwnerRef; itemKey: string }
   | { type: 'equipment.unequip'; owner: GuiOwnerRef; equipmentKey: string }
+  | { type: 'image.set'; target: GuiImageRef; value: string }
+  | { type: 'familiar.flag.set'; familiarId: string; field: GuiFamiliarFlag; value: boolean }
   | { type: 'variable.set'; path: GuiPath; value: JsonValue }
   | { type: 'variable.rename'; path: GuiPath; newKey: string }
   | { type: 'variable.delete'; path: GuiPath }
@@ -24,6 +33,19 @@ function isOwnerRef(value: unknown): value is GuiOwnerRef {
   if (!isRecord(value)) return false;
   if (value.kind === 'player') return true;
   return value.kind === 'familiar' && typeof value.id === 'string' && Boolean(value.id.trim());
+}
+
+function isImageRef(value: unknown): value is GuiImageRef {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'player-avatar' || value.kind === 'world-map') return true;
+  return value.kind === 'familiar-avatar' && typeof value.id === 'string' && Boolean(value.id.trim());
+}
+
+function validImageUrl(value: string): boolean {
+  if (!value) return true;
+  if (value.length > 4096) return false;
+  const lower = value.toLowerCase();
+  return lower.startsWith('http://') || lower.startsWith('https://');
 }
 
 const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
@@ -80,6 +102,20 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
   }
   if (value.type === 'equipment.unequip') {
     if (!isOwnerRef(value.owner) || typeof value.equipmentKey !== 'string' || !value.equipmentKey) throw new Error('GUI_INTENT_INVALID_UNEQUIP');
+    return;
+  }
+  if (value.type === 'image.set') {
+    if (!isImageRef(value.target) || typeof value.value !== 'string' || !validImageUrl(value.value.trim())) {
+      throw new Error('GUI_INTENT_INVALID_IMAGE');
+    }
+    return;
+  }
+  if (value.type === 'familiar.flag.set') {
+    if (typeof value.familiarId !== 'string' || !value.familiarId.trim()
+      || !['Is_present', 'Is_in_battle_team'].includes(String(value.field))
+      || typeof value.value !== 'boolean') {
+      throw new Error('GUI_INTENT_INVALID_FAMILIAR_FLAG');
+    }
     return;
   }
   if (value.type === 'variable.set') {
@@ -143,6 +179,32 @@ function requireCollection(owner: MutableRecord, key: string, create = false): M
   if (!create) throw new Error('GUI_COLLECTION_NOT_FOUND: ' + key);
   owner[key] = {};
   return owner[key] as MutableRecord;
+}
+
+function setScalarPreservingTuple(owner: MutableRecord, key: string, value: string | boolean): void {
+  const current = owner[key];
+  if (Array.isArray(current) && current.length >= 2 && typeof current[1] === 'string') current[0] = value;
+  else owner[key] = value;
+}
+
+function imageSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'image.set' }>): void {
+  const value = intent.value.trim();
+  if (!validImageUrl(value)) throw new Error('GUI_IMAGE_URL_INVALID');
+  if (intent.target.kind === 'player-avatar') {
+    setScalarPreservingTuple(state.Mainchar as unknown as MutableRecord, 'Image', value);
+    return;
+  }
+  if (intent.target.kind === 'world-map') {
+    setScalarPreservingTuple(state.World as unknown as MutableRecord, 'MapImage', value);
+    return;
+  }
+  const familiar = ownerRecord(state, { kind: 'familiar', id: intent.target.id });
+  setScalarPreservingTuple(familiar, 'Image', value);
+}
+
+function familiarFlagSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'familiar.flag.set' }>): void {
+  const familiar = ownerRecord(state, { kind: 'familiar', id: intent.familiarId });
+  setScalarPreservingTuple(familiar, intent.field, intent.value);
 }
 
 function numericValue(owner: MutableRecord, key: string, fallback = 0): number {
@@ -447,6 +509,8 @@ export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState
   else if (intent.type === 'inventory.delete') inventoryDelete(state, intent);
   else if (intent.type === 'equipment.equip') equipmentEquip(state, intent);
   else if (intent.type === 'equipment.unequip') equipmentUnequip(state, intent);
+  else if (intent.type === 'image.set') imageSet(state, intent);
+  else if (intent.type === 'familiar.flag.set') familiarFlagSet(state, intent);
   else if (intent.type === 'variable.set') variableSet(state, intent);
   else if (intent.type === 'variable.rename') variableRename(state, intent);
   else if (intent.type === 'variable.delete') variableDelete(state, intent);

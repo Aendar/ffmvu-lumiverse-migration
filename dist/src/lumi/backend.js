@@ -17,7 +17,7 @@ import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } fr
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
-const BRIDGE_VERSION = '0.13.4';
+const BRIDGE_VERSION = '0.13.5';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -1539,7 +1539,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             continueProbeUsers.delete(userId);
         }
         ensureRegistrations();
-        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.4 bridge armed. Committed assistant message content is freely editable without changing StateService lineage; StatusMenu, New Game and legacy import remain branch-aware.' : 'Bridge will not touch generations.' });
+        publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.5 bridge armed. Legacy image/map edits and Familiar Present/BattleTeam controls now use branch-safe typed GUI writes; committed assistant message content remains freely editable.' : 'Bridge will not touch generations.' });
         return;
     }
     if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1578,5 +1578,5 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
 });
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.4 post-commit message edit safety + canonical StatusMenu + safe Variables editor + branch-safe GUI intents).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.5 legacy image/Familiar controls + post-commit message edit safety + canonical StatusMenu + safe Variables editor).`);
 //# sourceMappingURL=backend.js.map
