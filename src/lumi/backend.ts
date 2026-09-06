@@ -147,6 +147,7 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
       break;
     }
     if (!continueSnapshot) return { ok: false, reason: 'continue_source_variant_missing_or_dirty' };
+    if (continueSnapshot.sourceIndex !== rawAll.length - 1) return { ok: false, reason: 'continue_target_must_be_last_transcript_message' };
   }
 
   const raw = isContinue && continueSnapshot
@@ -1159,7 +1160,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.5.4 model commit pipeline armed. Continue remains state-write gated except for the one-shot diagnostic probe.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.6.0 model commit pipeline armed. Native Continue is stateful when append identity/boundary evidence is exact; ambiguous cases fail closed.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1199,4 +1200,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.4 model commit + one-shot Continue host-semantics spike).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.6.0 model commit + stateful Continue append semantics).`);

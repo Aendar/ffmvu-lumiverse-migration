@@ -1,11 +1,11 @@
 {
-  "version": "0.5.4",
+  "version": "0.6.0",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse state bridge. v0.5.4 keeps stateful Continue fail-closed but adds a one-shot no-state-write Continue spike to observe real host message/swipe append semantics and raw segment correlation.",
+  "description": "FF+MVU Lumiverse state bridge with live-proven normal/regenerate/swipe/no-patch/STOP/reload safety and stateful Continue. Continue preserves host message/swipe VariantId, derives the exact append segment from a frozen prefix, supports boundary-spanning JSONPatch completion, and fails closed on ambiguity.",
   "permissions": [
     "context_handler",
     "interceptor",
