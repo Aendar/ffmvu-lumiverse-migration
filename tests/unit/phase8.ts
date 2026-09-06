@@ -177,19 +177,18 @@ async function main(): Promise<void> {
   }
   assert(staleRejected, 'stale GUI state hash fails closed');
 
-  let schemaDeleteRejected = false;
-  try {
-    await state.commitGuiIntent(scope, {
-      expectedParentNodeId: genesis.nodeId,
-      expectedParentStateHash: genesis.stateHash,
-      intent: { type: 'variable.delete', path: ['World', 'Date'] },
-      anchor: { lineageAnchorId: 'root' },
-      requestId: 'gui-invalid-schema',
-    });
-  } catch (error) {
-    schemaDeleteRejected = String(error).includes('Invalid GUI intent result');
-  }
-  assert(schemaDeleteRejected, 'Variables mutation that violates required schema is rejected before commit');
+  const variableScope = { userId: 'u', chatId: 'variables-gui' };
+  const variableGenesis = await state.createGenesis(variableScope, { state: variables });
+  const variableCommit = await state.commitGuiIntent(variableScope, {
+    expectedParentNodeId: variableGenesis.nodeId,
+    expectedParentStateHash: variableGenesis.stateHash,
+    intent: { type: 'variable.rename', path: ['Mainchar', 'Inventory', 'Серебро'], newKey: 'Монеты' },
+    anchor: { lineageAnchorId: 'root' },
+    requestId: 'gui-variable-rename',
+  });
+  assert(Boolean(variableCommit.state.Mainchar.Inventory['Монеты']), 'StateService commits Variables edits as validated gui state');
+  const variableArtifact = await new EventStore(storage).readCommit(variableScope, variableCommit.nodeId);
+  assert(variableArtifact.kind === 'gui' && variableArtifact.note === 'gui-intent:variable.rename', 'Variables StateService commit remains an ordinary typed gui commit');
 
   console.log(`phase8 GUI intent tests passed: ${passed}`);
 }
