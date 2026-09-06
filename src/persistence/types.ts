@@ -1,5 +1,6 @@
 import type { JsonPatchOperation } from '../shared/json-patch.js';
 import type { FFMVUState, PromptView } from '../shared/state-schema.js';
+import type { NarrativeTimestamp } from '../shared/recent-changes.js';
 
 export const EVENT_FORMAT_VERSION = 2;
 export const ACTIVE_PREFIX_FINGERPRINT_VERSION = 'ffmvu-active-prefix-v1';
@@ -150,6 +151,9 @@ export interface TranscriptAttempt {
   rawPatchPayloadHash?: string;
   canonicalPatchHash?: string;
   storedMessageTextHash: string;
+  finalNodeId?: string;
+  finalStateHash?: string;
+  narrativeTimestamp?: NarrativeTimestamp;
   resolvesAttemptId?: string;
   createdAt: string;
 }
