@@ -1,11 +1,11 @@
 {
-  "version": "0.13.5",
+  "version": "0.13.6",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with typed legacy image/map editing, Familiar Present/BattleTeam controls, post-commit assistant message edit safety, canonical v2.8.1 StatusMenu, safe Variables editor, corrected inventory card titles, hardened self-contained frontend bundling, centered overlay composer panel, persistent resize, Tier-1 legacy import, portable snapshots, narrative history context, and branch-safe GUI intents.",
+  "description": "FF+MVU Lumiverse migration bridge with typed legacy Quest/Buff/Ailment delete controls, image/map editing, Familiar Present/BattleTeam controls, post-commit assistant message edit safety, canonical v2.8.1 StatusMenu, safe Variables editor, Tier-1 legacy import, portable snapshots, narrative history context, and branch-safe GUI intents.",
   "permissions": [
     "context_handler",
     "interceptor",
