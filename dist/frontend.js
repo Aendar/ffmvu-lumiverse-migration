@@ -225,8 +225,8 @@ function shadowCss() {
         .replace(/:root\s*\{/g, ':host {')
         .replace(/\bbody\s*\{/g, '.status-body {')
         + '\n'
-        + ':host{display:block;width:128.205128%;height:128.205128%;min-height:0;color:#e0f7fa;transform:scale(.78);transform-origin:top left;}'
-        + '.status-body{height:100%;min-height:0;padding:0!important;color:var(--text-primary)!important;}'
+        + ':host{display:block;width:100%;height:100%;min-height:0;color:#e0f7fa;position:relative;overflow:hidden;}'
+        + '.status-body{position:absolute;top:0;left:50%;width:100%;height:128.205128%;min-height:0;padding:0!important;color:var(--text-primary)!important;transform:translateX(-50%) scale(.78);transform-origin:top center;}'
         + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
         + '.tab-content{min-height:0;}'
         + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
@@ -1141,16 +1141,23 @@ export function setup(ctx) {
       --ffsm-pink:#ff7ac8;
       --ffsm-border:rgba(0,229,255,.28);
       color:var(--lumiverse-text);
-      width:100%;
+      position:absolute;
+      left:0;
+      right:0;
+      bottom:calc(100% + 6px);
+      z-index:30;
+      width:auto;
       box-sizing:border-box;
       padding:0;
       display:none;
       min-height:0;
+      pointer-events:none;
     }
     .ffsm-app.open {
       display:block;
       height:520px;
       min-height:0;
+      pointer-events:auto;
     }
     .ffsm-panel-frame {
       width:100%;
@@ -1331,6 +1338,10 @@ export function setup(ctx) {
     const panelMount = ctx.ui.mount('chat_composer_above');
     actionMount.style.display = 'contents';
     panelMount.style.display = 'contents';
+    const inputArea = actionMount.closest('[data-component="InputArea"]');
+    const previousInputOverflow = inputArea?.style.overflow ?? '';
+    if (inputArea)
+        inputArea.style.overflow = 'visible';
     const toggle = make('button', 'ffsm-toolbar-btn');
     toggle.type = 'button';
     toggle.title = 'FF + MVU StatusMenu';
@@ -2299,6 +2310,12 @@ export function setup(ctx) {
         window.removeEventListener('resize', viewportResize);
         toggle.remove();
         app.remove();
+        if (inputArea) {
+            if (previousInputOverflow)
+                inputArea.style.overflow = previousInputOverflow;
+            else
+                inputArea.style.removeProperty('overflow');
+        }
         removeStyle();
         ctx.dom.cleanup();
     };
