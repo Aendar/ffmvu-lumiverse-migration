@@ -5,11 +5,11 @@ import { HeadResolver } from '../head-resolver.js';
 import { StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
-import { resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
+import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
-import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
+import { AttemptContextRegistry, EarlyGenerationRegistry, type FrozenAttemptContext } from './attempt-context.js';
 import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import type { GenerationEndedPayload, GenerationStartedPayload, GenerationStoppedPayload, LumiChatMessage, SpindleApiLite, SwipeEventPayload } from './spindle-lite.js';
@@ -17,7 +17,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.5.4';
+const BRIDGE_VERSION = '0.6.0';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -102,9 +102,11 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
   const scope: StateScope = { userId: context.userId, chatId: context.chatId };
   knownScopeByChat.set(context.chatId, scope);
   if (contexts.getForScope(scope)) return { ok: false, reason: 'pending_generation_exists' };
+
   const rt = runtime(context.userId);
   const rawAll = await spindle.chat.getMessages(context.chatId);
-  const diagnosticContinueProbe = context.generationType === 'continue' && continueProbeUsers.has(context.userId);
+  const isContinue = context.generationType === 'continue';
+  const diagnosticContinueProbe = isContinue && continueProbeUsers.has(context.userId);
   let continueSnapshot: {
     messageId: string;
     swipeId: number;
@@ -116,7 +118,7 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     sourceIndex: number;
   } | null = null;
 
-  if (diagnosticContinueProbe) {
+  if (isContinue) {
     for (let i = rawAll.length - 1; i >= 0; i--) {
       const candidate = rawAll[i];
       if (candidate.role !== 'assistant') continue;
@@ -130,39 +132,76 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
       const storedText = Array.isArray(candidate.swipes) && candidate.swipes[swipeId] !== undefined
         ? String(candidate.swipes[swipeId])
         : String(candidate.content ?? '');
+      const storedTextHash = await canonicalHash(storedText);
+      if (anchor.storedMessageTextHash !== storedTextHash || index.swipeFingerprints[variantId]?.storedMessageTextHash !== storedTextHash) continue;
       continueSnapshot = {
         messageId: candidate.id,
         swipeId,
         variantId,
         storedText,
-        storedTextHash: await canonicalHash(storedText),
+        storedTextHash,
         swipeCount: Array.isArray(candidate.swipes) ? candidate.swipes.length : 1,
         messageCount: rawAll.length,
         sourceIndex: i,
       };
       break;
     }
-    if (!continueSnapshot) return { ok: false, reason: 'continue_probe_source_variant_missing' };
+    if (!continueSnapshot) return { ok: false, reason: 'continue_source_variant_missing_or_dirty' };
   }
 
-  const raw = diagnosticContinueProbe && continueSnapshot
+  const raw = isContinue && continueSnapshot
     ? rawAll.slice(0, continueSnapshot.sourceIndex + 1)
     : filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
   const baseId = await ensureBootstrap(scope, raw);
-  const head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
-  if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
+  let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
+  let continueResolvesAttemptId: string | undefined;
+
+  if (head.health !== 'ok') {
+    const recoverableHealth = head.health === 'stopped_uncommitted' || head.health === 'failed_patch';
+    if (!isContinue || !continueSnapshot || !recoverableHealth || head.variantId !== continueSnapshot.variantId) {
+      return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
+    }
+
+    const anchor = await rt.anchors.read(scope, continueSnapshot.variantId);
+    if (!anchor?.lastAttemptId) return { ok: false, reason: 'continue_recovery_attempt_missing' };
+    const lastAttempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+    if (!lastAttempt || lastAttempt.variantId !== continueSnapshot.variantId) return { ok: false, reason: 'continue_recovery_attempt_mismatch' };
+    const unclosedJsonPatch =
+      continueSnapshot.storedText.toLowerCase().lastIndexOf('<jsonpatch>') >
+      continueSnapshot.storedText.toLowerCase().lastIndexOf('</jsonpatch>');
+    const recoverableStopped = head.health === 'stopped_uncommitted' && lastAttempt.status === 'stopped';
+    const recoverableFailed = head.health === 'failed_patch' && lastAttempt.status === 'failed_patch' && unclosedJsonPatch;
+    if (!recoverableStopped && !recoverableFailed) {
+      return { ok: false, reason: `${head.health}: active failed/stopped attempt is not append-recoverable` };
+    }
+    if (head.nodeId !== lastAttempt.baseNodeId || head.stateHash !== lastAttempt.baseStateHash) {
+      return { ok: false, reason: 'continue_recovery_base_mismatch' };
+    }
+    continueResolvesAttemptId = lastAttempt.id;
+    head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
+  }
+
   const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
   const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-  const diagnosticNoPatchProbe = !diagnosticContinueProbe && noPatchProbeUsers.has(context.userId);
+  const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
   contexts.create({
-    scope, generationType: context.generationType, baseNodeId: head.nodeId, baseStateHash: head.stateHash,
+    scope,
+    generationType: context.generationType,
+    baseNodeId: head.nodeId,
+    baseStateHash: head.stateHash,
     projectionSourceKind: projection.sourceKind,
     ...(projection.sourceNodeId ? { projectionSourceNodeId: projection.sourceNodeId } : {}),
     ...(projection.sourceStateHash ? { projectionSourceStateHash: projection.sourceStateHash } : {}),
     ...(projection.sourceBaseId ? { projectionSourceBaseId: projection.sourceBaseId } : {}),
-    projectionVersion: projection.projectionVersion, promptProtocolVersion: projection.promptProtocolVersion,
-    reducerVersion: projection.reducerVersion, projectionView: projection.view, promptViewHash: projection.viewHash,
-    frozenAuthorization, presetVersion: PRESET_VERSION, diagnosticNoPatchProbe, diagnosticContinueProbe,
+    projectionVersion: projection.projectionVersion,
+    promptProtocolVersion: projection.promptProtocolVersion,
+    reducerVersion: projection.reducerVersion,
+    projectionView: projection.view,
+    promptViewHash: projection.viewHash,
+    frozenAuthorization,
+    presetVersion: PRESET_VERSION,
+    diagnosticNoPatchProbe,
+    diagnosticContinueProbe,
     ...(continueSnapshot ? {
       continuePreMessageId: continueSnapshot.messageId,
       continuePreSwipeId: continueSnapshot.swipeId,
@@ -172,19 +211,28 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
       continuePreSwipeCount: continueSnapshot.swipeCount,
       continuePreMessageCount: continueSnapshot.messageCount,
     } : {}),
+    ...(continueResolvesAttemptId ? { continueResolvesAttemptId } : {}),
   });
+
   if (diagnosticNoPatchProbe) noPatchProbeUsers.delete(context.userId);
   if (diagnosticContinueProbe) continueProbeUsers.delete(context.userId);
   publish(context.userId, {
-    phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash,
-    promptViewHash: projection.viewHash, diagnosticNoPatchProbe, diagnosticContinueProbe,
-    noPatchProbeArmed: noPatchProbeUsers.has(context.userId), continueProbeArmed: continueProbeUsers.has(context.userId),
+    phase: 'frozen',
+    chatId: context.chatId,
+    headNodeId: head.nodeId,
+    headStateHash: head.stateHash,
+    promptViewHash: projection.viewHash,
+    diagnosticNoPatchProbe,
+    diagnosticContinueProbe,
+    noPatchProbeArmed: noPatchProbeUsers.has(context.userId),
+    continueProbeArmed: continueProbeUsers.has(context.userId),
     ...(continueSnapshot ? {
       continuePreMessageId: continueSnapshot.messageId,
       continuePreSwipeId: continueSnapshot.swipeId,
       continuePreVariantId: continueSnapshot.variantId,
       continuePreStoredTextHash: continueSnapshot.storedTextHash,
     } : {}),
+    ...(continueResolvesAttemptId ? { continueResolvesAttemptId } : {}),
   });
   return { ok: true };
 }
@@ -640,10 +688,6 @@ async function reconcileSwipePayload(payload: SwipeEventPayload, callbackUserId?
 const contextHandler = async (context: import('./spindle-lite.js').ContextHandlerContext): Promise<import('./spindle-lite.js').ContextHandlerContext> => {
   const cfg = await config(context.userId);
   if (!cfg.enabled || context.dryRun || context.generationType === 'impersonate') return context;
-  if (context.generationType === 'continue' && !continueProbeUsers.has(context.userId)) {
-    publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'continue state commits are gated; arm the one-shot Continue probe to observe host append semantics without state writes' });
-    return { ...context, cancelGeneration: true };
-  }
   if (!spindle.permissions.has('chat_mutation')) {
     publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'chat_mutation permission missing' });
     return { ...context, cancelGeneration: true };
