@@ -17,7 +17,7 @@ import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.5.2';
+const BRIDGE_VERSION = '0.5.3';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -36,6 +36,7 @@ const earlyGenerations = new EarlyGenerationRegistry();
 const knownScopeByChat = new Map<string, StateScope>();
 const lastStatusByUser = new Map<string, Record<string, unknown>>();
 const knownFrontendUsers = new Set<string>();
+const noPatchProbeUsers = new Set<string>();
 
 function runtime(userId: string): UserRuntime {
   let found = runtimes.get(userId);
@@ -108,6 +109,7 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
   if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved'}` };
   const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
   const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
+  const diagnosticNoPatchProbe = noPatchProbeUsers.has(context.userId);
   contexts.create({
     scope, generationType: context.generationType, baseNodeId: head.nodeId, baseStateHash: head.stateHash,
     projectionSourceKind: projection.sourceKind,
@@ -116,9 +118,10 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     ...(projection.sourceBaseId ? { projectionSourceBaseId: projection.sourceBaseId } : {}),
     projectionVersion: projection.projectionVersion, promptProtocolVersion: projection.promptProtocolVersion,
     reducerVersion: projection.reducerVersion, projectionView: projection.view, promptViewHash: projection.viewHash,
-    frozenAuthorization, presetVersion: PRESET_VERSION,
+    frozenAuthorization, presetVersion: PRESET_VERSION, diagnosticNoPatchProbe,
   });
-  publish(context.userId, { phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash, promptViewHash: projection.viewHash });
+  if (diagnosticNoPatchProbe) noPatchProbeUsers.delete(context.userId);
+  publish(context.userId, { phase: 'frozen', chatId: context.chatId, headNodeId: head.nodeId, headStateHash: head.stateHash, promptViewHash: projection.viewHash, diagnosticNoPatchProbe, noPatchProbeArmed: noPatchProbeUsers.has(context.userId) });
   return { ok: true };
 }
 
@@ -198,7 +201,7 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
       const evidenceMismatch = message.includes('OUTPUT_PATCH_EVIDENCE_MISMATCH');
       const hashes = rawGenerationHash ? { rawGenerationHash } : {};
       await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, hashes);
-      publish(userId, { phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: message });
+      publish(userId, { phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: message, diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true });
       return;
     }
     const extracted = evidence.selected;
@@ -216,7 +219,7 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
     );
     if (compatible.health !== 'ok' || compatible.nodeId !== pending.baseNodeId || compatible.stateHash !== pending.baseStateHash) {
       await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'unreconciled', null, pending.baseNodeId, baseEvidenceHashes);
-      publish(userId, { phase: 'model_commit_conflict', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, expectedBaseNodeId: pending.baseNodeId, currentCompatibleNodeId: compatible.nodeId, health: compatible.health });
+      publish(userId, { phase: 'model_commit_conflict', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, expectedBaseNodeId: pending.baseNodeId, currentCompatibleNodeId: compatible.nodeId, health: compatible.health, diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true });
       return;
     }
 
@@ -234,7 +237,7 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
       });
     } catch (error) {
       await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, baseEvidenceHashes);
-      publish(userId, { phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: String(error) });
+      publish(userId, { phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: String(error), diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true });
       return;
     }
 
@@ -249,6 +252,7 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
       finalNodeId: finalized.nodeId, finalStateHash: finalized.stateHash,
       deliveredPromptViewHash: pending.promptViewHash, nextPromptViewHash: finalized.nextPromptViewHash,
       injectionMode: pending.injectionMode ?? 'interceptor_missed',
+      diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
     });
   } catch (error) {
     spindle.log.error('[FFMVU] model finalization failed', error);
@@ -503,14 +507,36 @@ const contextHandler = async (context: import('./spindle-lite.js').ContextHandle
   }
 };
 
+const NO_PATCH_PROBE_INSTRUCTION = [
+  '<FFMVU_DIAGNOSTIC_NO_PATCH_PROBE>',
+  'ONE-ATTEMPT DIAGNOSTIC OVERRIDE.',
+  'For this response only, produce ordinary roleplay prose but DO NOT emit <UpdateVariable>, <UpdateAnalysis>, <JSONPatch>, or any other machine/state-update block.',
+  'This diagnostic override takes precedence over any lower-priority instruction that requires a state update block.',
+  '</FFMVU_DIAGNOSTIC_NO_PATCH_PROBE>',
+].join('\n');
+
+function injectNoPatchProbe(messages: import('./spindle-lite.js').LumiLlmMessage[]): import('./spindle-lite.js').LumiLlmMessage[] {
+  const out = structuredClone(messages);
+  const index = out.findIndex(message => message.role === 'system' && typeof message.content === 'string');
+  if (index >= 0) {
+    out[index] = { ...out[index], content: String(out[index].content) + '\n\n' + NO_PATCH_PROBE_INSTRUCTION };
+    return out;
+  }
+  return [{ role: 'system', content: NO_PATCH_PROBE_INSTRUCTION }, ...out];
+}
+
 const interceptorHandler = async (messages: import('./spindle-lite.js').LumiLlmMessage[], context: import('./spindle-lite.js').InterceptorContext) => {
   const pending = contexts.getForChat(context.chatId);
   if (!pending) return messages;
   const injected = injectFrozenModelState(messages, pending.projectionView);
   pending.injectionMode = injected.mode;
-  publish(pending.scope.userId, { phase: 'injected', chatId: context.chatId, attemptId: pending.attemptId, mode: injected.mode, promptViewHash: pending.promptViewHash });
-  if (injected.mode !== 'fallback') return injected.messages;
-  return { messages: injected.messages, breakdown: [{ messageIndex: injected.messageIndex, name: 'FFMVU MODEL_STATE (frozen fallback)' }] };
+  const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(injected.messages) : injected.messages;
+  publish(pending.scope.userId, {
+    phase: 'injected', chatId: context.chatId, attemptId: pending.attemptId, mode: injected.mode,
+    promptViewHash: pending.promptViewHash, diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+  });
+  if (injected.mode !== 'fallback') return finalMessages;
+  return { messages: finalMessages, breakdown: [{ messageIndex: injected.messageIndex, name: 'FFMVU MODEL_STATE (frozen fallback)' }] };
 };
 
 let contextRegistered = false;
@@ -600,16 +626,33 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
   ensureRegistrations();
   if (payload?.type === 'ffmvu_get_status') {
     const cfg = await config(userId);
-    spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, enabled: cfg.enabled, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }) } }, userId);
+    spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId) } }, userId);
     return;
   }
   if (payload?.type === 'ffmvu_set_enabled') {
     const enabled = payload.enabled === true;
     await setConfig(userId, { enabled });
+    if (!enabled) noPatchProbeUsers.delete(userId);
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, note: enabled ? 'v0.5.2 model commit pipeline armed. Invalid/conflicting/stopped outputs fail closed.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), note: enabled ? 'v0.5.3 model commit pipeline armed. Invalid/conflicting/stopped outputs fail closed.' : 'Bridge will not touch generations.' });
+    return;
+  }
+  if (payload?.type === 'ffmvu_arm_no_patch_probe') {
+    const cfg = await config(userId);
+    if (!cfg.enabled) {
+      publish(userId, { phase: 'blocked', enabled: false, noPatchProbeArmed: false, reason: 'Arm commits before arming the no-patch probe.' });
+      return;
+    }
+    noPatchProbeUsers.add(userId);
+    publish(userId, {
+      phase: 'no_patch_probe_armed',
+      enabled: true,
+      noPatchProbeArmed: true,
+      note: 'One-shot diagnostic: the next stateful generation will be instructed to emit prose only and no UpdateVariable/JSONPatch block.',
+    });
+    return;
   }
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.2 model commit + durable stopped reconciliation).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.5.3 model commit + one-shot no-patch live probe).`);

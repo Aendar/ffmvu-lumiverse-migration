@@ -24,6 +24,7 @@ export interface FrozenAttemptContext {
   targetMessageId?: string;
   targetSwipeId?: number;
   injectionMode?: 'sentinel' | 'block' | 'fallback';
+  diagnosticNoPatchProbe?: boolean;
 }
 
 export class AttemptContextRegistry {

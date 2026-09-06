@@ -22,6 +22,7 @@ export interface FrozenAttemptContext {
     targetMessageId?: string;
     targetSwipeId?: number;
     injectionMode?: 'sentinel' | 'block' | 'fallback';
+    diagnosticNoPatchProbe?: boolean;
 }
 export declare class AttemptContextRegistry {
     private readonly byScope;
