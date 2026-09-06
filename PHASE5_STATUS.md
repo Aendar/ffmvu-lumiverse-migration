@@ -162,3 +162,17 @@ Lifecycle parity work is now sufficient for migration implementation. Remaining 
 - After the journal commit, the backend re-resolves the transcript again before moving the root/Variant anchor tip. If the user changed swipe/branch in the meantime, the durable commit is left unbound and reported explicitly instead of silently rebasing.
 - A successful bind is resolved once more and must reproduce the committed node/state hash.
 - GUI changes therefore become ordinary semantic ancestors and automatically appear in `RecentChanges` on the next model turn.
+
+
+# Phase 9 — Native StatusMenu / New Game (v0.10.0)
+
+- Replaces the old message-injected `<StatusPlaceHolderImpl/>` iframe implementation with one persistent Spindle Drawer tab.
+- The frontend follows Lumiverse's free `chat.active` state selector and fetches the exact active semantic head through `ffmvu_gui_get_state`.
+- Native tabs: Overview, Attributes, Familiars, Wardrobe, Equipments, Items, Others, FF State.
+- Overview includes legacy HP/MP/ST, World, character status, quests, avatar, and HPH player paths under `Narrative.Scene.HPH.player`.
+- Wardrobe, Inventory and Equipment controls call typed v0.9 intents and are disabled while generation is in flight or the bridge/head is unavailable.
+- Equip can target the player or a Familiar while retaining the legacy cross-character equipment semantics implemented in StateService.
+- FF State is a recursive searchable view of the authoritative state rather than a copy of message variables.
+- New Game is native and calls `StateService.startNewGame`; it follows GameStart v1.4 source-of-truth: STR/AGI/CON/INT/WIS base 5 + up to 50 distributed points, Charisma separately constrained to 80–100.
+- The old Colorize palette is now extension-owned host CSS. The regex can keep emitting `--npc-color`; SillyTavern-only `#chat .mes_text` selectors are no longer required.
+- Diagnostics remain available in a collapsed section instead of occupying the whole extension tab.
