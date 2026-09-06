@@ -42,3 +42,4 @@ export declare function statusCoreBudget(values: {
     valid: boolean;
 };
 export declare function statusCompactObject(value: unknown, maxEntries?: number): Array<[string, string]>;
+export declare function statusLegacyDeletePath(owner: GuiOwnerRef | null, relativeListPath: string, itemKey: string): string[] | null;

@@ -96,4 +96,13 @@ export function statusCompactObject(value, maxEntries = 8) {
         return [key, statusText(raw)];
     });
 }
+const LEGACY_SAFE_DELETE_COLLECTIONS = new Set(['Quests', 'Buffs', 'Ailments']);
+export function statusLegacyDeletePath(owner, relativeListPath, itemKey) {
+    const parts = relativeListPath.split('.').filter(Boolean);
+    if (!owner || parts.length !== 1 || !LEGACY_SAFE_DELETE_COLLECTIONS.has(parts[0]) || !itemKey)
+        return null;
+    return owner.kind === 'player'
+        ? ['Mainchar', parts[0], itemKey]
+        : ['Familiar', owner.id, parts[0], itemKey];
+}
 //# sourceMappingURL=statusmenu-model.js.map
