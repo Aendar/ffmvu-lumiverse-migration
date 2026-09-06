@@ -22,6 +22,7 @@ export interface FrozenAttemptContext {
   createdAt: string;
   generationId?: string;
   targetMessageId?: string;
+  targetSwipeId?: number;
   injectionMode?: 'sentinel' | 'block' | 'fallback';
 }
 
@@ -41,9 +42,11 @@ export class AttemptContextRegistry {
     return matches.length === 1 ? matches[0] : null;
   }
   getForScope(scope: StateScope): FrozenAttemptContext | null { return this.byScope.get(this.key(scope)) ?? null; }
-  bindGeneration(chatId: string, generationId: string, targetMessageId?: string): FrozenAttemptContext | null {
+  bindGeneration(chatId: string, generationId: string, targetMessageId?: string, targetSwipeId?: number): FrozenAttemptContext | null {
     const value = this.getForChat(chatId); if (!value) return null;
-    value.generationId = generationId; if (targetMessageId) value.targetMessageId = targetMessageId;
+    value.generationId = generationId;
+    if (targetMessageId) value.targetMessageId = targetMessageId;
+    if (Number.isInteger(targetSwipeId)) value.targetSwipeId = targetSwipeId;
     this.byGeneration.set(generationId, value); return value;
   }
   getByGeneration(generationId: string): FrozenAttemptContext | null { return this.byGeneration.get(generationId) ?? null; }
@@ -69,6 +72,7 @@ export interface EarlyGenerationStart {
   generationId: string;
   chatId: string;
   targetMessageId?: string;
+  targetSwipeId?: number;
   generationType?: string;
 }
 
