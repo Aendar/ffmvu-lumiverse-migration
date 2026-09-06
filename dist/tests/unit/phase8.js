@@ -122,6 +122,42 @@ async function main() {
         collisionRejected = String(error).includes('GUI_INTENT_NO_CHANGE');
     }
     assert(collisionRejected, 'Variables rename rejects a no-op key rename');
+    let structuralRenameRejected = false;
+    try {
+        applyGuiIntent(deletedVariable, {
+            type: 'variable.rename',
+            path: ['World', 'Weather'],
+            newKey: 'Погода',
+        });
+    }
+    catch (error) {
+        structuralRenameRejected = String(error).includes('GUI_VARIABLE_STRUCTURAL_KEY');
+    }
+    assert(structuralRenameRejected, 'Variables rename rejects fixed schema keys such as World.Weather');
+    let structuralDeleteRejected = false;
+    try {
+        applyGuiIntent(deletedVariable, {
+            type: 'variable.delete',
+            path: ['Mainchar', 'Strength'],
+        });
+    }
+    catch (error) {
+        structuralDeleteRejected = String(error).includes('GUI_VARIABLE_STRUCTURAL_KEY');
+    }
+    assert(structuralDeleteRejected, 'Variables delete rejects fixed schema fields');
+    let structuralAddRejected = false;
+    try {
+        applyGuiIntent(deletedVariable, {
+            type: 'variable.add',
+            parentPath: ['World'],
+            key: 'Custom',
+            value: 'x',
+        });
+    }
+    catch (error) {
+        structuralAddRejected = String(error).includes('GUI_VARIABLE_STRUCTURAL_CONTAINER');
+    }
+    assert(structuralAddRejected, 'Variables add is restricted to dynamic record collections');
     const storage = new MemoryJsonStorage();
     const state = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
     const scope = { userId: 'u', chatId: 'gui' };

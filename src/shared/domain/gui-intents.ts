@@ -31,6 +31,49 @@ const PROTECTED_ROOT_KEYS = new Set([
   'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
 
+const VARIABLE_DYNAMIC_COLLECTION_PATTERNS: readonly (readonly string[])[] = [
+  ['World_Calc', 'Factions'],
+  ['World_Calc', 'Locations'],
+  ['World_Calc', 'Ruins'],
+  ['World_Calc', 'Events'],
+  ['Mainchar', 'Inventory'],
+  ['Mainchar', 'Equipment'],
+  ['Mainchar', 'Quests'],
+  ['Mainchar', 'Skills'],
+  ['Mainchar', 'Talents'],
+  ['Mainchar', 'Buffs'],
+  ['Mainchar', 'Ailments'],
+  ['Mainchar', 'Outfit', 'Worn'],
+  ['Mainchar', 'Outfit', 'Wardrobe'],
+  ['Mainchar', 'Real_estate', 'Estates'],
+  ['Mainchar', 'Real_estate', 'Buildings'],
+  ['Mainchar', 'Real_estate', 'Assets'],
+  ['Familiar', '*', 'Inventory'],
+  ['Familiar', '*', 'Equipment'],
+  ['Familiar', '*', 'Quests'],
+  ['Familiar', '*', 'Skills'],
+  ['Familiar', '*', 'Talents'],
+  ['Familiar', '*', 'Buffs'],
+  ['Familiar', '*', 'Ailments'],
+  ['Familiar', '*', 'Spells'],
+  ['Familiar', '*', 'Outfit', 'Worn'],
+  ['Familiar', '*', 'Outfit', 'Wardrobe'],
+  ['Narrative', 'GM_Notes', 'Active'],
+  ['Narrative', 'GM_Notes', 'Archive'],
+  ['Narrative', 'Chekhov', 'Active'],
+  ['Narrative', 'Chekhov', 'Archive'],
+  ['Narrative', 'WorldSim', 'Threads'],
+  ['Narrative', 'WorldSim', 'Pressures'],
+  ['Narrative', 'WorldSim', 'Archive'],
+];
+
+export function isGuiVariableDynamicCollectionPath(path: GuiPath): boolean {
+  return VARIABLE_DYNAMIC_COLLECTION_PATTERNS.some(pattern =>
+    pattern.length === path.length &&
+    pattern.every((segment, index) => segment === '*' || segment === path[index])
+  );
+}
+
 function assertSafeKey(key: unknown, label: string): asserts key is string {
   if (typeof key !== 'string' || !key.trim() || key.length > 256 || FORBIDDEN_PATH_SEGMENTS.has(key)) {
     throw new Error('GUI_VARIABLE_INVALID_' + label.toUpperCase());
@@ -398,6 +441,7 @@ function variableSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'vari
 
 function variableRename(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.rename' }>): void {
   if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1))) throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
   const { parent, key } = pathParent(state, intent.path);
   if (Array.isArray(parent)) throw new Error('GUI_VARIABLE_RENAME_ARRAY_UNSUPPORTED');
   if (!Object.prototype.hasOwnProperty.call(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
@@ -409,6 +453,7 @@ function variableRename(state: FFMVUState, intent: Extract<GuiIntent, { type: 'v
 
 function variableDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.delete' }>): void {
   if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1))) throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
   const { parent, key } = pathParent(state, intent.path);
   if (!hasContainerKey(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
   if (Array.isArray(parent)) {
@@ -421,6 +466,7 @@ function variableDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'v
 }
 
 function variableAdd(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.add' }>): void {
+  if (!isGuiVariableDynamicCollectionPath(intent.parentPath)) throw new Error('GUI_VARIABLE_STRUCTURAL_CONTAINER');
   let parent: unknown = state;
   for (const segment of intent.parentPath) {
     if (Array.isArray(parent)) {
