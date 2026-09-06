@@ -132,3 +132,14 @@ export function statusCompactObject(value: unknown, maxEntries = 8): Array<[stri
     return [key, statusText(raw)];
   });
 }
+
+
+const LEGACY_SAFE_DELETE_COLLECTIONS = new Set(['Quests', 'Buffs', 'Ailments']);
+
+export function statusLegacyDeletePath(owner: GuiOwnerRef | null, relativeListPath: string, itemKey: string): string[] | null {
+  const parts = relativeListPath.split('.').filter(Boolean);
+  if (!owner || parts.length !== 1 || !LEGACY_SAFE_DELETE_COLLECTIONS.has(parts[0]) || !itemKey) return null;
+  return owner.kind === 'player'
+    ? ['Mainchar', parts[0], itemKey]
+    : ['Familiar', owner.id, parts[0], itemKey];
+}

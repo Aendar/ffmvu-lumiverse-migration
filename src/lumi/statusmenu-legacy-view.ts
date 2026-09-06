@@ -1,7 +1,7 @@
 import type { FFMVUState, MutableRecord } from '../shared/state-schema.js';
 import type { GuiImageRef, GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
-import { statusItems, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
+import { statusItems, statusLegacyDeletePath, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
 import { renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
 
@@ -632,9 +632,14 @@ function renderList(
           event.stopPropagation();
           if (listType === 'inventory' && owner) {
             if (window.confirm('Delete "' + title + '"?')) options.onIntent({ type: 'inventory.delete', owner, itemKey: key });
-          } else {
-            options.onUnsupported('Delete/edit for ' + listType + ' is still waiting for its typed StateService intent.');
+            return;
           }
+          const legacyDeletePath = statusLegacyDeletePath(owner, container.getAttribute('data-bind-list') || '', key);
+          if (legacyDeletePath) {
+            if (window.confirm('Delete "' + title + '"?')) options.onIntent({ type: 'variable.delete', path: legacyDeletePath });
+            return;
+          }
+          options.onUnsupported('Delete/edit for ' + listType + ' is still waiting for its typed StateService intent.');
         });
       }
 

@@ -3,6 +3,7 @@ import {
   statusCoreBudget,
   statusHphOverview,
   statusItems,
+  statusLegacyDeletePath,
   statusOwnerById,
   statusOwners,
   statusPath,
@@ -27,6 +28,10 @@ function main(): void {
   const owners = statusOwners(state);
   assert(owners.length === 2 && owners[0].id === 'player' && owners[1].id === 'familiar:evelyn', 'StatusMenu owner model includes player then familiars');
   assert(statusOwnerById(state, 'familiar:evelyn').ref.kind === 'familiar', 'owner selector resolves stable familiar ref');
+  assert(JSON.stringify(statusLegacyDeletePath({ kind: 'player' }, 'Quests', 'quest_1')) === JSON.stringify(['Mainchar', 'Quests', 'quest_1']), 'legacy player Quest delete maps to exact Variables path');
+  assert(JSON.stringify(statusLegacyDeletePath({ kind: 'familiar', id: 'evelyn' }, 'Buffs', 'Blessing')) === JSON.stringify(['Familiar', 'evelyn', 'Buffs', 'Blessing']), 'legacy Familiar Buff delete maps through stable familiar id');
+  assert(statusLegacyDeletePath({ kind: 'player' }, 'Inventory', 'sword') === null, 'legacy generic delete mapping cannot bypass dedicated inventory semantics');
+  assert(statusLegacyDeletePath({ kind: 'player' }, 'Equipment', 'sword') === null, 'legacy generic delete mapping cannot bypass equipment reversal semantics');
 
   state.Mainchar.Inventory.sword = { Name: 'Меч', Type: 'Weapon', Slot: 'Hand', Qty: 2 };
   state.Mainchar.Inventory.apple = { Name: 'Яблоко', Type: 'Food', Qty: 3 };
