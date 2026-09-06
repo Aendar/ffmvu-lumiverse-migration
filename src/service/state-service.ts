@@ -139,7 +139,7 @@ export class StateService {
     const artifact = await this.store.readNode(scope, nodeId);
     const projection = await this.getProjectionForNode(scope, nodeId);
     const portableWithoutHash = {
-      format: PORTABLE_SNAPSHOT_FORMAT,
+      format: PORTABLE_SNAPSHOT_FORMAT as typeof PORTABLE_SNAPSHOT_FORMAT,
       createdAt: isoNow(),
       source: {
         chatId: scope.chatId,
