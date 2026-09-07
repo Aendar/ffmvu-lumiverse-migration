@@ -18,10 +18,11 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import type { GenerationEndedPayload, GenerationStartedPayload, GenerationStoppedPayload, LumiChatMessage, MessageEditedPayload, SpindleApiLite, SwipeEventPayload } from './spindle-lite.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
+import { DiagnosticTraceStore } from './diagnostic-trace.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.7';
+const BRIDGE_VERSION = '0.13.8';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -42,6 +43,294 @@ const lastStatusByUser = new Map<string, Record<string, unknown>>();
 const knownFrontendUsers = new Set<string>();
 const noPatchProbeUsers = new Set<string>();
 const continueProbeUsers = new Set<string>();
+const diagnosticTrace = new DiagnosticTraceStore(160);
+
+function traceInternal(userId: string, event: string, detail: Record<string, unknown> = {}): void {
+  diagnosticTrace.append(userId, { at: isoNow(), kind: 'internal', event, ...structuredClone(detail) });
+}
+
+function diagnosticError(error: unknown): Record<string, unknown> {
+  return {
+    error: String(error),
+    ...(error instanceof Error && error.stack ? { stack: error.stack.split('\n').slice(0, 8).join('\n') } : {}),
+  };
+}
+
+function valueShape(value: unknown): Record<string, unknown> {
+  if (value === null) return { type: 'null' };
+  if (Array.isArray(value)) return { type: 'array', length: value.length };
+  if (typeof value === 'object') return { type: 'object', keys: Object.keys(value as Record<string, unknown>).sort() };
+  return { type: typeof value };
+}
+
+function summarizeFrozenAttempt(pending: FrozenAttemptContext | null): Record<string, unknown> | null {
+  if (!pending) return null;
+  return {
+    attemptId: pending.attemptId,
+    generationId: pending.generationId ?? null,
+    generationType: pending.generationType,
+    baseNodeId: pending.baseNodeId,
+    baseStateHash: pending.baseStateHash,
+    projectionSourceKind: pending.projectionSourceKind,
+    projectionSourceNodeId: pending.projectionSourceNodeId ?? null,
+    projectionSourceStateHash: pending.projectionSourceStateHash ?? null,
+    projectionSourceBaseId: pending.projectionSourceBaseId ?? null,
+    projectionVersion: pending.projectionVersion,
+    promptProtocolVersion: pending.promptProtocolVersion,
+    reducerVersion: pending.reducerVersion,
+    promptViewHash: pending.promptViewHash,
+    targetMessageId: pending.targetMessageId ?? null,
+    targetSwipeId: Number.isInteger(pending.targetSwipeId) ? pending.targetSwipeId : null,
+    injectionMode: pending.injectionMode ?? null,
+    diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+    diagnosticContinueProbe: pending.diagnosticContinueProbe === true,
+    createdAt: pending.createdAt,
+  };
+}
+
+async function buildDiagnosticSnapshot(userId: string, chatId: string): Promise<Record<string, unknown>> {
+  const cfg = await config(userId);
+  const report: Record<string, unknown> = {
+    format: 'FFMVU-Diagnostic-Snapshot-v1',
+    bridgeVersion: BRIDGE_VERSION,
+    createdAt: isoNow(),
+    chatId: chatId || null,
+    enabled: cfg.enabled,
+    registration: registrationSnapshot(),
+    lastStatus: structuredClone(lastStatusByUser.get(userId) ?? null),
+    trace: diagnosticTrace.list(userId),
+    errors: [],
+  };
+  if (!chatId) return report;
+
+  const errors = report.errors as Array<Record<string, unknown>>;
+  const fail = (section: string, error: unknown) => errors.push({ section, ...diagnosticError(error) });
+  const scope: StateScope = { userId, chatId };
+  knownScopeByChat.set(chatId, scope);
+  const rt = runtime(userId);
+  const pending = contexts.getForScope(scope);
+  report.runtime = {
+    knownScope: knownScopeByChat.has(chatId),
+    generationPending: Boolean(pending),
+    pending: summarizeFrozenAttempt(pending),
+    earlyGeneration: earlyGenerations.peek(chatId),
+    noPatchProbeArmed: noPatchProbeUsers.has(userId),
+    continueProbeArmed: continueProbeUsers.has(userId),
+  };
+
+  let messages: LumiChatMessage[] = [];
+  try {
+    messages = await spindle.chat.getMessages(chatId);
+    const summaries: Array<Record<string, unknown>> = [];
+    for (const message of messages.slice(-16)) {
+      const swipeId = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+      const text = Array.isArray(message.swipes) && message.swipes[swipeId] !== undefined
+        ? String(message.swipes[swipeId])
+        : String(message.content ?? '');
+      summaries.push({
+        id: message.id,
+        role: message.role,
+        swipeId,
+        swipeCount: Array.isArray(message.swipes) ? message.swipes.length : 1,
+        activeTextLength: text.length,
+        activeTextHash: await canonicalHash(text),
+        containsUpdateVariable: text.includes('<UpdateVariable>'),
+        containsJsonPatch: text.includes('<JSONPatch>'),
+      });
+    }
+    report.transcript = {
+      messageCount: messages.length,
+      assistantCount: messages.filter(message => message.role === 'assistant').length,
+      userCount: messages.filter(message => message.role === 'user').length,
+      lastMessages: summaries,
+    };
+  } catch (error) {
+    fail('transcript', error);
+  }
+
+  let root: Awaited<ReturnType<AnchorStore['readRoot']>> = null;
+  try {
+    root = await rt.anchors.readRoot(scope);
+    report.root = root ? {
+      baseNodeId: root.baseNodeId,
+      tipNodeId: root.tipNodeId,
+      updatedAt: root.updatedAt,
+    } : null;
+  } catch (error) {
+    fail('root', error);
+  }
+
+  try {
+    const physical = await rt.state.store.resolveStoreHead(scope);
+    report.storeHead = {
+      status: physical.status,
+      headHash: physical.headHash ?? null,
+      revisionId: physical.head?.revisionId ?? null,
+      previousStoreRevisionId: physical.head?.previousStoreRevisionId ?? null,
+      semanticTipNodeId: physical.head?.semanticTipNodeId ?? null,
+      semanticTipStateHash: physical.head?.semanticTipStateHash ?? null,
+      committedArtifacts: physical.head?.committedArtifacts ?? [],
+      candidates: physical.candidates ?? [],
+      reason: physical.reason ?? null,
+    };
+  } catch (error) {
+    fail('storeHead', error);
+  }
+
+  let head: import('../head-resolver.js').HeadResolution | null = null;
+  if (root && messages.length) {
+    try {
+      head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
+      report.semanticHead = structuredClone(head);
+    } catch (error) {
+      fail('semanticHead', error);
+    }
+  } else if (root) {
+    try {
+      head = await rt.resolver.resolve(scope, root.baseNodeId, []);
+      report.semanticHead = structuredClone(head);
+    } catch (error) {
+      fail('semanticHead', error);
+    }
+  } else {
+    report.semanticHead = null;
+  }
+
+  if (head) {
+    try {
+      const node = await rt.state.store.readNode(scope, head.nodeId);
+      report.headArtifact = node.type === 'base' ? {
+        type: 'base',
+        id: node.value.id,
+        kind: node.value.kind,
+        reducerVersion: node.value.reducerVersion,
+        stateSchemaVersion: node.value.stateSchemaVersion,
+        hasTranscriptBoundary: Boolean(node.value.transcriptBoundary),
+      } : {
+        type: 'commit',
+        id: node.value.id,
+        kind: node.value.kind,
+        reducerVersion: node.value.reducerVersion,
+        parentNodeId: node.value.parentNodeId,
+        parentStateHash: node.value.parentStateHash,
+        resultStateHash: node.value.resultStateHash,
+        patchCount: node.value.patch.length,
+        lineageAnchorId: node.value.anchor.lineageAnchorId ?? null,
+        variantId: node.value.anchor.variantId ?? null,
+        attemptId: node.value.anchor.attemptId ?? null,
+        note: node.value.note ?? null,
+      };
+    } catch (error) {
+      fail('headArtifact', error);
+    }
+
+    try {
+      const materialized = await rt.state.materializer.materialize(scope, head.nodeId);
+      const scene = materialized.state.Narrative.Scene as unknown as Record<string, unknown>;
+      const hasHphRoot = Object.prototype.hasOwnProperty.call(scene, 'HPH');
+      const hph = scene.HPH;
+      const owners = hph && typeof hph === 'object' && !Array.isArray(hph)
+        ? Object.entries(hph as Record<string, unknown>).map(([ownerId, owner]) => {
+            const record = owner && typeof owner === 'object' && !Array.isArray(owner) ? owner as Record<string, unknown> : {};
+            return {
+              ownerId,
+              shape: valueShape(owner),
+              physiology: valueShape(record.Physiology),
+              penis: valueShape(record.Penis),
+              scrotum: valueShape(record.Scrotum),
+              sex: valueShape(record.Sex),
+            };
+          })
+        : [];
+      report.materialized = {
+        nodeId: materialized.nodeId,
+        stateHash: materialized.stateHash,
+        turn: Number(materialized.state.Narrative.Turn) || 0,
+        sceneChanged: materialized.state.Narrative.Scene.Changed,
+        hph: {
+          hasRoot: hasHphRoot,
+          rootShape: valueShape(hph),
+          ownerCount: owners.length,
+          owners,
+        },
+      };
+    } catch (error) {
+      fail('materialized', error);
+    }
+
+    try {
+      const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
+      report.projection = {
+        sourceKind: projection.sourceKind,
+        sourceNodeId: projection.sourceNodeId ?? null,
+        sourceStateHash: projection.sourceStateHash ?? null,
+        sourceBaseId: projection.sourceBaseId ?? null,
+        reducerVersion: projection.reducerVersion,
+        projectionVersion: projection.projectionVersion,
+        promptProtocolVersion: projection.promptProtocolVersion,
+        viewHash: projection.viewHash,
+      };
+    } catch (error) {
+      fail('projection', error);
+    }
+  }
+
+  const branch: Array<Record<string, unknown>> = [];
+  for (const message of messages.filter(message => message.role === 'assistant').slice(-12)) {
+    try {
+      const swipeId = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+      const index = await rt.variants.read(scope, message.id);
+      if (!index) {
+        branch.push({ messageId: message.id, swipeId, variantIndex: null });
+        continue;
+      }
+      const variantId = index.bySwipeIndex[swipeId] ?? null;
+      const anchor = variantId ? await rt.anchors.read(scope, variantId) : null;
+      const attempt = anchor?.lastAttemptId ? await rt.attempts.read(scope, anchor.lastAttemptId) : null;
+      branch.push({
+        messageId: message.id,
+        swipeId,
+        swipeCount: Object.keys(index.bySwipeIndex).length,
+        variantId,
+        variantFingerprintHash: variantId ? index.swipeFingerprints[variantId]?.storedMessageTextHash ?? null : null,
+        indexUpdatedAt: index.updatedAt,
+        anchor: anchor ? {
+          status: anchor.status,
+          observedSwipeIndex: anchor.observedSwipeIndex,
+          initialBaseNodeId: anchor.initialBaseNodeId,
+          initialBaseStateHash: anchor.initialBaseStateHash,
+          attemptCount: anchor.attemptIds.length,
+          lastAttemptId: anchor.lastAttemptId ?? null,
+          tipNodeId: anchor.tipNodeId,
+          storedMessageTextHash: anchor.storedMessageTextHash,
+          updatedAt: anchor.updatedAt,
+        } : null,
+        lastAttempt: attempt ? {
+          id: attempt.id,
+          generationId: attempt.generationId ?? null,
+          generationType: attempt.generationType,
+          ordinal: attempt.ordinal,
+          status: attempt.status,
+          baseNodeId: attempt.baseNodeId,
+          baseStateHash: attempt.baseStateHash,
+          modelCommitId: attempt.modelCommitId,
+          finalNodeId: attempt.finalNodeId ?? null,
+          finalStateHash: attempt.finalStateHash ?? null,
+          rawGenerationHash: attempt.rawGenerationHash ?? null,
+          rawPatchPayloadHash: attempt.rawPatchPayloadHash ?? null,
+          canonicalPatchHash: attempt.canonicalPatchHash ?? null,
+          storedMessageTextHash: attempt.storedMessageTextHash,
+          resolvesAttemptId: attempt.resolvesAttemptId ?? null,
+        } : null,
+      });
+    } catch (error) {
+      fail('branch:' + message.id, error);
+    }
+  }
+  report.branch = branch;
+  report.trace = diagnosticTrace.list(userId);
+  return report;
+}
 
 function runtime(userId: string): UserRuntime {
   let found = runtimes.get(userId);
@@ -81,6 +370,7 @@ function registrationSnapshot(): Record<string, unknown> {
 function publish(userId: string, status: Record<string, unknown>): void {
   const value = { bridgeVersion: BRIDGE_VERSION, at: isoNow(), ...registrationSnapshot(), ...status };
   lastStatusByUser.set(userId, value);
+  diagnosticTrace.append(userId, { at: String(value.at), kind: 'status', ...structuredClone(status) });
   spindle.sendToFrontend({ type: 'ffmvu_status', status: value }, userId);
 }
 
@@ -646,8 +936,28 @@ async function finalizeContinueModelCommit(payload: GenerationEndedPayload, pend
 
 async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<void> {
   const pending = contexts.claimFinalization(payload.generationId);
-  if (!pending) return;
+  if (!pending) {
+    for (const userId of knownFrontendUsers) {
+      traceInternal(userId, 'generation_ended_unclaimed', {
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        messageId: payload.messageId ?? null,
+        hasContent: payload.content !== undefined,
+        error: payload.error ?? null,
+      });
+    }
+    return;
+  }
   const userId = pending.scope.userId;
+  traceInternal(userId, 'generation_ended_claimed', {
+    chatId: payload.chatId,
+    generationId: payload.generationId,
+    messageId: payload.messageId ?? null,
+    generationType: pending.generationType,
+    attemptId: pending.attemptId,
+    hasContent: payload.content !== undefined,
+    error: payload.error ?? null,
+  });
 
   if (pending.generationType === 'continue' && !pending.diagnosticContinueProbe) {
     await finalizeContinueModelCommit(payload, pending);
@@ -884,8 +1194,24 @@ async function finalizeModelCommit(payload: GenerationEndedPayload): Promise<voi
 
 async function reconcileStoppedGeneration(payload: GenerationStoppedPayload): Promise<void> {
   const pending = contexts.claimFinalization(payload.generationId);
-  if (!pending) return;
+  if (!pending) {
+    for (const userId of knownFrontendUsers) {
+      traceInternal(userId, 'generation_stopped_unclaimed', {
+        chatId: payload.chatId,
+        generationId: payload.generationId,
+        contentLength: String(payload.content ?? '').length,
+      });
+    }
+    return;
+  }
   const userId = pending.scope.userId;
+  traceInternal(userId, 'generation_stopped_claimed', {
+    chatId: payload.chatId,
+    generationId: payload.generationId,
+    generationType: pending.generationType,
+    attemptId: pending.attemptId,
+    contentLength: String(payload.content ?? '').length,
+  });
 
   if (pending.diagnosticContinueProbe) {
     try {
@@ -1090,6 +1416,11 @@ async function refreshKnownVariantContent(
 async function reconcileMessageEditPayload(payload: MessageEditedPayload, callbackUserId?: string): Promise<void> {
   const scope = callbackUserId ? { userId: callbackUserId, chatId: String(payload.chatId) } : knownScopeByChat.get(String(payload.chatId));
   if (!scope || !payload?.message || payload.message.role !== 'assistant') return;
+  traceInternal(scope.userId, 'message_edited_received', {
+    chatId: scope.chatId,
+    messageId: payload.message.id,
+    swipeId: Number.isInteger(payload.message.swipe_id) ? payload.message.swipe_id : 0,
+  });
   try {
     const swipeId = Number.isInteger(payload.message.swipe_id) ? payload.message.swipe_id : 0;
     const refreshed = await refreshKnownVariantContent(runtime(scope.userId), scope, payload.message, swipeId);
@@ -1119,6 +1450,13 @@ async function reconcileMessageEditPayload(payload: MessageEditedPayload, callba
 async function reconcileSwipePayload(payload: SwipeEventPayload, callbackUserId?: string): Promise<void> {
   const scope = callbackUserId ? { userId: callbackUserId, chatId: String(payload.chatId) } : knownScopeByChat.get(String(payload.chatId));
   if (!scope || !payload?.message) return;
+  traceInternal(scope.userId, 'swipe_event_received', {
+    chatId: scope.chatId,
+    messageId: payload.message.id,
+    action: payload.action ?? null,
+    swipeId: Number.isInteger(payload.swipeId) ? payload.swipeId : null,
+    previousSwipeId: Number.isInteger(payload.previousSwipeId) ? payload.previousSwipeId : null,
+  });
   try {
     const rt = runtime(scope.userId);
     let result;
@@ -1177,8 +1515,22 @@ async function reconcileSwipePayload(payload: SwipeEventPayload, callbackUserId?
 }
 
 const contextHandler = async (context: import('./spindle-lite.js').ContextHandlerContext): Promise<import('./spindle-lite.js').ContextHandlerContext> => {
+  traceInternal(context.userId, 'context_handler_enter', {
+    chatId: context.chatId,
+    generationType: context.generationType,
+    dryRun: context.dryRun,
+  });
   const cfg = await config(context.userId);
-  if (!cfg.enabled || context.dryRun || context.generationType === 'impersonate') return context;
+  if (!cfg.enabled || context.dryRun || context.generationType === 'impersonate') {
+    traceInternal(context.userId, 'context_handler_skipped', {
+      chatId: context.chatId,
+      generationType: context.generationType,
+      enabled: cfg.enabled,
+      dryRun: context.dryRun,
+      impersonate: context.generationType === 'impersonate',
+    });
+    return context;
+  }
   if (!spindle.permissions.has('chat_mutation')) {
     publish(context.userId, { phase: 'blocked', chatId: context.chatId, reason: 'chat_mutation permission missing' });
     return { ...context, cancelGeneration: true };
@@ -1233,7 +1585,22 @@ function injectNoPatchProbe(messages: import('./spindle-lite.js').LumiLlmMessage
 
 const interceptorHandler = async (messages: import('./spindle-lite.js').LumiLlmMessage[], context: import('./spindle-lite.js').InterceptorContext) => {
   const pending = contexts.getForChat(context.chatId);
-  if (!pending) return messages;
+  if (!pending) {
+    const scope = knownScopeByChat.get(context.chatId);
+    if (scope) traceInternal(scope.userId, 'interceptor_without_pending_context', {
+      chatId: context.chatId,
+      generationType: context.generationType,
+      messageCount: messages.length,
+    });
+    return messages;
+  }
+  traceInternal(pending.scope.userId, 'interceptor_enter', {
+    chatId: context.chatId,
+    attemptId: pending.attemptId,
+    generationId: pending.generationId ?? null,
+    generationType: pending.generationType,
+    messageCount: messages.length,
+  });
   const injected = injectFrozenModelState(messages, pending.projectionView);
   pending.injectionMode = injected.mode;
   const historyMessages = injectNarrativeHistoryContext(
@@ -1345,7 +1712,36 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     spindle.sendToFrontend({ type: 'ffmvu_status', status: { bridgeVersion: BRIDGE_VERSION, ...registrationSnapshot(), ...(lastStatusByUser.get(userId) ?? { phase: 'idle' }), enabled: cfg.enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId) } }, userId);
     return;
   }
-  if (payload?.type === 'ffmvu_import_legacy') {
+  if (payload?.type === 'ffmvu_diagnostic_clear_trace') {
+    diagnosticTrace.clear(userId);
+    traceInternal(userId, 'diagnostic_trace_cleared', { chatId: String(payload.chatId ?? '') || null });
+    spindle.sendToFrontend({
+      type: 'ffmvu_diagnostic_trace_cleared',
+      ok: true,
+      chatId: String(payload.chatId ?? '') || null,
+    }, userId);
+    return;
+  }
+  if (payload?.type === 'ffmvu_diagnostic_snapshot') {
+    const chatId = String(payload.chatId ?? '');
+    traceInternal(userId, 'diagnostic_snapshot_requested', { chatId: chatId || null });
+    try {
+      const report = await buildDiagnosticSnapshot(userId, chatId);
+      spindle.sendToFrontend({ type: 'ffmvu_diagnostic_snapshot_result', ok: true, chatId: chatId || null, report }, userId);
+    } catch (error) {
+      const detail = diagnosticError(error);
+      traceInternal(userId, 'diagnostic_snapshot_error', { chatId: chatId || null, ...detail });
+      spindle.sendToFrontend({
+        type: 'ffmvu_diagnostic_snapshot_result',
+        ok: false,
+        chatId: chatId || null,
+        reason: String(error),
+        detail,
+      }, userId);
+    }
+    return;
+  }
+    if (payload?.type === 'ffmvu_import_legacy') {
     const chatId = String(payload.chatId ?? '');
     const requestId = String(payload.requestId ?? createId('legacy'));
     if (!chatId) {
@@ -1617,7 +2013,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.7 bridge armed. First-trigger Scene.HPH child patches are structurally canonicalized without mutating the legacy reducer; existing GUI controls and post-commit message edit safety remain active.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.8 bridge armed. Read-only lifecycle trace and Diagnostic Snapshot are active; Scene.HPH structural canonicalization and existing GUI safety remain unchanged.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -1657,4 +2053,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.7 Scene.HPH structural parent canonicalization + legacy StatusMenu writes + post-commit message edit safety).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.8 read-only lifecycle diagnostics + Scene.HPH structural canonicalization + existing state/GUI safety).`);
