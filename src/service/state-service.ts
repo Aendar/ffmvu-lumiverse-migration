@@ -4,7 +4,7 @@ import { assertModelPatchAuthorization, type ModelPatchAuthorizationView } from 
 import { computeProjectionConsumptionPatch } from '../shared/projection-consumption.js';
 import type { ProjectionRegistry } from '../shared/projection-registry.js';
 import type { ReducerRegistry } from '../shared/reducer-registry.js';
-import { LEGACY_PROJECTION_VERSION, LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION } from '../shared/state-schema.js';
+import { LEGACY_PROJECTION_VERSION, LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION, type FFMVUState } from '../shared/state-schema.js';
 import { createDefaultState } from '../shared/state-defaults.js';
 import { AnchorStore } from '../persistence/anchor-store.js';
 import { EventStore } from '../persistence/event-store.js';
@@ -17,6 +17,22 @@ import { ScopeMutex } from './scope-mutex.js';
 import { applyGameStartPayload, type GameStartPayload } from '../shared/domain/gamestart.js';
 import { extractLegacyImport } from '../shared/domain/snapshot.js';
 import { applyGuiIntent, buildGuiIntentPatch, type GuiIntent } from '../shared/domain/gui-intents.js';
+
+const HPH_SCENE_ROOT = '/Narrative/Scene/HPH';
+
+function withRequiredModelStructuralParents(state: FFMVUState, patch: readonly JsonPatchOperation[]): JsonPatchOperation[] {
+  const scene = state.Narrative.Scene as unknown as Record<string, unknown>;
+  const hphMissing = !Object.prototype.hasOwnProperty.call(scene, 'HPH');
+  if (!hphMissing) return [...patch];
+
+  const writesHphRoot = patch.some(operation => operation.path === HPH_SCENE_ROOT);
+  const writesHphDescendant = patch.some(operation => operation.path.startsWith(HPH_SCENE_ROOT + '/'));
+  if (!writesHphDescendant || writesHphRoot) return [...patch];
+
+  // HPH owner state remains trigger-created by the model. This only supplies the otherwise-missing
+  // structural parent so a first valid add to /Narrative/Scene/HPH/<owner> can be applied atomically.
+  return [{ op: 'add', path: HPH_SCENE_ROOT, value: {} }, ...patch];
+}
 
 export interface CreateGenesisInput {
   state?: unknown;
@@ -283,9 +299,10 @@ export class StateService {
       const rawPatch = input.patch ?? [];
       assertPatchResourceLimits(rawPatch);
       assertModelOperationPolicy(rawPatch);
+      const patchWithStructuralParents = withRequiredModelStructuralParents(parent.state, rawPatch);
       const canonicalPatch: JsonPatchOperation[] = [];
       let workingState = structuredClone(parent.state);
-      for (const rawOperation of rawPatch) {
+      for (const rawOperation of patchWithStructuralParents) {
         const operation = canonicalizeTupleOperation(workingState, rawOperation);
         canonicalPatch.push(structuredClone(operation));
         workingState = applyJsonPatch(workingState, [operation]);
