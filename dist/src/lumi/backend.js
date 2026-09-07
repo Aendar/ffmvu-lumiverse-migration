@@ -2,7 +2,7 @@ import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from '../persi
 import { createId, isoNow } from '../persistence/ids.js';
 import { ACTIVE_PREFIX_FINGERPRINT_VERSION } from '../persistence/types.js';
 import { HeadResolver } from '../head-resolver.js';
-import { StateService } from '../service/state-service.js';
+import { ModelPatchRejectedError, StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
@@ -18,7 +18,7 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.8';
+const BRIDGE_VERSION = '0.13.9';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -37,6 +37,30 @@ function diagnosticError(error) {
     return {
         error: String(error),
         ...(error instanceof Error && error.stack ? { stack: error.stack.split('\n').slice(0, 8).join('\n') } : {}),
+    };
+}
+function classifyPatchFailure(error) {
+    const failureMessage = String(error);
+    const pathMatch = failureMessage.match(/(?:Missing (?:replace|remove) path|path):\s*(\/[^\s]*)/i);
+    let failureClass = 'model_patch_rejected';
+    if (failureMessage.includes('MALFORMED_JSONPATCH_JSON'))
+        failureClass = 'malformed_json';
+    else if (failureMessage.includes('Missing replace path'))
+        failureClass = 'missing_replace_path';
+    else if (failureMessage.includes('Missing remove path'))
+        failureClass = 'missing_remove_path';
+    else if (failureMessage.includes('Model operation not allowed'))
+        failureClass = 'forbidden_operation';
+    else if (failureMessage.includes('MAX_PATCH_') || failureMessage.includes('MAX_POINTER_') || failureMessage.includes('MAX_SINGLE_VALUE_BYTES'))
+        failureClass = 'resource_limit';
+    else if (failureMessage.includes('Invalid model commit result'))
+        failureClass = 'schema_validation';
+    else if (failureMessage.toLowerCase().includes('authoriz'))
+        failureClass = 'authorization';
+    return {
+        failureClass,
+        failureMessage,
+        ...(pathMatch?.[1] ? { failurePath: pathMatch[1] } : {}),
     };
 }
 function valueShape(value) {
@@ -306,6 +330,9 @@ async function buildDiagnosticSnapshot(userId, chatId) {
                     rawGenerationHash: attempt.rawGenerationHash ?? null,
                     rawPatchPayloadHash: attempt.rawPatchPayloadHash ?? null,
                     canonicalPatchHash: attempt.canonicalPatchHash ?? null,
+                    failureClass: attempt.failureClass ?? null,
+                    failureMessage: attempt.failureMessage ?? null,
+                    failurePath: attempt.failurePath ?? null,
                     storedMessageTextHash: attempt.storedMessageTextHash,
                     resolvesAttemptId: attempt.resolvesAttemptId ?? null,
                 } : null,
@@ -316,6 +343,36 @@ async function buildDiagnosticSnapshot(userId, chatId) {
         }
     }
     report.branch = branch;
+    try {
+        const rejected = (await rt.attempts.listForScope(scope)).filter(attempt => attempt.status === 'failed_patch');
+        const byClass = {};
+        for (const attempt of rejected) {
+            const key = attempt.failureClass ?? 'legacy_failed_patch';
+            byClass[key] = (byClass[key] ?? 0) + 1;
+        }
+        report.patchFailures = {
+            total: rejected.length,
+            byClass,
+            recent: rejected.slice(-40).map(attempt => ({
+                attemptId: attempt.id,
+                messageId: attempt.messageId,
+                variantId: attempt.variantId,
+                generationId: attempt.generationId ?? null,
+                generationType: attempt.generationType,
+                baseNodeId: attempt.baseNodeId,
+                baseStateHash: attempt.baseStateHash,
+                failureClass: attempt.failureClass ?? 'legacy_failed_patch',
+                failureMessage: attempt.failureMessage ?? null,
+                failurePath: attempt.failurePath ?? null,
+                rawGenerationHash: attempt.rawGenerationHash ?? null,
+                rawPatchPayloadHash: attempt.rawPatchPayloadHash ?? null,
+                createdAt: attempt.createdAt,
+            })),
+        };
+    }
+    catch (error) {
+        fail('patchFailures', error);
+    }
     report.trace = diagnosticTrace.list(userId);
     return report;
 }
@@ -637,7 +694,7 @@ async function finalizeContinueModelCommit(payload, pending) {
             ? String(saved.swipes[swipeId])
             : String(saved.content ?? '');
         const postStoredTextHash = await canonicalHash(postText);
-        const writeContinueEvidence = async (status, modelCommitId, tipNodeId, hashes, resolvesAttemptId) => {
+        const writeContinueEvidence = async (status, modelCommitId, tipNodeId, hashes, resolvesAttemptId, failure) => {
             const currentAnchor = await rt.anchors.read(pending.scope, pending.continuePreVariantId);
             if (!currentAnchor)
                 throw new Error('CONTINUE_ANCHOR_MISSING_AT_EVIDENCE_WRITE');
@@ -664,6 +721,7 @@ async function finalizeContinueModelCommit(payload, pending) {
                 modelCommitId,
                 status,
                 ...hashes,
+                ...(failure ?? {}),
                 storedMessageTextHash: postStoredTextHash,
                 finalNodeId: tipNodeId,
                 finalStateHash: finalMaterialized.stateHash,
@@ -697,7 +755,8 @@ async function finalizeContinueModelCommit(payload, pending) {
             const evidenceMismatch = message.includes('OUTPUT_PATCH_EVIDENCE_MISMATCH') ||
                 message.includes('CONTINUE_PREFIX_MISMATCH') ||
                 message.includes('CONTINUE_');
-            await writeContinueEvidence(evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, {});
+            const failure = evidenceMismatch ? undefined : classifyPatchFailure(error);
+            await writeContinueEvidence(evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, {}, undefined, failure);
             publish(userId, {
                 phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch',
                 chatId: payload.chatId,
@@ -817,7 +876,10 @@ async function finalizeContinueModelCommit(payload, pending) {
             });
         }
         catch (error) {
-            await writeContinueEvidence('failed_patch', null, pending.baseNodeId, baseEvidenceHashes);
+            if (!(error instanceof ModelPatchRejectedError))
+                throw error;
+            const failure = classifyPatchFailure(error);
+            await writeContinueEvidence('failed_patch', null, pending.baseNodeId, baseEvidenceHashes, undefined, failure);
             publish(userId, {
                 phase: 'failed_patch',
                 chatId: payload.chatId,
@@ -826,6 +888,10 @@ async function finalizeContinueModelCommit(payload, pending) {
                 variantId: pending.continuePreVariantId,
                 generationType: 'continue',
                 error: String(error),
+                failureClass: failure.failureClass,
+                failurePath: failure.failurePath ?? null,
+                stateMutationRejected: true,
+                nextTurnAllowed: true,
             });
             return;
         }
@@ -989,7 +1055,7 @@ async function finalizeModelCommit(payload) {
         }
         return;
     }
-    const writeEvidence = async (saved, variantId, swipeId, storedMessageTextHash, status, modelCommitId, tipNodeId, hashes) => {
+    const writeEvidence = async (saved, variantId, swipeId, storedMessageTextHash, status, modelCommitId, tipNodeId, hashes, failure) => {
         const rt = runtime(userId);
         const oldAnchor = await rt.anchors.read(pending.scope, variantId);
         const ordinal = (oldAnchor?.attemptIds.length ?? 0) + 1;
@@ -1004,7 +1070,7 @@ async function finalizeModelCommit(payload) {
             ...(pending.projectionSourceBaseId ? { projectionSourceBaseId: pending.projectionSourceBaseId } : {}),
             projectionVersion: pending.projectionVersion, promptProtocolVersion: pending.promptProtocolVersion, promptViewHash: pending.promptViewHash,
             ...(pending.presetVersion ? { presetVersion: pending.presetVersion } : {}),
-            modelCommitId, status, ...hashes, storedMessageTextHash,
+            modelCommitId, status, ...hashes, ...(failure ?? {}), storedMessageTextHash,
             finalNodeId: tipNodeId,
             finalStateHash: finalMaterialized.stateHash,
             narrativeTimestamp: narrativeTimestampFromState(finalMaterialized.state),
@@ -1060,8 +1126,14 @@ async function finalizeModelCommit(payload) {
             const message = String(error);
             const evidenceMismatch = message.includes('OUTPUT_PATCH_EVIDENCE_MISMATCH');
             const hashes = rawGenerationHash ? { rawGenerationHash } : {};
-            await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, hashes);
-            publish(userId, { phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: message, diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true });
+            const failure = evidenceMismatch ? undefined : classifyPatchFailure(error);
+            await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, evidenceMismatch ? 'unreconciled' : 'failed_patch', null, pending.baseNodeId, hashes, failure);
+            publish(userId, {
+                phase: evidenceMismatch ? 'output_evidence_mismatch' : 'failed_patch',
+                chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: message,
+                diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+                ...(failure ? { failureClass: failure.failureClass, failurePath: failure.failurePath ?? null, stateMutationRejected: true, nextTurnAllowed: true } : {}),
+            });
             return;
         }
         const extracted = evidence.selected;
@@ -1093,8 +1165,16 @@ async function finalizeModelCommit(payload) {
             });
         }
         catch (error) {
-            await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, baseEvidenceHashes);
-            publish(userId, { phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId, error: String(error), diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true });
+            if (!(error instanceof ModelPatchRejectedError))
+                throw error;
+            const failure = classifyPatchFailure(error);
+            await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, 'failed_patch', null, pending.baseNodeId, baseEvidenceHashes, failure);
+            publish(userId, {
+                phase: 'failed_patch', chatId: payload.chatId, generationId: payload.generationId, messageId: saved.id, variantId,
+                error: String(error), diagnosticNoPatchProbe: pending.diagnosticNoPatchProbe === true,
+                failureClass: failure.failureClass, failurePath: failure.failurePath ?? null,
+                stateMutationRejected: true, nextTurnAllowed: true,
+            });
             return;
         }
         await writeEvidence(saved, variantId, swipeId, storedMessageTextHash, finalized.status, finalized.modelCommitId, finalized.nodeId, {

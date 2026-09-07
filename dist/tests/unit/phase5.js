@@ -1,5 +1,5 @@
 import { MemoryJsonStorage } from '../../src/persistence/storage-port.js';
-import { StateService } from '../../src/service/state-service.js';
+import { ModelPatchRejectedError, StateService } from '../../src/service/state-service.js';
 import { createProjectionRegistry } from '../../src/shared/projection-registry.js';
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { buildModelPatchAuthorizationView, assertModelPatchAuthorization } from '../../src/shared/patch-policy.js';
@@ -88,6 +88,30 @@ async function main() {
     const refreshCommit = await store.readCommit(scope, refresh.systemCommitId);
     assert(refreshCommit.patch.length === 0 && refreshCommit.resultStateHash === refreshCommit.parentStateHash, 'projection-refresh keeps state bytes');
     assert(refreshCommit.projectionBinding.sourceNodeId === refresh.systemCommitId, 'projection-refresh is direct self-bound');
+    const rejectedStorage = new MemoryJsonStorage();
+    const rejectedState = new StateService(rejectedStorage, createReducerRegistry(), createProjectionRegistry());
+    const rejectedScope = { userId: 'u', chatId: 'rejected-model-patch' };
+    const rejectedGenesis = await rejectedState.createGenesis(rejectedScope);
+    const rejectedFrozen = await rejectedState.getProjectionForNode(rejectedScope, rejectedGenesis.nodeId);
+    let rejectedError = null;
+    try {
+        await rejectedState.finalizeModelAttempt(rejectedScope, {
+            expectedParentNodeId: rejectedGenesis.nodeId,
+            expectedParentStateHash: rejectedGenesis.stateHash,
+            patch: [{ op: 'replace', path: '/Narrative/Turn/0', value: 1 }],
+            authorization: buildModelPatchAuthorizationView(rejectedFrozen.view),
+            projectionVersion: rejectedFrozen.projectionVersion,
+            promptProtocolVersion: rejectedFrozen.promptProtocolVersion,
+            anchor: { messageId: 'bad-a1', variantId: 'bad-v1', generationId: 'bad-g1', attemptId: 'bad-attempt-1', messageRole: 'assistant', lineageAnchorId: 'bad-v1' },
+            requestId: 'bad-attempt-1',
+        });
+    }
+    catch (error) {
+        rejectedError = error;
+    }
+    const rejectedHead = await new EventStore(rejectedStorage).resolveStoreHead(rejectedScope);
+    assert(rejectedError instanceof ModelPatchRejectedError && String(rejectedError).includes('Missing replace path: /Narrative/Turn/0'), 'invalid model JSONPatch is classified as a model rejection');
+    assert(rejectedHead.status === 'ok' && rejectedHead.head?.semanticTipNodeId === rejectedGenesis.nodeId, 'rejected model JSONPatch writes no partial state or StoreRevision');
     const hphStorage = new MemoryJsonStorage();
     const hphState = new StateService(hphStorage, createReducerRegistry(), createProjectionRegistry());
     const hphScope = { userId: 'u', chatId: 'hph-structural-parent' };

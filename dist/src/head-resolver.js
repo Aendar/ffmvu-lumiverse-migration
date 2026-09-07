@@ -101,11 +101,8 @@ export class HeadResolver {
                         // Explicit same-variant Continue recovery may resolve a stopped segment without inventing a state mutation.
                     }
                     else if (attempt.status === 'failed_patch') {
-                        const next = ordered[n + 1];
-                        if (!next || next.generationType !== 'continue' || next.resolvesAttemptId !== attempt.id) {
-                            return { health: 'failed_patch', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'active attempt has failed patch' };
-                        }
-                        // Only an explicitly linked Continue attempt can resolve a boundary-truncated failed patch.
+                        // Invalid model output is durable forensic evidence, not authoritative state.
+                        // The whole model transaction was rejected, so lineage remains on the frozen base and RP may continue.
                     }
                     else
                         return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: `attempt status ${attempt.status} requires explicit resolution` };

@@ -15,6 +15,7 @@ export declare class TranscriptAttemptStore {
     append(attempt: TranscriptAttempt): Promise<void>;
     read(scope: StateScope, attemptId: string): Promise<TranscriptAttempt | null>;
     listForVariant(scope: StateScope, variantId: VariantId): Promise<TranscriptAttempt[]>;
+    listForScope(scope: StateScope): Promise<TranscriptAttempt[]>;
 }
 export interface SwipeObservation {
     text: string;
