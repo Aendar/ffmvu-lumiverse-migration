@@ -150,6 +150,9 @@ export interface TranscriptAttempt {
   rawGenerationHash?: string;
   rawPatchPayloadHash?: string;
   canonicalPatchHash?: string;
+  failureClass?: string;
+  failureMessage?: string;
+  failurePath?: string;
   storedMessageTextHash: string;
   finalNodeId?: string;
   finalStateHash?: string;
