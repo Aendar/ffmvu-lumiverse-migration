@@ -19,14 +19,19 @@ export class TranscriptAttemptStore {
   async append(attempt: TranscriptAttempt): Promise<void> { await this.immutable.put(attemptPath(attempt.scope, attempt.id), attempt); }
   read(scope: StateScope, attemptId: string): Promise<TranscriptAttempt | null> { return this.storage.getJson(attemptPath(scope, attemptId)); }
   async listForVariant(scope: StateScope, variantId: VariantId): Promise<TranscriptAttempt[]> {
+    const result = (await this.listForScope(scope)).filter(attempt => attempt.variantId === variantId);
+    result.sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id));
+    for (let i = 1; i < result.length; i++) if (result[i - 1].ordinal === result[i].ordinal) throw new Error('ATTEMPT_ORDINAL_AMBIGUOUS');
+    return result;
+  }
+  async listForScope(scope: StateScope): Promise<TranscriptAttempt[]> {
     const paths = await this.storage.list(attemptPrefix(scope));
     const result: TranscriptAttempt[] = [];
     for (const path of paths) {
       const attempt = await this.storage.getJson<TranscriptAttempt>(path);
-      if (attempt?.variantId === variantId && attempt.scope.userId === scope.userId && attempt.scope.chatId === scope.chatId) result.push(attempt);
+      if (attempt?.scope.userId === scope.userId && attempt.scope.chatId === scope.chatId) result.push(attempt);
     }
-    result.sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id));
-    for (let i = 1; i < result.length; i++) if (result[i - 1].ordinal === result[i].ordinal) throw new Error('ATTEMPT_ORDINAL_AMBIGUOUS');
+    result.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     return result;
   }
 }
