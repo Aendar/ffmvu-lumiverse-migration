@@ -20,6 +20,13 @@ import { applyGuiIntent, buildGuiIntentPatch, type GuiIntent } from '../shared/d
 
 const HPH_SCENE_ROOT = '/Narrative/Scene/HPH';
 
+export class ModelPatchRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ModelPatchRejectedError';
+  }
+}
+
 function withRequiredModelStructuralParents(state: FFMVUState, patch: readonly JsonPatchOperation[]): JsonPatchOperation[] {
   const scene = state.Narrative.Scene as unknown as Record<string, unknown>;
   const hphMissing = !Object.prototype.hasOwnProperty.call(scene, 'HPH');
@@ -297,24 +304,31 @@ export class StateService {
       const reducer = this.reducers.get(parentArtifact.value.reducerVersion);
 
       const rawPatch = input.patch ?? [];
-      assertPatchResourceLimits(rawPatch);
-      assertModelOperationPolicy(rawPatch);
-      const patchWithStructuralParents = withRequiredModelStructuralParents(parent.state, rawPatch);
-      const canonicalPatch: JsonPatchOperation[] = [];
+      let canonicalPatch: JsonPatchOperation[] = [];
       let workingState = structuredClone(parent.state);
-      for (const rawOperation of patchWithStructuralParents) {
-        const operation = canonicalizeTupleOperation(workingState, rawOperation);
-        canonicalPatch.push(structuredClone(operation));
-        workingState = applyJsonPatch(workingState, [operation]);
-      }
-      assertPatchResourceLimits(canonicalPatch);
-      assertModelPatchAuthorization(parent.state, canonicalPatch, input.authorization);
+      let hasModelPatch = false;
+      let canonicalPatchHash: string | undefined;
+      let r1State: FFMVUState;
+      try {
+        assertPatchResourceLimits(rawPatch);
+        assertModelOperationPolicy(rawPatch);
+        const patchWithStructuralParents = withRequiredModelStructuralParents(parent.state, rawPatch);
+        for (const rawOperation of patchWithStructuralParents) {
+          const operation = canonicalizeTupleOperation(workingState, rawOperation);
+          canonicalPatch.push(structuredClone(operation));
+          workingState = applyJsonPatch(workingState, [operation]);
+        }
+        assertPatchResourceLimits(canonicalPatch);
+        assertModelPatchAuthorization(parent.state, canonicalPatch, input.authorization);
 
-      const hasModelPatch = canonicalPatch.length > 0;
-      const canonicalPatchHash = hasModelPatch ? await canonicalHash(canonicalPatch) : undefined;
-      const r1State = hasModelPatch ? reducer.normalize(workingState) : structuredClone(parent.state);
-      const r1Errors = reducer.validate(r1State);
-      if (r1Errors.length) throw new Error('Invalid model commit result: ' + r1Errors.join('; '));
+        hasModelPatch = canonicalPatch.length > 0;
+        canonicalPatchHash = hasModelPatch ? await canonicalHash(canonicalPatch) : undefined;
+        r1State = hasModelPatch ? reducer.normalize(workingState) : structuredClone(parent.state);
+        const r1Errors = reducer.validate(r1State);
+        if (r1Errors.length) throw new Error('Invalid model commit result: ' + r1Errors.join('; '));
+      } catch (error) {
+        throw new ModelPatchRejectedError(String(error));
+      }
       const r1StateHash = hasModelPatch ? await canonicalHash(r1State) : parent.stateHash;
       const modelCommitId = hasModelPatch ? createId('node') : null;
       const r1NodeId = modelCommitId ?? parent.nodeId;
