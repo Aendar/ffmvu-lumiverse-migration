@@ -72,6 +72,38 @@ async function main(): Promise<void> {
   const gui = await contService.commitPatch(scope, { parentNodeId: first.commitId, kind: 'gui', anchor: { lineageAnchorId: v, variantId: v, messageId: 'continue' }, patch: [{ op: 'replace', path: '/Mainchar/Agility/0', value: 8 }] }); const anchorStore = new AnchorStore(contStorage); const anch = await anchorStore.read(scope, v); if (!anch) throw new Error('anchor missing'); anch.tipNodeId = gui.nodeId; anch.updatedAt = isoNow(); await anchorStore.put(anch);
   const second = await committedVariant(contService, contStorage, 'continue', 0, gui.nodeId, 9, v, 2); const resolver2 = new HeadResolver(contService.store, contService.materializer, anchorStore, new TranscriptAttemptStore(contStorage), vi); const rr = await resolver2.resolve(scope, g.nodeId, [{ id: 'continue', role: 'assistant', content: 'full-content', swipes: ['full-content'], swipeId: 0 }]); assert(rr.health === 'ok' && rr.nodeId === second.commitId, 'Continue accepts same-lineage GUI descendant base');
 
+  // A rejected model patch is forensic evidence only; it must not poison semantic head reachability.
+  const rejectStorage = new MemoryJsonStorage();
+  const rejectService = new StateService(rejectStorage, createReducerRegistry(), createProjectionRegistry());
+  const rejectBase = await rejectService.createGenesis(scope);
+  const rejectVariants = new VariantIndexStore(rejectStorage);
+  const rejectIndex = await rejectVariants.create(scope, 'rejected', [{ text: 'bad patch prose' }]);
+  const rejectVariant = rejectIndex.bySwipeIndex[0];
+  const rejectAttemptId = createId('attempt');
+  const rejectProjection = await rejectService.getProjectionForNode(scope, rejectBase.nodeId);
+  const rejectAttempts = new TranscriptAttemptStore(rejectStorage);
+  await rejectAttempts.append({
+    id: rejectAttemptId, scope, variantId: rejectVariant, messageId: 'rejected', generationType: 'normal', ordinal: 1,
+    baseNodeId: rejectBase.nodeId, baseStateHash: rejectBase.stateHash,
+    projectionSourceKind: 'node', projectionSourceNodeId: rejectBase.nodeId, projectionSourceStateHash: rejectBase.stateHash,
+    projectionVersion: rejectProjection.projectionVersion, promptProtocolVersion: rejectProjection.promptProtocolVersion, promptViewHash: rejectProjection.viewHash,
+    modelCommitId: null, status: 'failed_patch', failureClass: 'missing_replace_path',
+    failureMessage: 'Error: Missing replace path: /Narrative/Turn/0', failurePath: '/Narrative/Turn/0',
+    storedMessageTextHash: rejectIndex.swipeFingerprints[rejectVariant].storedMessageTextHash, createdAt: isoNow(),
+  });
+  await new AnchorStore(rejectStorage).put({
+    variantId: rejectVariant, scope, messageId: 'rejected', observedSwipeIndex: 0,
+    initialBaseNodeId: rejectBase.nodeId, initialBaseStateHash: rejectBase.stateHash,
+    attemptIds: [rejectAttemptId], lastAttemptId: rejectAttemptId,
+    storedMessageTextHash: rejectIndex.swipeFingerprints[rejectVariant].storedMessageTextHash,
+    tipNodeId: rejectBase.nodeId, status: 'failed_patch', createdAt: isoNow(), updatedAt: isoNow(),
+  });
+  const rejectResolver = new HeadResolver(rejectService.store, rejectService.materializer, new AnchorStore(rejectStorage), rejectAttempts, rejectVariants);
+  const rejectResolved = await rejectResolver.resolve(scope, rejectBase.nodeId, [{ id: 'rejected', role: 'assistant', content: 'bad patch prose', swipes: ['bad patch prose'], swipeId: 0 }]);
+  assert(rejectResolved.health === 'ok' && rejectResolved.nodeId === rejectBase.nodeId && rejectResolved.stateHash === rejectBase.stateHash, 'failed model patch remains forensic but semantic head continues from last good state');
+  const accumulated = await rejectAttempts.listForScope(scope);
+  assert(accumulated.length === 1 && accumulated[0].failureClass === 'missing_replace_path' && accumulated[0].failurePath === '/Narrative/Turn/0', 'rejected patch telemetry persists in immutable attempt history');
+
   // A stopped partial may be explicitly resolved by a later Continue attempt on the same VariantId.
   const recoverStorage = new MemoryJsonStorage();
   const recoverService = new StateService(recoverStorage, createReducerRegistry(), createProjectionRegistry());

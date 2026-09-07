@@ -9,6 +9,9 @@ import type { JsonStoragePort } from '../persistence/storage-port.js';
 import { type BaseSnapshotKind, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { type GameStartPayload } from '../shared/domain/gamestart.js';
 import { type GuiIntent } from '../shared/domain/gui-intents.js';
+export declare class ModelPatchRejectedError extends Error {
+    constructor(message: string);
+}
 export interface CreateGenesisInput {
     state?: unknown;
     kind?: BaseSnapshotKind;
