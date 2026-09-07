@@ -66,6 +66,7 @@ export interface SceneState extends MutableRecord {
   LocationKey: string;
   RelevantWorldKeys: string[];
   Changed: boolean;
+  HPH?: MutableRecord;
 }
 
 export interface NarrativeState extends MutableRecord {
