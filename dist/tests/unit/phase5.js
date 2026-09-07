@@ -88,6 +88,56 @@ async function main() {
     const refreshCommit = await store.readCommit(scope, refresh.systemCommitId);
     assert(refreshCommit.patch.length === 0 && refreshCommit.resultStateHash === refreshCommit.parentStateHash, 'projection-refresh keeps state bytes');
     assert(refreshCommit.projectionBinding.sourceNodeId === refresh.systemCommitId, 'projection-refresh is direct self-bound');
+    const hphStorage = new MemoryJsonStorage();
+    const hphState = new StateService(hphStorage, createReducerRegistry(), createProjectionRegistry());
+    const hphScope = { userId: 'u', chatId: 'hph-structural-parent' };
+    const hphGenesis = await hphState.createGenesis(hphScope);
+    assert(!Object.prototype.hasOwnProperty.call(hphGenesis.state.Narrative.Scene, 'HPH'), 'legacy reducer/default remains byte-compatible and does not pre-initialize HPH');
+    const hphFrozen = await hphState.getProjectionForNode(hphScope, hphGenesis.nodeId);
+    const hphOwner = {
+        Physiology: {
+            Bladder: 0, Arousal: 0, SemenMl: null, SemenCapacityMl: null,
+            ErectionCapacity: 10, LastPhysAt: { Date: '1 июня', Time: '06:00' },
+        },
+        Penis: null,
+        Scrotum: null,
+        Sex: null,
+    };
+    const hphResult = await hphState.finalizeModelAttempt(hphScope, {
+        expectedParentNodeId: hphGenesis.nodeId,
+        expectedParentStateHash: hphGenesis.stateHash,
+        patch: [{ op: 'add', path: '/Narrative/Scene/HPH/player', value: hphOwner }],
+        authorization: buildModelPatchAuthorizationView(hphFrozen.view),
+        projectionVersion: hphFrozen.projectionVersion,
+        promptProtocolVersion: hphFrozen.promptProtocolVersion,
+        anchor: { messageId: 'hph-a1', variantId: 'hph-v1', generationId: 'hph-g1', attemptId: 'hph-attempt-1', messageRole: 'assistant', lineageAnchorId: 'hph-v1' },
+        requestId: 'hph-attempt-1',
+        rawPatchPayloadHash: 'raw-hph-child-only',
+    });
+    assert(Boolean(hphResult.state.Narrative.Scene.HPH?.player), 'first HPH owner add succeeds even when legacy state lacks the HPH container');
+    const hphCommit = await new EventStore(hphStorage).readCommit(hphScope, hphResult.modelCommitId);
+    assert(hphCommit.patch.length === 2
+        && hphCommit.patch[0].op === 'add'
+        && hphCommit.patch[0].path === '/Narrative/Scene/HPH'
+        && hphCommit.patch[1].path === '/Narrative/Scene/HPH/player', 'canonical model commit prepends exactly one structural HPH parent');
+    assert(hphCommit.rawPatchPayloadHash === 'raw-hph-child-only', 'raw model patch evidence remains distinct from structural canonicalization');
+    const explicitHphStorage = new MemoryJsonStorage();
+    const explicitHphState = new StateService(explicitHphStorage, createReducerRegistry(), createProjectionRegistry());
+    const explicitHphScope = { userId: 'u', chatId: 'hph-explicit-parent' };
+    const explicitHphGenesis = await explicitHphState.createGenesis(explicitHphScope);
+    const explicitHphFrozen = await explicitHphState.getProjectionForNode(explicitHphScope, explicitHphGenesis.nodeId);
+    const explicitHphResult = await explicitHphState.finalizeModelAttempt(explicitHphScope, {
+        expectedParentNodeId: explicitHphGenesis.nodeId,
+        expectedParentStateHash: explicitHphGenesis.stateHash,
+        patch: [{ op: 'add', path: '/Narrative/Scene/HPH', value: { player: hphOwner } }],
+        authorization: buildModelPatchAuthorizationView(explicitHphFrozen.view),
+        projectionVersion: explicitHphFrozen.projectionVersion,
+        promptProtocolVersion: explicitHphFrozen.promptProtocolVersion,
+        anchor: { messageId: 'hph-a2', variantId: 'hph-v2', generationId: 'hph-g2', attemptId: 'hph-attempt-2', messageRole: 'assistant', lineageAnchorId: 'hph-v2' },
+        requestId: 'hph-attempt-2',
+    });
+    const explicitHphCommit = await new EventStore(explicitHphStorage).readCommit(explicitHphScope, explicitHphResult.modelCommitId);
+    assert(explicitHphCommit.patch.length === 1 && explicitHphCommit.patch[0].path === '/Narrative/Scene/HPH', 'backend does not duplicate a parent the model already created correctly');
     let denied = false;
     try {
         assertModelPatchAuthorization(genesis.state, [
