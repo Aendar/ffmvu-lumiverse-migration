@@ -8,6 +8,7 @@ import { createProjectionRegistry } from '../../src/shared/projection-registry.j
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { canonicalStringify, sha256Hex } from '../../src/shared/hashing.js';
 import { applyGameStartPayload, normalizeClock } from '../../src/shared/domain/gamestart.js';
+import { DiagnosticTraceStore } from '../../src/lumi/diagnostic-trace.js';
 
 let passed = 0;
 function assert(condition: unknown, message: string): asserts condition {
@@ -86,6 +87,17 @@ equal(started.Mainchar.Hp_max[0], 71, 'GameStart HP formula parity');
 equal(started.Mainchar.Sta_max[0], 126, 'GameStart stamina formula parity');
 equal(started.Mainchar.Mp_max[0], 38, 'GameStart MP formula parity');
 equal(started.Mainchar.Starting_weapon_status[0], 'pending', 'starting weapon one-shot status parity');
+
+const trace = new DiagnosticTraceStore(2);
+trace.append('u', { at: '1', kind: 'internal', event: 'a' });
+trace.append('u', { at: '2', kind: 'status', phase: 'b' });
+trace.append('u', { at: '3', kind: 'internal', event: 'c' });
+equal(trace.list('u').map(item => item.at), ['2', '3'], 'diagnostic trace is bounded and keeps newest entries');
+const copiedTrace = trace.list('u');
+copiedTrace[0].at = 'mutated';
+equal(trace.list('u').map(item => item.at), ['2', '3'], 'diagnostic trace reads are defensive copies');
+trace.clear('u');
+equal(trace.list('u'), [], 'diagnostic trace clear affects diagnostics only');
 
 const canonical = canonicalStringify({ b: 2, a: 1 });
 equal(canonical, '{"a":1,"b":2}', 'canonical key ordering stable');
