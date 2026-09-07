@@ -2066,6 +2066,26 @@ export function setup(ctx) {
     .ffsm-diag { margin:0 10px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(0,0,0,.12); }
     .ffsm-diag summary { cursor:pointer;padding:7px;color:var(--lumiverse-text-muted);font-size:9px; }
     .ffsm-diag pre { margin:0;padding:8px;max-height:220px;overflow:auto;font-size:8px;white-space:pre-wrap;word-break:break-word; }
+    .ffsm-diagnostic-overlay {
+      position:absolute;inset:10px;z-index:60;display:flex;align-items:stretch;justify-content:center;
+      background:rgba(0,10,20,.78);backdrop-filter:blur(3px);border:1px solid var(--ffsm-border);
+      border-radius:10px;padding:10px;box-sizing:border-box;pointer-events:auto;
+    }
+    .ffsm-diagnostic-panel {
+      width:min(100%,980px);height:100%;min-height:0;display:flex;flex-direction:column;gap:8px;
+      background:#001f36;border:1px solid rgba(0,229,255,.32);border-radius:8px;padding:10px;box-sizing:border-box;
+      box-shadow:0 14px 40px rgba(0,0,0,.45);
+    }
+    .ffsm-diagnostic-head { display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap; }
+    .ffsm-diagnostic-title { color:var(--ffsm-accent);font-weight:800;font-size:13px; }
+    .ffsm-diagnostic-actions { display:flex;gap:6px;flex-wrap:wrap; }
+    .ffsm-diagnostic-text {
+      flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;resize:none;
+      border:1px solid rgba(129,212,250,.25);border-radius:6px;background:rgba(0,0,0,.32);
+      color:var(--lumiverse-text);padding:9px;font:9px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      white-space:pre;overflow:auto;
+    }
+    .ffsm-diagnostic-note { color:var(--lumiverse-text-muted);font-size:9px;line-height:1.35; }
     @media (max-width:560px) {
       .ffsm-app.open { height:46vh;min-height:280px;max-height:520px; }
       .ffsm-grid2,.ffsm-grid3,.ffsm-formgrid { grid-template-columns:1fr; }
@@ -2089,6 +2109,13 @@ export function setup(ctx) {
     toggle.setAttribute('aria-pressed', 'false');
     toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>';
     actionMount.appendChild(toggle);
+    const diagnosticsToggle = make('button', 'ffsm-toolbar-btn');
+    diagnosticsToggle.type = 'button';
+    diagnosticsToggle.title = 'FFMVU Diagnostic Snapshot';
+    diagnosticsToggle.setAttribute('aria-label', 'FFMVU Diagnostic Snapshot');
+    diagnosticsToggle.setAttribute('aria-pressed', 'false');
+    diagnosticsToggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2h8"/><path d="M9 2v3"/><path d="M15 2v3"/><rect x="5" y="5" width="14" height="15" rx="3"/><path d="M9 10h6"/><path d="M9 14h6"/></svg>';
+    actionMount.appendChild(diagnosticsToggle);
     const app = make('div', 'ffsm-app');
     panelMount.appendChild(app);
     let activeChatId = null;
@@ -2105,6 +2132,10 @@ export function setup(ctx) {
     let panelOpen = false;
     let legacyImportOpen = false;
     let legacyImportText = '';
+    let diagnosticsOpen = false;
+    let diagnosticsBusy = false;
+    let diagnosticReport = null;
+    let diagnosticNotice = '';
     const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
     const DEFAULT_PANEL_HEIGHT = 520;
     let panelHeight = (() => {
@@ -2175,6 +2206,8 @@ export function setup(ctx) {
         app.classList.toggle('open', panelOpen);
         toggle.classList.toggle('active', panelOpen);
         toggle.setAttribute('aria-pressed', String(panelOpen));
+        diagnosticsToggle.classList.toggle('active', diagnosticsOpen);
+        diagnosticsToggle.setAttribute('aria-pressed', String(diagnosticsOpen));
         if (panelOpen)
             applyPanelHeight();
     }
@@ -2184,6 +2217,30 @@ export function setup(ctx) {
         if (panelOpen) {
             ctx.sendToBackend({ type: 'ffmvu_get_status' });
             requestState();
+        }
+    });
+    function requestDiagnostics() {
+        diagnosticsBusy = true;
+        diagnosticNotice = 'Collecting read-only runtime snapshot…';
+        render();
+        ctx.sendToBackend({ type: 'ffmvu_diagnostic_snapshot', chatId: activeChatId ?? '' });
+    }
+    function clearDiagnosticTrace() {
+        diagnosticsBusy = true;
+        diagnosticNotice = 'Clearing diagnostic trace…';
+        render();
+        ctx.sendToBackend({ type: 'ffmvu_diagnostic_clear_trace', chatId: activeChatId ?? '' });
+    }
+    diagnosticsToggle.addEventListener('click', () => {
+        diagnosticsOpen = !diagnosticsOpen;
+        if (diagnosticsOpen) {
+            panelOpen = true;
+            syncPanelVisibility();
+            requestDiagnostics();
+        }
+        else {
+            syncPanelVisibility();
+            render();
         }
     });
     function activeState() {
@@ -2888,6 +2945,62 @@ export function setup(ctx) {
         details.appendChild(pre);
         shell.appendChild(details);
     }
+    function renderDiagnosticOverlay() {
+        const overlay = make('div', 'ffsm-diagnostic-overlay');
+        const panel = make('div', 'ffsm-diagnostic-panel');
+        const head = make('div', 'ffsm-diagnostic-head');
+        const title = make('div', 'ffsm-diagnostic-title', 'FFMVU · Diagnostic Snapshot');
+        const actions = make('div', 'ffsm-diagnostic-actions');
+        const refresh = make('button', 'ffsm-btn', diagnosticsBusy ? 'Collecting…' : 'Snapshot');
+        refresh.disabled = diagnosticsBusy;
+        refresh.addEventListener('click', requestDiagnostics);
+        const clear = make('button', 'ffsm-btn', 'Clear Trace');
+        clear.disabled = diagnosticsBusy;
+        clear.title = 'Clears only the in-memory diagnostic event trace. It does not touch FFMVU state.';
+        clear.addEventListener('click', clearDiagnosticTrace);
+        const copy = make('button', 'ffsm-btn', 'Copy');
+        copy.disabled = diagnosticsBusy || !diagnosticReport;
+        const close = make('button', 'ffsm-btn', 'Close');
+        close.addEventListener('click', () => {
+            diagnosticsOpen = false;
+            syncPanelVisibility();
+            render();
+        });
+        const text = make('textarea', 'ffsm-diagnostic-text');
+        text.readOnly = true;
+        text.spellcheck = false;
+        text.value = diagnosticReport
+            ? JSON.stringify(diagnosticReport, null, 2)
+            : diagnosticsBusy ? 'Collecting diagnostic snapshot…' : 'No snapshot collected yet.';
+        copy.addEventListener('click', async () => {
+            if (!diagnosticReport)
+                return;
+            const value = JSON.stringify(diagnosticReport, null, 2);
+            try {
+                await navigator.clipboard.writeText(value);
+                diagnosticNotice = 'Diagnostic report copied to clipboard.';
+            }
+            catch {
+                text.focus();
+                text.select();
+                try {
+                    document.execCommand('copy');
+                    diagnosticNotice = 'Diagnostic report copied to clipboard.';
+                }
+                catch {
+                    diagnosticNotice = 'Clipboard API failed. Select the report manually and copy it.';
+                }
+            }
+            render();
+        });
+        actions.append(refresh, clear, copy, close);
+        head.append(title, actions);
+        panel.appendChild(head);
+        panel.appendChild(make('div', 'ffsm-diagnostic-note', diagnosticNotice || 'Read-only snapshot: lifecycle trace, transcript hashes, semantic/store heads, active variant/attempt lineage, projection binding, and Scene.HPH shape. No state values are edited.'));
+        panel.appendChild(text);
+        overlay.appendChild(panel);
+        return overlay;
+    }
     function render() {
         app.replaceChildren();
         const frame = make('div', 'ffsm-panel-frame');
@@ -2919,7 +3032,10 @@ export function setup(ctx) {
             content.appendChild(shell);
         }
         app.appendChild(frame);
+        if (diagnosticsOpen)
+            app.appendChild(renderDiagnosticOverlay());
         applyPanelHeight();
+        syncPanelVisibility();
     }
     const backendUnsub = ctx.onBackendMessage((payload) => {
         if (payload?.type === 'ffmvu_status') {
@@ -2932,6 +3048,38 @@ export function setup(ctx) {
                 'continue_commit_complete', 'no_patch', 'stopped_durable',
             ].includes(phase))
                 requestState();
+            render();
+            return;
+        }
+        if (payload?.type === 'ffmvu_diagnostic_snapshot_result') {
+            if (payload.chatId && payload.chatId !== activeChatId)
+                return;
+            diagnosticsBusy = false;
+            if (payload.ok) {
+                diagnosticReport = payload.report ?? {};
+                diagnosticNotice = 'Snapshot collected. Reproduce the failure after Clear Trace, then press Snapshot again for the cleanest report.';
+            }
+            else {
+                diagnosticReport = {
+                    format: 'FFMVU-Diagnostic-Snapshot-Error',
+                    reason: String(payload.reason ?? 'Diagnostic snapshot failed'),
+                    detail: payload.detail ?? null,
+                };
+                diagnosticNotice = 'Diagnostic collection itself failed; the error report is shown below.';
+            }
+            diagnosticsOpen = true;
+            panelOpen = true;
+            render();
+            return;
+        }
+        if (payload?.type === 'ffmvu_diagnostic_trace_cleared') {
+            if (payload.chatId && payload.chatId !== activeChatId)
+                return;
+            diagnosticsBusy = false;
+            diagnosticReport = null;
+            diagnosticNotice = 'Trace cleared. Reproduce the problem now, then press Snapshot.';
+            diagnosticsOpen = true;
+            panelOpen = true;
             render();
             return;
         }
@@ -3035,6 +3183,9 @@ export function setup(ctx) {
         equipTargetOwnerId = 'player';
         ffSearch = '';
         variablesSearch = '';
+        diagnosticsBusy = false;
+        diagnosticReport = null;
+        diagnosticNotice = diagnosticsOpen ? 'Chat changed. Collect a new snapshot for this chat.' : '';
         render();
         requestState();
     }
@@ -3053,6 +3204,7 @@ export function setup(ctx) {
         chatSwitchUnsub();
         window.removeEventListener('resize', viewportResize);
         toggle.remove();
+        diagnosticsToggle.remove();
         app.remove();
         if (inputArea) {
             if (previousInputOverflow)
