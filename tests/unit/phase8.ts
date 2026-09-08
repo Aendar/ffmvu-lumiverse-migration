@@ -285,15 +285,71 @@ async function main(): Promise<void> {
   assert(familiarEquipmentRejected, 'Familiar Equipment has the same coupled-domain protection');
 
   const legacyLists = createDefaultState();
+  legacyLists.Mainchar.Skills = {
+    fireball: { Desc: 'Old description', Level: 1, Active: true, Tags: ['fire'], name: 'hidden-name', $meta: { source: 'legacy' } },
+  };
+  legacyLists.Mainchar.Talents = {
+    brave: { Desc: 'Old talent', Rank: 1, Nested: { note: 'keep' }, template: 'hidden-template' },
+  };
   legacyLists.Mainchar.Quests = { quest_1: { Desc: 'Test quest' } };
   legacyLists.Mainchar.Buffs = { Blessing: { Desc: 'Test buff' } };
   legacyLists.Mainchar.Ailments = { Poisoned: { Desc: 'Test ailment' } };
+
+  const editedSkill = applyGuiIntent(legacyLists, {
+    type: 'skill.update',
+    skillKey: 'fireball',
+    fields: { Desc: 'New description', Level: 2, Active: false, Tags: ['fire', 'arcane'] },
+  });
+  assert((editedSkill.Mainchar.Skills.fireball as any).Desc === 'New description'
+    && (editedSkill.Mainchar.Skills.fireball as any).Level === 2
+    && (editedSkill.Mainchar.Skills.fireball as any).Active === false, 'Skill edit merges top-level legacy fields with preserved JSON types');
+  assert((editedSkill.Mainchar.Skills.fireball as any).name === 'hidden-name'
+    && (editedSkill.Mainchar.Skills.fireball as any).$meta.source === 'legacy', 'Skill edit preserves hidden legacy metadata fields');
+
+  const editedTalent = applyGuiIntent(legacyLists, {
+    type: 'talent.update',
+    talentKey: 'brave',
+    fields: { Desc: 'New talent', Rank: 3, Nested: { note: 'changed' } },
+  });
+  assert((editedTalent.Mainchar.Talents.brave as any).Desc === 'New talent'
+    && (editedTalent.Mainchar.Talents.brave as any).Rank === 3
+    && (editedTalent.Mainchar.Talents.brave as any).Nested.note === 'changed'
+    && (editedTalent.Mainchar.Talents.brave as any).template === 'hidden-template', 'Talent edit mirrors legacy top-level field merge while preserving hidden template metadata');
+
+  const deletedSkill = applyGuiIntent(editedSkill, { type: 'skill.delete', skillKey: 'fireball' });
+  assert(!deletedSkill.Mainchar.Skills.fireball, 'typed Skill delete removes only the exact Mainchar.Skills entry');
+  const deletedTalent = applyGuiIntent(editedTalent, { type: 'talent.delete', talentKey: 'brave' });
+  assert(!deletedTalent.Mainchar.Talents.brave, 'typed Talent delete removes only the exact Mainchar.Talents entry');
+
+  let protectedSkillFieldRejected = false;
+  try {
+    applyGuiIntent(legacyLists, { type: 'skill.update', skillKey: 'fireball', fields: { name: 'must-not-change' } });
+  } catch (error) {
+    protectedSkillFieldRejected = String(error).includes('GUI_SKILLS_FIELD_PROTECTED');
+  }
+  assert(protectedSkillFieldRejected, 'typed Skill edit cannot modify legacy-hidden name metadata');
   const withoutQuest = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Quests', 'quest_1'] });
   assert(!withoutQuest.Mainchar.Quests.quest_1, 'legacy Quest delete uses the validated dynamic collection path');
   const withoutBuff = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Buffs', 'Blessing'] });
   assert(!withoutBuff.Mainchar.Buffs.Blessing, 'legacy Buff delete uses the validated dynamic collection path');
   const withoutAilment = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Ailments', 'Poisoned'] });
   assert(!withoutAilment.Mainchar.Ailments.Poisoned, 'legacy Ailment delete uses the validated dynamic collection path');
+
+  const skillStorage = new MemoryJsonStorage();
+  const skillService = new StateService(skillStorage, createReducerRegistry(), createProjectionRegistry());
+  const skillScope = { userId: 'u', chatId: 'skills-talents-gui' };
+  const skillGenesis = await skillService.createGenesis(skillScope, { state: legacyLists });
+  const skillCommit = await skillService.commitGuiIntent(skillScope, {
+    expectedParentNodeId: skillGenesis.nodeId,
+    expectedParentStateHash: skillGenesis.stateHash,
+    intent: { type: 'skill.update', skillKey: 'fireball', fields: { Desc: 'Committed description', Level: 4 } },
+    anchor: { lineageAnchorId: 'root' },
+    requestId: 'gui-skill-update',
+  });
+  const storedSkillCommit = await new EventStore(skillStorage).readCommit(skillScope, skillCommit.nodeId);
+  assert((skillCommit.state.Mainchar.Skills.fireball as any).Desc === 'Committed description'
+    && storedSkillCommit.kind === 'gui'
+    && storedSkillCommit.note === 'gui-intent:skill.update', 'StateService commits typed Skill edit as an ordinary lineage-scoped GUI transaction');
 
   const storage = new MemoryJsonStorage();
   const state = new StateService(storage, createReducerRegistry(), createProjectionRegistry());

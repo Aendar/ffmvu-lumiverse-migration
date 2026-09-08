@@ -16,6 +16,7 @@ export type GuiImageRef =
   | { kind: 'world-map' };
 
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
+export type GuiEditableFields = Record<string, JsonValue>;
 
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
@@ -24,6 +25,10 @@ export type GuiIntent =
   | { type: 'equipment.unequip'; owner: GuiOwnerRef; equipmentKey: string }
   | { type: 'image.set'; target: GuiImageRef; value: string }
   | { type: 'familiar.flag.set'; familiarId: string; field: GuiFamiliarFlag; value: boolean }
+  | { type: 'skill.update'; skillKey: string; fields: GuiEditableFields }
+  | { type: 'skill.delete'; skillKey: string }
+  | { type: 'talent.update'; talentKey: string; fields: GuiEditableFields }
+  | { type: 'talent.delete'; talentKey: string }
   | { type: 'variable.set'; path: GuiPath; value: JsonValue }
   | { type: 'variable.rename'; path: GuiPath; newKey: string }
   | { type: 'variable.delete'; path: GuiPath }
@@ -82,6 +87,17 @@ function assertVariablePayload(value: unknown): asserts value is JsonValue {
   if (!isJsonValue(value)) throw new Error('GUI_VARIABLE_VALUE_NOT_JSON');
 }
 
+const LEGACY_EDIT_HIDDEN_FIELDS = new Set(['$meta', '$key', 'template', 'name']);
+
+function assertEditableFields(value: unknown, label: string): asserts value is GuiEditableFields {
+  if (!isRecord(value)) throw new Error('GUI_INTENT_INVALID_' + label.toUpperCase() + '_FIELDS');
+  for (const [key, child] of Object.entries(value)) {
+    assertSafeKey(key, label + '_field');
+    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_INTENT_PROTECTED_' + label.toUpperCase() + '_FIELD');
+    assertVariablePayload(child);
+  }
+}
+
 export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
   if (!isRecord(value) || typeof value.type !== 'string') throw new Error('GUI_INTENT_INVALID');
   if (value.type === 'outfit.move') {
@@ -116,6 +132,24 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
       || typeof value.value !== 'boolean') {
       throw new Error('GUI_INTENT_INVALID_FAMILIAR_FLAG');
     }
+    return;
+  }
+  if (value.type === 'skill.update') {
+    assertSafeKey(value.skillKey, 'skill_key');
+    assertEditableFields(value.fields, 'skill');
+    return;
+  }
+  if (value.type === 'skill.delete') {
+    assertSafeKey(value.skillKey, 'skill_key');
+    return;
+  }
+  if (value.type === 'talent.update') {
+    assertSafeKey(value.talentKey, 'talent_key');
+    assertEditableFields(value.fields, 'talent');
+    return;
+  }
+  if (value.type === 'talent.delete') {
+    assertSafeKey(value.talentKey, 'talent_key');
     return;
   }
   if (value.type === 'variable.set') {
@@ -417,6 +451,33 @@ function equipmentUnequip(state: FFMVUState, intent: Extract<GuiIntent, { type: 
   reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
 
+function updateMaincharEditableEntry(
+  state: FFMVUState,
+  collectionKey: 'Skills' | 'Talents',
+  itemKey: string,
+  fields: GuiEditableFields,
+): void {
+  const collection = requireCollection(state.Mainchar as unknown as MutableRecord, collectionKey, false);
+  const current = collection[itemKey];
+  if (!isRecord(current)) throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_EDITABLE: ' + itemKey);
+  for (const [key, value] of Object.entries(fields)) {
+    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_' + collectionKey.toUpperCase() + '_FIELD_PROTECTED: ' + key);
+    current[key] = clone(value);
+  }
+}
+
+function deleteMaincharEditableEntry(
+  state: FFMVUState,
+  collectionKey: 'Skills' | 'Talents',
+  itemKey: string,
+): void {
+  const collection = requireCollection(state.Mainchar as unknown as MutableRecord, collectionKey, false);
+  if (!Object.prototype.hasOwnProperty.call(collection, itemKey)) {
+    throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_FOUND: ' + itemKey);
+  }
+  delete collection[itemKey];
+}
+
 function pathParent(root: unknown, path: GuiPath): { parent: MutableRecord | unknown[]; key: string } {
   if (!path.length) throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
   let current: unknown = root;
@@ -519,6 +580,10 @@ export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState
   else if (intent.type === 'equipment.unequip') equipmentUnequip(state, intent);
   else if (intent.type === 'image.set') imageSet(state, intent);
   else if (intent.type === 'familiar.flag.set') familiarFlagSet(state, intent);
+  else if (intent.type === 'skill.update') updateMaincharEditableEntry(state, 'Skills', intent.skillKey, intent.fields);
+  else if (intent.type === 'skill.delete') deleteMaincharEditableEntry(state, 'Skills', intent.skillKey);
+  else if (intent.type === 'talent.update') updateMaincharEditableEntry(state, 'Talents', intent.talentKey, intent.fields);
+  else if (intent.type === 'talent.delete') deleteMaincharEditableEntry(state, 'Talents', intent.talentKey);
   else if (intent.type === 'variable.set') variableSet(state, intent);
   else if (intent.type === 'variable.rename') variableRename(state, intent);
   else if (intent.type === 'variable.delete') variableDelete(state, intent);

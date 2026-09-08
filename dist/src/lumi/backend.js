@@ -18,7 +18,7 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.13';
+const BRIDGE_VERSION = '0.13.14';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();

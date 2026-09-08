@@ -57,6 +57,17 @@ function assertVariablePayload(value) {
     if (!isJsonValue(value))
         throw new Error('GUI_VARIABLE_VALUE_NOT_JSON');
 }
+const LEGACY_EDIT_HIDDEN_FIELDS = new Set(['$meta', '$key', 'template', 'name']);
+function assertEditableFields(value, label) {
+    if (!isRecord(value))
+        throw new Error('GUI_INTENT_INVALID_' + label.toUpperCase() + '_FIELDS');
+    for (const [key, child] of Object.entries(value)) {
+        assertSafeKey(key, label + '_field');
+        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
+            throw new Error('GUI_INTENT_PROTECTED_' + label.toUpperCase() + '_FIELD');
+        assertVariablePayload(child);
+    }
+}
 export function assertGuiIntent(value) {
     if (!isRecord(value) || typeof value.type !== 'string')
         throw new Error('GUI_INTENT_INVALID');
@@ -94,6 +105,24 @@ export function assertGuiIntent(value) {
             || typeof value.value !== 'boolean') {
             throw new Error('GUI_INTENT_INVALID_FAMILIAR_FLAG');
         }
+        return;
+    }
+    if (value.type === 'skill.update') {
+        assertSafeKey(value.skillKey, 'skill_key');
+        assertEditableFields(value.fields, 'skill');
+        return;
+    }
+    if (value.type === 'skill.delete') {
+        assertSafeKey(value.skillKey, 'skill_key');
+        return;
+    }
+    if (value.type === 'talent.update') {
+        assertSafeKey(value.talentKey, 'talent_key');
+        assertEditableFields(value.fields, 'talent');
+        return;
+    }
+    if (value.type === 'talent.delete') {
+        assertSafeKey(value.talentKey, 'talent_key');
         return;
     }
     if (value.type === 'variable.set') {
@@ -394,6 +423,24 @@ function equipmentUnequip(state, intent) {
     const inventory = requireCollection(owner, 'Inventory', true);
     reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
+function updateMaincharEditableEntry(state, collectionKey, itemKey, fields) {
+    const collection = requireCollection(state.Mainchar, collectionKey, false);
+    const current = collection[itemKey];
+    if (!isRecord(current))
+        throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_EDITABLE: ' + itemKey);
+    for (const [key, value] of Object.entries(fields)) {
+        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
+            throw new Error('GUI_' + collectionKey.toUpperCase() + '_FIELD_PROTECTED: ' + key);
+        current[key] = clone(value);
+    }
+}
+function deleteMaincharEditableEntry(state, collectionKey, itemKey) {
+    const collection = requireCollection(state.Mainchar, collectionKey, false);
+    if (!Object.prototype.hasOwnProperty.call(collection, itemKey)) {
+        throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_FOUND: ' + itemKey);
+    }
+    delete collection[itemKey];
+}
 function pathParent(root, path) {
     if (!path.length)
         throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
@@ -519,6 +566,14 @@ export function applyGuiIntent(input, intent) {
         imageSet(state, intent);
     else if (intent.type === 'familiar.flag.set')
         familiarFlagSet(state, intent);
+    else if (intent.type === 'skill.update')
+        updateMaincharEditableEntry(state, 'Skills', intent.skillKey, intent.fields);
+    else if (intent.type === 'skill.delete')
+        deleteMaincharEditableEntry(state, 'Skills', intent.skillKey);
+    else if (intent.type === 'talent.update')
+        updateMaincharEditableEntry(state, 'Talents', intent.talentKey, intent.fields);
+    else if (intent.type === 'talent.delete')
+        deleteMaincharEditableEntry(state, 'Talents', intent.talentKey);
     else if (intent.type === 'variable.set')
         variableSet(state, intent);
     else if (intent.type === 'variable.rename')
