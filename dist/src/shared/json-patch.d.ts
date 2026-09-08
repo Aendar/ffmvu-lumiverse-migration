@@ -21,5 +21,6 @@ export declare const DEFAULT_PATCH_RESOURCE_LIMITS: PatchResourceLimits;
 export declare function assertPatchResourceLimits(operations: readonly JsonPatchOperation[], limits?: PatchResourceLimits): void;
 export declare function assertModelOperationPolicy(operations: readonly JsonPatchOperation[]): void;
 export declare function canonicalizeTupleOperation(state: unknown, operation: JsonPatchOperation): JsonPatchOperation;
+export declare function canonicalizeIncomingModelOperation(state: unknown, operation: JsonPatchOperation): JsonPatchOperation[];
 export declare function repairLabeledTuples(current: unknown, baseline: unknown): unknown;
 export declare function applyJsonPatch<T>(input: T, operations: readonly JsonPatchOperation[]): T;

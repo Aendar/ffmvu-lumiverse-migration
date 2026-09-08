@@ -1,5 +1,6 @@
 import { clone, isLabeledTuple, isRecord, lower } from './domain/value-utils.js';
-import { pointerAdd, pointerGet, pointerRemove, pointerReplace } from './json-pointer.js';
+import { pointerAdd, pointerGet, pointerParts, pointerRemove, pointerReplace } from './json-pointer.js';
+import { isKnownLabeledTuplePath, isKnownOrdinaryArrayPath } from './domain/tuple-paths.js';
 
 export type JsonPatchOperation =
   | { op: 'add' | 'replace' | 'test'; path: string; value: unknown }
@@ -51,6 +52,32 @@ export function canonicalizeTupleOperation(state: unknown, operation: JsonPatchO
   try { current = pointerGet(state, operation.path); } catch { return operation; }
   if (!isLabeledTuple(current) || isLabeledTuple(operation.value)) return operation;
   return { ...operation, path: operation.path.replace(/\/$/, '') + '/0' } as JsonPatchOperation;
+}
+
+export function canonicalizeIncomingModelOperation(state: unknown, operation: JsonPatchOperation): JsonPatchOperation[] {
+  const op = lower(operation.op);
+  if (!['add', 'replace'].includes(op) || !('value' in operation)) return [operation];
+
+  let current: unknown;
+  try { current = pointerGet(state, operation.path); } catch { return [operation]; }
+  if (!isLabeledTuple(current) || isLabeledTuple(operation.value)) return [operation];
+
+  const path = pointerParts(operation.path);
+  if (isKnownLabeledTuplePath(path)) {
+    return [canonicalizeTupleOperation(state, operation)];
+  }
+
+  if (!isKnownOrdinaryArrayPath(path)) {
+    throw new Error('AMBIGUOUS_TUPLE_SHAPE: ' + operation.path);
+  }
+
+  // Legacy replay still uses shape-based tuple repair. Replacing a known ordinary two-string array
+  // directly would therefore be replayed as a /0 mutation. Encode the same whole-value write
+  // as remove+add so historical reducer semantics remain byte-stable while new transactions are correct.
+  return [
+    { op: 'remove', path: operation.path },
+    { op: 'add', path: operation.path, value: operation.value },
+  ];
 }
 
 export function repairLabeledTuples(current: unknown, baseline: unknown): unknown {

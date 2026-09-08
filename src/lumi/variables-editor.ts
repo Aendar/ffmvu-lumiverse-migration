@@ -2,6 +2,7 @@ import type { GuiIntent, GuiPath } from '../shared/domain/gui-intents.js';
 import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../shared/state-schema.js';
 import { isRecord } from '../shared/domain/value-utils.js';
+import { isLabeledTupleAtPath } from '../shared/domain/tuple-paths.js';
 
 export interface VariablesEditorOptions {
   state: FFMVUState;
@@ -55,8 +56,8 @@ const VE_PROTECTED_ROOT = new Set([
   'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
 
-function veIsTuple(value: unknown): value is [unknown, string] {
-  return Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string';
+function veIsTuple(path: GuiPath, value: unknown): value is [unknown, string] {
+  return isLabeledTupleAtPath(path, value);
 }
 
 function veType(value: unknown): string {
@@ -89,14 +90,14 @@ function veCanManageEntry(path: GuiPath): boolean {
   return isGuiVariableDynamicCollectionPath(path.slice(0, -1));
 }
 
-function veMatches(key: string, value: unknown, query: string, depth = 0): boolean {
+function veMatches(key: string, value: unknown, query: string, path: GuiPath, depth = 0): boolean {
   if (!query) return true;
   if (depth > 20) return false;
   if (key.toLocaleLowerCase('ru').includes(query)) return true;
-  if (veIsTuple(value)) return veMatches(key, value[0], query, depth + 1) || value[1].toLocaleLowerCase('ru').includes(query);
+  if (veIsTuple(path, value)) return veMatches(key, value[0], query, [...path, '0'], depth + 1) || value[1].toLocaleLowerCase('ru').includes(query);
   if (value === null || typeof value !== 'object') return vePrimitiveText(value).toLocaleLowerCase('ru').includes(query);
-  if (Array.isArray(value)) return value.some((child, index) => veMatches(String(index), child, query, depth + 1));
-  if (isRecord(value)) return Object.entries(value).some(([childKey, child]) => veMatches(childKey, child, query, depth + 1));
+  if (Array.isArray(value)) return value.some((child, index) => veMatches(String(index), child, query, [...path, String(index)], depth + 1));
+  if (isRecord(value)) return Object.entries(value).some(([childKey, child]) => veMatches(childKey, child, query, [...path, childKey], depth + 1));
   return false;
 }
 
@@ -310,13 +311,13 @@ function veActionButtons(
   const editable = veCanEditValue(path);
   const manageable = !parentIsArray && veCanManageEntry(path);
 
-  if (editable && (value === null || typeof value !== 'object' || veIsTuple(value))) {
+  if (editable && (value === null || typeof value !== 'object' || veIsTuple(path, value))) {
     const edit = veButton('Edit');
     edit.disabled = options.mutationDisabled;
     edit.addEventListener('click', event => {
       event.stopPropagation();
-      const editPath = veIsTuple(value) ? [...path, '0'] : path;
-      const editValue = veIsTuple(value) ? value[0] : value;
+      const editPath = veIsTuple(path, value) ? [...path, '0'] : path;
+      const editValue = veIsTuple(path, value) ? value[0] : value;
       veShowEdit(root, editPath, editValue, options);
     });
     actions.appendChild(edit);
@@ -355,9 +356,9 @@ function veRenderEntry(
   query: string,
   options: VariablesEditorOptions,
 ): HTMLElement | null {
-  if (!veMatches(key, value, query)) return null;
+  if (!veMatches(key, value, query, path)) return null;
 
-  const tuple = veIsTuple(value);
+  const tuple = veIsTuple(path, value);
   const effectiveValue = tuple ? value[0] : value;
   const isContainer = !tuple && effectiveValue !== null && typeof effectiveValue === 'object';
 
