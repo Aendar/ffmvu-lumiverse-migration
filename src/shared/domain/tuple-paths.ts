@@ -1,5 +1,3 @@
-import type { GuiPath } from './gui-intents.js';
-
 const WORLD_LABELED_FIELDS = new Set([
   'Date', 'Time', 'Location', 'Weather',
 ]);
@@ -26,6 +24,6 @@ export function isKnownLabeledTuplePath(path: readonly string[]): boolean {
   return false;
 }
 
-export function isLabeledTupleAtPath(path: readonly string[] | GuiPath, value: unknown): value is [unknown, string] {
+export function isLabeledTupleAtPath(path: readonly string[], value: unknown): value is [unknown, string] {
   return isKnownLabeledTuplePath(path) && Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string';
 }
