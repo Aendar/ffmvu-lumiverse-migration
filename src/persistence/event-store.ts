@@ -12,6 +12,15 @@ export interface StoreHeadResolution {
   reason?: string;
 }
 
+export interface CommittedAttemptTip {
+  revisionId: string;
+  transactionId: string;
+  nodeId: string;
+  stateHash: string;
+  variantId: string;
+  attemptId: string;
+}
+
 export class EventStore {
   private readonly immutable: ImmutableStore;
 
@@ -62,6 +71,43 @@ export class EventStore {
       cursor = node.value.parentNodeId;
     }
     return reverse.reverse();
+  }
+
+  async listCommittedAttemptTips(scope: StateScope): Promise<CommittedAttemptTip[]> {
+    const physical = await this.resolveStoreHead(scope);
+    if (physical.status === 'empty') return [];
+    if (physical.status !== 'ok') {
+      throw new Error('STORE_HEAD_' + physical.status.toUpperCase() + (physical.reason ? ': ' + physical.reason : ''));
+    }
+
+    const prefix = `${scopeRoot(scope)}/store-revisions/`;
+    const paths = (await this.storage.list(prefix)).filter(path => path.endsWith('.json'));
+    const result: CommittedAttemptTip[] = [];
+    for (const path of paths) {
+      const revision = await this.storage.getJson<ChatStoreRevision>(path);
+      if (!revision || revision.scope.chatId !== scope.chatId || revision.scope.userId !== scope.userId) {
+        throw new Error('Revision scope mismatch or unreadable: ' + path);
+      }
+      const tip = await this.readNode(scope, revision.semanticTipNodeId);
+      if (tip.type !== 'commit') continue;
+      const attemptId = tip.value.anchor.attemptId;
+      const variantId = tip.value.anchor.variantId;
+      if (!attemptId || !variantId) continue;
+      if (tip.value.transactionId !== revision.transactionId) throw new Error('REVISION_TIP_TRANSACTION_MISMATCH: ' + revision.revisionId);
+      if (tip.value.resultStateHash !== revision.semanticTipStateHash) throw new Error('REVISION_TIP_STATE_HASH_MISMATCH: ' + revision.revisionId);
+      const ref = revision.committedArtifacts.find(item => item.type === 'commit' && item.id === tip.value.id);
+      if (!ref) throw new Error('REVISION_TIP_NOT_COMMITTED: ' + revision.revisionId);
+      if (ref.hash !== await canonicalHash(tip.value)) throw new Error('REVISION_TIP_ARTIFACT_HASH_MISMATCH: ' + revision.revisionId);
+      result.push({
+        revisionId: revision.revisionId,
+        transactionId: revision.transactionId,
+        nodeId: tip.value.id,
+        stateHash: revision.semanticTipStateHash,
+        variantId,
+        attemptId,
+      });
+    }
+    return result;
   }
 
   async isNodeCommitted(scope: StateScope, nodeId: string): Promise<boolean> {
