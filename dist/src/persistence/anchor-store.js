@@ -63,10 +63,17 @@ export class VariantIndexStore {
     }
     async applyAdded(scope, messageId, swipeIndex, observation) {
         const index = await this.require(scope, messageId);
-        if (index.bySwipeIndex[swipeIndex])
-            throw new Error('SWIPE_INDEX_ALREADY_BOUND');
+        const ids = this.orderedVariantIds(index);
+        if (!ids)
+            throw new Error('SWIPE_INDEX_NONCONTIGUOUS');
+        if (!Number.isInteger(swipeIndex) || swipeIndex < 0 || swipeIndex > ids.length)
+            throw new Error('SWIPE_INDEX_INVALID');
         const variantId = createId('variant');
-        index.bySwipeIndex[swipeIndex] = variantId;
+        const next = {};
+        for (let i = 0; i < ids.length; i++)
+            next[i < swipeIndex ? i : i + 1] = ids[i];
+        next[swipeIndex] = variantId;
+        index.bySwipeIndex = next;
         index.swipeFingerprints[variantId] = { storedMessageTextHash: await canonicalHash(observation.text), ...(observation.swipeDate ? { swipeDate: observation.swipeDate } : {}) };
         index.updatedAt = isoNow();
         await this.write(scope, index);
@@ -101,6 +108,57 @@ export class VariantIndexStore {
         await this.write(scope, index);
         return deleted;
     }
+    async reconcileTyped(scope, messageId, action, swipeIndex, swipes) {
+        const previous = await this.read(scope, messageId);
+        if (!previous)
+            return { status: 'ok', index: await this.create(scope, messageId, swipes) };
+        const ids = this.orderedVariantIds(previous);
+        if (!ids)
+            return this.reconcileWholesale(scope, messageId, swipes);
+        const hashes = await Promise.all(swipes.map(item => canonicalHash(item.text)));
+        const fingerprintMatches = (variantId, hash) => previous.swipeFingerprints[variantId]?.storedMessageTextHash === hash;
+        const currentMatchesPost = ids.length === hashes.length && ids.every((id, index) => fingerprintMatches(id, hashes[index]));
+        if (action === 'navigated') {
+            return currentMatchesPost
+                ? { status: 'ok', index: previous }
+                : this.reconcileWholesale(scope, messageId, swipes);
+        }
+        if (action === 'updated') {
+            if (ids.length === hashes.length &&
+                swipeIndex >= 0 &&
+                swipeIndex < hashes.length &&
+                ids.every((id, index) => index === swipeIndex || fingerprintMatches(id, hashes[index]))) {
+                await this.applyUpdated(scope, messageId, swipeIndex, swipes[swipeIndex]);
+                return { status: 'ok', index: await this.require(scope, messageId) };
+            }
+            return this.reconcileWholesale(scope, messageId, swipes);
+        }
+        if (action === 'deleted') {
+            if (currentMatchesPost)
+                return { status: 'ok', index: previous };
+            if (ids.length === hashes.length + 1 && swipeIndex >= 0 && swipeIndex < ids.length) {
+                const survivors = ids.filter((_, index) => index !== swipeIndex);
+                if (survivors.every((id, index) => fingerprintMatches(id, hashes[index]))) {
+                    await this.applyDeleted(scope, messageId, swipeIndex);
+                    return { status: 'ok', index: await this.require(scope, messageId) };
+                }
+            }
+            return this.reconcileWholesale(scope, messageId, swipes);
+        }
+        if (action === 'added') {
+            if (currentMatchesPost)
+                return { status: 'ok', index: previous };
+            if (ids.length + 1 === hashes.length && swipeIndex >= 0 && swipeIndex < hashes.length) {
+                const oldHashesInPost = hashes.filter((_, index) => index !== swipeIndex);
+                if (ids.every((id, index) => fingerprintMatches(id, oldHashesInPost[index]))) {
+                    await this.applyAdded(scope, messageId, swipeIndex, swipes[swipeIndex]);
+                    return { status: 'ok', index: await this.require(scope, messageId) };
+                }
+            }
+            return this.reconcileWholesale(scope, messageId, swipes);
+        }
+        return this.reconcileWholesale(scope, messageId, swipes);
+    }
     async reconcileWholesale(scope, messageId, swipes) {
         const previous = await this.read(scope, messageId);
         if (!previous)
@@ -111,21 +169,15 @@ export class VariantIndexStore {
         const nextFingerprints = {};
         for (let i = 0; i < swipes.length; i++) {
             const hash = hashes[i];
-            const sameIndex = previous.bySwipeIndex[i];
-            if (sameIndex && unused.has(sameIndex) && previous.swipeFingerprints[sameIndex]?.storedMessageTextHash === hash) {
-                bySwipeIndex[i] = sameIndex;
-                unused.delete(sameIndex);
+            const candidates = [...unused].filter(id => previous.swipeFingerprints[id]?.storedMessageTextHash === hash);
+            if (candidates.length > 1)
+                return { status: 'ambiguous', reason: `multiple old variants match swipe ${i}` };
+            if (candidates.length === 1) {
+                bySwipeIndex[i] = candidates[0];
+                unused.delete(candidates[0]);
             }
             else {
-                const candidates = [...unused].filter(id => previous.swipeFingerprints[id]?.storedMessageTextHash === hash);
-                if (candidates.length > 1)
-                    return { status: 'ambiguous', reason: `multiple old variants match swipe ${i}` };
-                if (candidates.length === 1) {
-                    bySwipeIndex[i] = candidates[0];
-                    unused.delete(candidates[0]);
-                }
-                else
-                    bySwipeIndex[i] = createId('variant');
+                bySwipeIndex[i] = createId('variant');
             }
             const id = bySwipeIndex[i];
             nextFingerprints[id] = { storedMessageTextHash: hash, ...(swipes[i].swipeDate ? { swipeDate: swipes[i].swipeDate } : {}) };
@@ -133,6 +185,12 @@ export class VariantIndexStore {
         const index = { messageId, bySwipeIndex, swipeFingerprints: nextFingerprints, updatedAt: isoNow() };
         await this.write(scope, index);
         return { status: 'ok', index };
+    }
+    orderedVariantIds(index) {
+        const keys = Object.keys(index.bySwipeIndex).map(Number).sort((a, b) => a - b);
+        if (keys.some((key, position) => !Number.isInteger(key) || key !== position))
+            return null;
+        return keys.map(key => index.bySwipeIndex[key]).filter(Boolean);
     }
     async require(scope, messageId) {
         const value = await this.read(scope, messageId);

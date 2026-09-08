@@ -18,7 +18,7 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.11';
+const BRIDGE_VERSION = '0.13.12';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -1463,16 +1463,29 @@ async function reconcileSwipePayload(payload, callbackUserId) {
     });
     try {
         const rt = runtime(scope.userId);
-        let result;
-        if (payload.action === 'updated' && Number.isInteger(payload.swipeId)) {
-            const refreshed = await refreshKnownVariantContent(rt, scope, payload.message, Number(payload.swipeId));
-            const refreshedIndex = refreshed ? await rt.variants.read(scope, String(payload.message.id)) : null;
-            result = refreshed && refreshedIndex
-                ? { status: 'ok', index: refreshedIndex }
-                : await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
-        }
-        else {
-            result = await rt.variants.reconcileWholesale(scope, String(payload.message.id), swipeObservations(payload.message));
+        const messageId = String(payload.message.id);
+        const observations = swipeObservations(payload.message);
+        const typedAction = ['added', 'updated', 'deleted', 'navigated'].includes(String(payload.action))
+            ? payload.action
+            : null;
+        const result = typedAction && Number.isInteger(payload.swipeId)
+            ? await rt.variants.reconcileTyped(scope, messageId, typedAction, Number(payload.swipeId), observations)
+            : await rt.variants.reconcileWholesale(scope, messageId, observations);
+        if (result.status === 'ok' && result.index && typedAction === 'updated' && Number.isInteger(payload.swipeId)) {
+            const swipeId = Number(payload.swipeId);
+            const variantId = result.index.bySwipeIndex[swipeId];
+            const storedMessageTextHash = variantId ? result.index.swipeFingerprints[variantId]?.storedMessageTextHash : null;
+            if (variantId && storedMessageTextHash) {
+                const anchor = await rt.anchors.read(scope, variantId);
+                if (anchor) {
+                    if (anchor.messageId !== messageId)
+                        throw new Error('EDITED_VARIANT_ANCHOR_MESSAGE_MISMATCH');
+                    anchor.observedSwipeIndex = swipeId;
+                    anchor.storedMessageTextHash = storedMessageTextHash;
+                    anchor.updatedAt = isoNow();
+                    await rt.anchors.put(anchor);
+                }
+            }
         }
         if (result.status === 'ambiguous') {
             publish(scope.userId, { phase: 'variant_ambiguous', chatId: scope.chatId, messageId: payload.message.id, reason: result.reason });
