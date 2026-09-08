@@ -27,3 +27,16 @@ export function isKnownLabeledTuplePath(path: readonly string[]): boolean {
 export function isLabeledTupleAtPath(path: readonly string[], value: unknown): value is [unknown, string] {
   return isKnownLabeledTuplePath(path) && Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string';
 }
+
+export function isKnownOrdinaryArrayPath(path: readonly string[]): boolean {
+  if (path.length === 3 && path[0] === 'Narrative' && path[1] === 'Scene') {
+    return ['OpenLoops', 'PresentNPCs', 'RelevantWorldKeys'].includes(path[2]);
+  }
+  if (path.length === 4 && path[0] === 'Narrative' && path[1] === 'NPCs') {
+    return ['Aliases', 'Knowledge'].includes(path[3]);
+  }
+  if (path.length === 3 && path[0] === 'Familiar') {
+    return ['Aliases', 'Knowledge'].includes(path[2]);
+  }
+  return false;
+}
