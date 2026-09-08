@@ -2,6 +2,7 @@ import type { GuiIntent, GuiPath } from '../shared/domain/gui-intents.js';
 import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../shared/state-schema.js';
 import { isRecord } from '../shared/domain/value-utils.js';
+import { isLabeledTupleAtPath } from '../shared/domain/tuple-paths.js';
 
 export interface VariablesEditorOptions {
   state: FFMVUState;
@@ -55,27 +56,8 @@ const VE_PROTECTED_ROOT = new Set([
   'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
 
-const VE_WORLD_LABELED_FIELDS = new Set(['Date', 'Time', 'Location', 'Weather']);
-const VE_CHARACTER_LABELED_FIELDS = new Set([
-  'Name', 'Image', 'Race', 'Age', 'Gender', 'Occupation', 'Level', 'Exp', 'Core-points', 'Mental_state',
-  'Strength', 'Agility', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
-  'Hp_curr', 'Hp_max', 'Mp_curr', 'Mp_max', 'Sta_curr', 'Sta_max',
-  'Physical_attack', 'Physical_defense', 'Magic_attack', 'Magic_defense', 'Magic_assist',
-  'Starting_weapon_request', 'Starting_weapon_status',
-]);
-const VE_FAMILIAR_LABELED_FIELDS = new Set([
-  ...VE_CHARACTER_LABELED_FIELDS,
-  'Is_present', 'Is_in_battle_team', 'Familiar_Status', 'Identity', 'Location',
-  'Affection', 'Height', 'Cup_Size', 'Body_Measurements',
-  'M_level', 'Lewdness', 'Control_desire', 'Sex_count',
-]);
-
 function veIsTuple(path: GuiPath, value: unknown): value is [unknown, string] {
-  const knownPath =
-    (path.length === 2 && path[0] === 'World' && VE_WORLD_LABELED_FIELDS.has(path[1])) ||
-    (path.length === 2 && path[0] === 'Mainchar' && VE_CHARACTER_LABELED_FIELDS.has(path[1])) ||
-    (path.length === 3 && path[0] === 'Familiar' && VE_FAMILIAR_LABELED_FIELDS.has(path[2]));
-  return knownPath && Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string';
+  return isLabeledTupleAtPath(path, value);
 }
 
 function veType(value: unknown): string {
