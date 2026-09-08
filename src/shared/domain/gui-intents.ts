@@ -16,6 +16,7 @@ export type GuiImageRef =
   | { kind: 'world-map' };
 
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
+export type GuiCharacterRecordCollection = 'Skills' | 'Talents';
 
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
@@ -24,6 +25,8 @@ export type GuiIntent =
   | { type: 'equipment.unequip'; owner: GuiOwnerRef; equipmentKey: string }
   | { type: 'image.set'; target: GuiImageRef; value: string }
   | { type: 'familiar.flag.set'; familiarId: string; field: GuiFamiliarFlag; value: boolean }
+  | { type: 'character.record.update'; owner: GuiOwnerRef; collection: GuiCharacterRecordCollection; itemKey: string; updates: Record<string, JsonValue> }
+  | { type: 'character.record.delete'; owner: GuiOwnerRef; collection: GuiCharacterRecordCollection; itemKey: string }
   | { type: 'variable.set'; path: GuiPath; value: JsonValue }
   | { type: 'variable.rename'; path: GuiPath; newKey: string }
   | { type: 'variable.delete'; path: GuiPath }
@@ -116,6 +119,21 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
       || typeof value.value !== 'boolean') {
       throw new Error('GUI_INTENT_INVALID_FAMILIAR_FLAG');
     }
+    return;
+  }
+  if (value.type === 'character.record.update') {
+    if (!isOwnerRef(value.owner) || !['Skills', 'Talents'].includes(String(value.collection))) throw new Error('GUI_INTENT_INVALID_CHARACTER_RECORD_UPDATE');
+    assertSafeKey(value.itemKey, 'item_key');
+    if (!isRecord(value.updates)) throw new Error('GUI_INTENT_INVALID_CHARACTER_RECORD_UPDATE');
+    for (const [key, child] of Object.entries(value.updates)) {
+      assertSafeKey(key, 'field');
+      if (['$meta', '$key', 'template', 'name'].includes(key) || !isJsonValue(child)) throw new Error('GUI_INTENT_INVALID_CHARACTER_RECORD_UPDATE');
+    }
+    return;
+  }
+  if (value.type === 'character.record.delete') {
+    if (!isOwnerRef(value.owner) || !['Skills', 'Talents'].includes(String(value.collection))) throw new Error('GUI_INTENT_INVALID_CHARACTER_RECORD_DELETE');
+    assertSafeKey(value.itemKey, 'item_key');
     return;
   }
   if (value.type === 'variable.set') {
@@ -417,6 +435,19 @@ function equipmentUnequip(state: FFMVUState, intent: Extract<GuiIntent, { type: 
   reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
 
+function characterRecordUpdate(state: FFMVUState, intent: Extract<GuiIntent, { type: 'character.record.update' }>): void {
+  const collection = requireCollection(ownerRecord(state, intent.owner), intent.collection, false);
+  const current = collection[intent.itemKey];
+  if (!isRecord(current)) throw new Error('GUI_CHARACTER_RECORD_NOT_FOUND: ' + intent.itemKey);
+  for (const [key, value] of Object.entries(intent.updates)) current[key] = clone(value);
+}
+
+function characterRecordDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'character.record.delete' }>): void {
+  const collection = requireCollection(ownerRecord(state, intent.owner), intent.collection, false);
+  if (!Object.prototype.hasOwnProperty.call(collection, intent.itemKey)) throw new Error('GUI_CHARACTER_RECORD_NOT_FOUND: ' + intent.itemKey);
+  delete collection[intent.itemKey];
+}
+
 function pathParent(root: unknown, path: GuiPath): { parent: MutableRecord | unknown[]; key: string } {
   if (!path.length) throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
   let current: unknown = root;
@@ -519,6 +550,8 @@ export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState
   else if (intent.type === 'equipment.unequip') equipmentUnequip(state, intent);
   else if (intent.type === 'image.set') imageSet(state, intent);
   else if (intent.type === 'familiar.flag.set') familiarFlagSet(state, intent);
+  else if (intent.type === 'character.record.update') characterRecordUpdate(state, intent);
+  else if (intent.type === 'character.record.delete') characterRecordDelete(state, intent);
   else if (intent.type === 'variable.set') variableSet(state, intent);
   else if (intent.type === 'variable.rename') variableRename(state, intent);
   else if (intent.type === 'variable.delete') variableDelete(state, intent);
