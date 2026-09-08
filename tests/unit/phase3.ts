@@ -58,6 +58,69 @@ async function main(): Promise<void> {
   // Duplicate old fingerprints with displaced indices are ambiguous.
   const dupStorage = new MemoryJsonStorage(); const dup = new VariantIndexStore(dupStorage); await dup.create(scope, 'd', [{ text: 'same' }, { text: 'same' }, { text: 'z' }]); const ambiguity = await dup.reconcileWholesale(scope, 'd', [{ text: 'x' }, { text: 'y' }, { text: 'same' }]); assert(ambiguity.status === 'ambiguous', 'duplicate fingerprint reconciliation fails closed');
 
+  // R4 regression: deleting the first of two identical swipes must preserve the surviving VariantId,
+  // never prefer the deleted branch just because its old index now matches the survivor's new index.
+  const identicalStorage = new MemoryJsonStorage();
+  const identical = new VariantIndexStore(identicalStorage);
+  const identicalIndex = await identical.create(scope, 'identical', [
+    { text: 'same prose', swipeDate: '100' },
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  const deletedVariantId = identicalIndex.bySwipeIndex[0];
+  const survivingVariantId = identicalIndex.bySwipeIndex[1];
+  const ambiguousDeleteRecovery = await identical.reconcileWholesale(scope, 'identical', [
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  assert(ambiguousDeleteRecovery.status === 'ambiguous', 'wholesale recovery rejects same-index duplicate collision instead of selecting the deleted identity');
+
+  const typedDelete = await identical.reconcileTyped(scope, 'identical', 'deleted', 0, [
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  assert(typedDelete.status === 'ok'
+    && typedDelete.index?.bySwipeIndex[0] === survivingVariantId
+    && typedDelete.index?.bySwipeIndex[0] !== deletedVariantId, 'typed delete shifts the exact surviving VariantId even when prose hashes collide');
+
+  const duplicateTypedDelete = await identical.reconcileTyped(scope, 'identical', 'deleted', 0, [
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  assert(duplicateTypedDelete.status === 'ok' && duplicateTypedDelete.index?.bySwipeIndex[0] === survivingVariantId, 'duplicate deleted event is idempotent and cannot delete the survivor');
+
+  const addStorage = new MemoryJsonStorage();
+  const addVariants = new VariantIndexStore(addStorage);
+  const beforeAdd = await addVariants.create(scope, 'add-identical', [{ text: 'same prose', swipeDate: '100' }]);
+  const originalVariantId = beforeAdd.bySwipeIndex[0];
+  const typedAdd = await addVariants.reconcileTyped(scope, 'add-identical', 'added', 1, [
+    { text: 'same prose', swipeDate: '100' },
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  const addedVariantId = typedAdd.index?.bySwipeIndex[1];
+  assert(typedAdd.status === 'ok'
+    && typedAdd.index?.bySwipeIndex[0] === originalVariantId
+    && Boolean(addedVariantId)
+    && addedVariantId !== originalVariantId, 'typed add creates one new identity without remapping an identical existing swipe');
+
+  const duplicateTypedAdd = await addVariants.reconcileTyped(scope, 'add-identical', 'added', 1, [
+    { text: 'same prose', swipeDate: '100' },
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  assert(duplicateTypedAdd.status === 'ok'
+    && duplicateTypedAdd.index?.bySwipeIndex[0] === originalVariantId
+    && duplicateTypedAdd.index?.bySwipeIndex[1] === addedVariantId, 'duplicate added event is idempotent and does not allocate a second VariantId');
+
+  const navigationStorage = new MemoryJsonStorage();
+  const navigationVariants = new VariantIndexStore(navigationStorage);
+  const navigationIndex = await navigationVariants.create(scope, 'navigate-identical', [
+    { text: 'same prose', swipeDate: '100' },
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  const typedNavigation = await navigationVariants.reconcileTyped(scope, 'navigate-identical', 'navigated', 1, [
+    { text: 'same prose', swipeDate: '100' },
+    { text: 'same prose', swipeDate: '200' },
+  ]);
+  assert(typedNavigation.status === 'ok'
+    && typedNavigation.index?.bySwipeIndex[0] === navigationIndex.bySwipeIndex[0]
+    && typedNavigation.index?.bySwipeIndex[1] === navigationIndex.bySwipeIndex[1], 'navigation over identical prose preserves both existing identities without wholesale remapping');
+
   // Once the assistant variant has committed state provenance, later prose edits are transcript-only.
   // They may even remove the old machine envelope; state reachability stays bound to VariantId/attempt/commit evidence.
   const edited = await resolver.resolve(scope, genesis.nodeId, [{ id: 'm1', role: 'assistant', content: 'edited prose only', swipes: ['edited prose only', 'B'], swipeId: 0 }]);
