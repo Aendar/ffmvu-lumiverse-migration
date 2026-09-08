@@ -114,6 +114,46 @@ async function main() {
   assert(rejectedError instanceof ModelPatchRejectedError && String(rejectedError).includes('Missing replace path: /Narrative/Turn/0'), 'invalid model JSONPatch is classified as a model rejection');
   assert(rejectedHead.status === 'ok' && rejectedHead.head?.semanticTipNodeId === rejectedGenesis.nodeId, 'rejected model JSONPatch writes no partial state or StoreRevision');
 
+  const tupleCollisionStorage = new MemoryJsonStorage();
+  const tupleCollisionState = new StateService(tupleCollisionStorage, createReducerRegistry(), createProjectionRegistry());
+  const tupleCollisionScope = { userId: 'u', chatId: 'tuple-collision' };
+  const tupleCollisionSeed = structuredClone(genesis.state);
+  tupleCollisionSeed.Narrative.Scene.PresentNPCs = ['npc_0001', 'npc_0002'];
+  tupleCollisionSeed.Narrative.Scene.Changed = false;
+  const tupleCollisionGenesis = await tupleCollisionState.createGenesis(tupleCollisionScope, { state: tupleCollisionSeed });
+  const tupleCollisionFrozen = await tupleCollisionState.getProjectionForNode(tupleCollisionScope, tupleCollisionGenesis.nodeId);
+  const tupleCollisionResult = await tupleCollisionState.finalizeModelAttempt(tupleCollisionScope, {
+    expectedParentNodeId: tupleCollisionGenesis.nodeId,
+    expectedParentStateHash: tupleCollisionGenesis.stateHash,
+    patch: [
+      { op: 'replace', path: '/Narrative/Scene/PresentNPCs', value: ['npc_0002'] },
+      { op: 'replace', path: '/World/Weather', value: 'Rain' },
+    ],
+    authorization: buildModelPatchAuthorizationView(tupleCollisionFrozen.view),
+    projectionVersion: tupleCollisionFrozen.projectionVersion,
+    promptProtocolVersion: tupleCollisionFrozen.promptProtocolVersion,
+    anchor: { messageId: 'tuple-a1', variantId: 'tuple-v1', generationId: 'tuple-g1', attemptId: 'tuple-attempt-1', messageRole: 'assistant', lineageAnchorId: 'tuple-v1' },
+    requestId: 'tuple-attempt-1',
+  });
+  assert(tupleCollisionResult.status === 'committed' && tupleCollisionResult.modelCommitId !== null, 'path-aware tuple collision model transaction commits');
+  assert(JSON.stringify(tupleCollisionResult.state.Narrative.Scene.PresentNPCs) === JSON.stringify(['npc_0002']), 'ordinary string array is replaced as a whole value');
+  assert(tupleCollisionResult.state.World.Weather[0] === 'Rain' && tupleCollisionResult.state.World.Weather[1] === 'Weather', 'real labeled tuple preserves its label');
+
+  const tupleCollisionCommit = await new EventStore(tupleCollisionStorage).readCommit(tupleCollisionScope, tupleCollisionResult.modelCommitId!);
+  assert(tupleCollisionCommit.patch.length === 3
+    && tupleCollisionCommit.patch[0].op === 'remove'
+    && tupleCollisionCommit.patch[0].path === '/Narrative/Scene/PresentNPCs'
+    && tupleCollisionCommit.patch[1].op === 'add'
+    && tupleCollisionCommit.patch[1].path === '/Narrative/Scene/PresentNPCs'
+    && tupleCollisionCommit.patch[2].op === 'replace'
+    && tupleCollisionCommit.patch[2].path === '/World/Weather/0', 'stored canonical patch distinguishes ordinary arrays from known labeled tuples');
+
+  const restartedTupleCollisionState = new StateService(tupleCollisionStorage, createReducerRegistry(), createProjectionRegistry());
+  const replayedTupleCollision = await restartedTupleCollisionState.materializer.materialize(tupleCollisionScope, tupleCollisionResult.nodeId);
+  assert(replayedTupleCollision.stateHash === tupleCollisionResult.stateHash
+    && JSON.stringify(replayedTupleCollision.state.Narrative.Scene.PresentNPCs) === JSON.stringify(['npc_0002'])
+    && replayedTupleCollision.state.World.Weather[0] === 'Rain', 'stored R3 canonical patch replays identically after restart under legacy reducer semantics');
+
   const hphStorage = new MemoryJsonStorage();
   const hphState = new StateService(hphStorage, createReducerRegistry(), createProjectionRegistry());
   const hphScope = { userId: 'u', chatId: 'hph-structural-parent' };
