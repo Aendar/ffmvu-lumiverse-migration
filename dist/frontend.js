@@ -998,15 +998,93 @@ function formatDetail(container, value, depth = 0) {
         container.appendChild(row);
     }
 }
-function showDetail(root, title, value) {
+const LEGACY_DETAIL_HIDDEN_FIELDS = new Set(['$meta', '$key', 'template', 'name']);
+function legacyEditValue(raw) {
+    if (raw === 'true')
+        return true;
+    if (raw === 'false')
+        return false;
+    if (raw !== '' && raw.trim() !== '' && !Number.isNaN(Number(raw)))
+        return Number(raw);
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed !== null && typeof parsed === 'object')
+            return parsed;
+        if (parsed === null)
+            return null;
+    }
+    catch { }
+    return raw;
+}
+function showDetail(root, title, value, edit) {
     const modal = root.getElementById('detail-modal');
     const titleElement = root.getElementById('detail-title');
     const body = root.getElementById('detail-body');
     if (!modal || !titleElement || !body)
         return;
     titleElement.textContent = title;
-    body.replaceChildren();
-    formatDetail(body, value);
+    const editableRecord = isRecord(legacyTupleValue(value)) ? legacyTupleValue(value) : null;
+    const renderReadOnly = () => {
+        body.replaceChildren();
+        formatDetail(body, value);
+        if (!edit || !editableRecord)
+            return;
+        const actions = document.createElement('div');
+        actions.style.cssText = 'margin-top:15px;display:flex;justify-content:flex-end;gap:8px;';
+        const button = document.createElement('button');
+        button.textContent = '✏ Edit';
+        button.disabled = edit.mutationDisabled;
+        button.style.cssText = 'background:rgba(0,229,255,.15);border:1px solid rgba(0,229,255,.4);color:#00e5ff;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:.9em;';
+        button.addEventListener('click', () => {
+            body.replaceChildren();
+            const form = document.createElement('div');
+            form.style.cssText = 'padding-left:10px;border-left:2px solid var(--accent-primary);';
+            for (const [key, child] of Object.entries(editableRecord)) {
+                if (LEGACY_DETAIL_HIDDEN_FIELDS.has(key))
+                    continue;
+                const row = document.createElement('div');
+                row.style.cssText = 'padding:4px 0;border-bottom:1px dotted rgba(255,255,255,.1);display:flex;align-items:flex-start;gap:8px;';
+                const label = document.createElement('span');
+                label.textContent = key + ':';
+                label.style.cssText = 'color:var(--accent-primary);font-weight:bold;min-width:80px;padding-top:6px;flex-shrink:0;';
+                const input = document.createElement('textarea');
+                input.dataset.field = key;
+                input.style.cssText = 'flex:1;background:rgba(255,255,255,.08);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:.9em;font-family:inherit;resize:vertical;box-sizing:border-box;';
+                const shown = child !== null && typeof child === 'object' ? JSON.stringify(child, null, 2) : child === null || child === undefined ? '' : String(child);
+                input.value = shown;
+                const lineCount = shown.split('\n').length;
+                input.rows = Math.min(12, Math.max(2, lineCount, Math.ceil(shown.length / 40)));
+                row.append(label, input);
+                form.appendChild(row);
+            }
+            body.appendChild(form);
+            const editActions = document.createElement('div');
+            editActions.style.cssText = 'margin-top:15px;display:flex;justify-content:flex-end;gap:8px;';
+            const cancel = document.createElement('button');
+            cancel.textContent = 'Cancel';
+            cancel.style.cssText = 'background:rgba(255,100,100,.15);border:1px solid rgba(255,100,100,.4);color:#ff6b6b;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:.9em;';
+            cancel.addEventListener('click', renderReadOnly);
+            const save = document.createElement('button');
+            save.textContent = '💾 Save';
+            save.disabled = edit.mutationDisabled;
+            save.style.cssText = 'background:rgba(0,200,100,.2);border:1px solid rgba(0,200,100,.5);color:#00c864;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:.9em;';
+            save.addEventListener('click', () => {
+                const fields = {};
+                form.querySelectorAll('textarea[data-field]').forEach(input => {
+                    const field = input.dataset.field;
+                    if (field)
+                        fields[field] = legacyEditValue(input.value);
+                });
+                edit.onSave(fields);
+                modal.style.display = 'none';
+            });
+            editActions.append(cancel, save);
+            body.appendChild(editActions);
+        });
+        actions.appendChild(button);
+        body.appendChild(actions);
+    };
+    renderReadOnly();
     modal.style.display = 'flex';
 }
 function showEquipTarget(root, state, sourceOwner, itemKey, onIntent) {
@@ -1214,6 +1292,10 @@ function wireCollapsibles(root) {
 }
 function renderList(shadow, container, rawData, owner, options) {
     const listType = container.getAttribute('data-list-type') || 'simple';
+    const listFullPath = container.getAttribute('data-bind-list-fullpath') || '';
+    const editableKind = container.getAttribute('data-allow-edit') === '1' && listFullPath === 'Mainchar.Skills' ? 'skill' :
+        container.getAttribute('data-allow-edit') === '1' && listFullPath === 'Mainchar.Talents' ? 'talent' :
+            null;
     const templateId = listType === 'inventory' ? 'tmpl-inventory' :
         listType === 'equipment-action' ? 'tmpl-equipment-action' :
             listType === 'quest' ? 'tmpl-quest' :
@@ -1269,7 +1351,23 @@ function renderList(shadow, container, rawData, owner, options) {
             const rootElement = fragment.firstElementChild;
             if (rootElement) {
                 rootElement.style.cursor = 'pointer';
-                rootElement.addEventListener('click', () => showDetail(shadow, title, raw));
+                rootElement.addEventListener('click', () => {
+                    if (editableKind === 'skill') {
+                        showDetail(shadow, title, raw, {
+                            mutationDisabled: options.mutationDisabled,
+                            onSave: fields => options.onIntent({ type: 'skill.update', skillKey: key, fields }),
+                        });
+                    }
+                    else if (editableKind === 'talent') {
+                        showDetail(shadow, title, raw, {
+                            mutationDisabled: options.mutationDisabled,
+                            onSave: fields => options.onIntent({ type: 'talent.update', talentKey: key, fields }),
+                        });
+                    }
+                    else {
+                        showDetail(shadow, title, raw);
+                    }
+                });
             }
             const allowDelete = container.getAttribute('data-allow-delete') === '1';
             const deleteButton = fragment.querySelector('.list-delete-btn:not(.action-delete-btn)');
@@ -1279,6 +1377,18 @@ function renderList(shadow, container, rawData, owner, options) {
                 else
                     deleteButton.addEventListener('click', event => {
                         event.stopPropagation();
+                        if (options.mutationDisabled)
+                            return;
+                        if (editableKind === 'skill') {
+                            if (window.confirm('Delete "' + title + '"?'))
+                                options.onIntent({ type: 'skill.delete', skillKey: key });
+                            return;
+                        }
+                        if (editableKind === 'talent') {
+                            if (window.confirm('Delete "' + title + '"?'))
+                                options.onIntent({ type: 'talent.delete', talentKey: key });
+                            return;
+                        }
                         if (listType === 'inventory' && owner) {
                             if (window.confirm('Delete "' + title + '"?'))
                                 options.onIntent({ type: 'inventory.delete', owner, itemKey: key });

@@ -16,6 +16,7 @@ export type GuiImageRef = {
     kind: 'world-map';
 };
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
+export type GuiEditableFields = Record<string, JsonValue>;
 export type GuiIntent = {
     type: 'outfit.move';
     owner: GuiOwnerRef;
@@ -43,6 +44,20 @@ export type GuiIntent = {
     familiarId: string;
     field: GuiFamiliarFlag;
     value: boolean;
+} | {
+    type: 'skill.update';
+    skillKey: string;
+    fields: GuiEditableFields;
+} | {
+    type: 'skill.delete';
+    skillKey: string;
+} | {
+    type: 'talent.update';
+    talentKey: string;
+    fields: GuiEditableFields;
+} | {
+    type: 'talent.delete';
+    talentKey: string;
 } | {
     type: 'variable.set';
     path: GuiPath;
