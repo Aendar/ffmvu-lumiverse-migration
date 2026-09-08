@@ -1,0 +1,33 @@
+name: Rebuild dist WorldCalc
+
+on:
+  push:
+    branches: ["feat/status-worldcalc-parity"]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/status-worldcalc-parity
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm run build
+      - name: Commit generated dist
+        shell: bash
+        run: |
+          if git diff --quiet -- dist; then
+            echo "dist already synchronized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git commit -m "Rebuild dist for v0.13.15"
+          git push origin HEAD:feat/status-worldcalc-parity
