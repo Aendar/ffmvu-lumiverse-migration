@@ -1,6 +1,6 @@
 import { canonicalStringify } from '../hashing.js';
 import { asRecord, clone, isRecord, text, tupleValue } from './value-utils.js';
-import { isGuiVariableDynamicCollectionPath } from './gui-variable-policy.js';
+import { isGuiVariableCoupledDomainPath, isGuiVariableDynamicCollectionPath } from './gui-variable-policy.js';
 function isOwnerRef(value) {
     if (!isRecord(value))
         return false;
@@ -424,9 +424,14 @@ function hasContainerKey(parent, key) {
 function protectedRootMutation(path) {
     return path.length === 1 && PROTECTED_ROOT_KEYS.has(path[0]);
 }
+function assertVariablePathNotCoupled(path) {
+    if (isGuiVariableCoupledDomainPath(path))
+        throw new Error('GUI_VARIABLE_COUPLED_DOMAIN');
+}
 function variableSet(state, intent) {
     if (protectedRootMutation(intent.path))
         throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    assertVariablePathNotCoupled(intent.path);
     const { parent, key } = pathParent(state, intent.path);
     if (!hasContainerKey(parent, key))
         throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
@@ -443,6 +448,7 @@ function variableSet(state, intent) {
 function variableRename(state, intent) {
     if (protectedRootMutation(intent.path))
         throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    assertVariablePathNotCoupled(intent.path);
     if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1)))
         throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
     const { parent, key } = pathParent(state, intent.path);
@@ -460,6 +466,7 @@ function variableRename(state, intent) {
 function variableDelete(state, intent) {
     if (protectedRootMutation(intent.path))
         throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+    assertVariablePathNotCoupled(intent.path);
     if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1)))
         throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
     const { parent, key } = pathParent(state, intent.path);
@@ -476,6 +483,7 @@ function variableDelete(state, intent) {
     }
 }
 function variableAdd(state, intent) {
+    assertVariablePathNotCoupled(intent.parentPath);
     if (!isGuiVariableDynamicCollectionPath(intent.parentPath))
         throw new Error('GUI_VARIABLE_STRUCTURAL_CONTAINER');
     let parent = state;

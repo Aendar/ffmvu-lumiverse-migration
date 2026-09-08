@@ -4,7 +4,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS: readonly (readonly string[])[] = [
   ['World_Calc', 'Ruins'],
   ['World_Calc', 'Events'],
   ['Mainchar', 'Inventory'],
-  ['Mainchar', 'Equipment'],
   ['Mainchar', 'Quests'],
   ['Mainchar', 'Skills'],
   ['Mainchar', 'Talents'],
@@ -16,7 +15,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS: readonly (readonly string[])[] = [
   ['Mainchar', 'Real_estate', 'Buildings'],
   ['Mainchar', 'Real_estate', 'Assets'],
   ['Familiar', '*', 'Inventory'],
-  ['Familiar', '*', 'Equipment'],
   ['Familiar', '*', 'Quests'],
   ['Familiar', '*', 'Skills'],
   ['Familiar', '*', 'Talents'],
@@ -39,4 +37,9 @@ export function isGuiVariableDynamicCollectionPath(path: readonly string[]): boo
     pattern.length === path.length &&
     pattern.every((segment, index) => segment === '*' || segment === path[index])
   );
+}
+
+export function isGuiVariableCoupledDomainPath(path: readonly string[]): boolean {
+  return (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Equipment')
+    || (path.length >= 3 && path[0] === 'Familiar' && path[2] === 'Equipment');
 }

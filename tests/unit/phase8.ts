@@ -8,6 +8,7 @@ import { EventStore } from '../../src/persistence/event-store.js';
 import { HeadResolver } from '../../src/head-resolver.js';
 import { TranscriptAttemptStore, VariantIndexStore } from '../../src/persistence/anchor-store.js';
 import { computeRecentChanges } from '../../src/shared/recent-changes.js';
+import { isGuiVariableCoupledDomainPath, isGuiVariableDynamicCollectionPath } from '../../src/shared/domain/gui-variable-policy.js';
 
 let passed = 0;
 function assert(value: unknown, message: string): asserts value {
@@ -233,6 +234,56 @@ async function main(): Promise<void> {
   }
   assert(structuralAddRejected, 'Variables add is restricted to dynamic record collections');
 
+  assert(!isGuiVariableDynamicCollectionPath(['Mainchar', 'Equipment'])
+    && !isGuiVariableDynamicCollectionPath(['Familiar', 'evelyn', 'Equipment']), 'Equipment is not exposed as a generic Variables-managed collection');
+  assert(isGuiVariableCoupledDomainPath(['Mainchar', 'Equipment', 'sword', 'StrBonus'])
+    && isGuiVariableCoupledDomainPath(['Familiar', 'evelyn', 'Equipment', 'blade']), 'player and Familiar Equipment descendants are classified as coupled domains');
+
+  let equipmentDeleteRejected = false;
+  try {
+    applyGuiIntent(equipped, { type: 'variable.delete', path: ['Mainchar', 'Equipment', 'sword'] });
+  } catch (error) {
+    equipmentDeleteRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  assert(equipmentDeleteRejected, 'Variables cannot delete equipped items without domain consequences');
+
+  let equipmentSetRejected = false;
+  try {
+    applyGuiIntent(equipped, { type: 'variable.set', path: ['Mainchar', 'Equipment', 'sword', 'StrBonus'], value: 99 });
+  } catch (error) {
+    equipmentSetRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  assert(equipmentSetRejected, 'Variables cannot edit equipped stat bonuses without recalculation');
+
+  let equipmentRenameRejected = false;
+  try {
+    applyGuiIntent(equipped, { type: 'variable.rename', path: ['Mainchar', 'Equipment', 'sword'], newKey: 'blade' });
+  } catch (error) {
+    equipmentRenameRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  assert(equipmentRenameRejected, 'Variables cannot rename Equipment entries through the generic structural path');
+
+  let equipmentAddRejected = false;
+  try {
+    applyGuiIntent(equipped, {
+      type: 'variable.add',
+      parentPath: ['Mainchar', 'Equipment'],
+      key: 'ghost',
+      value: { Name: 'Ghost', Type: 'Weapon', Slot: 'Hand', StrBonus: 50 },
+    });
+  } catch (error) {
+    equipmentAddRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  assert(equipmentAddRejected, 'Variables cannot add Equipment entries without equip semantics');
+
+  let familiarEquipmentRejected = false;
+  try {
+    applyGuiIntent(crossNext, { type: 'variable.delete', path: ['Familiar', 'evelyn', 'Equipment', 'old2'] });
+  } catch (error) {
+    familiarEquipmentRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  assert(familiarEquipmentRejected, 'Familiar Equipment has the same coupled-domain protection');
+
   const legacyLists = createDefaultState();
   legacyLists.Mainchar.Quests = { quest_1: { Desc: 'Test quest' } };
   legacyLists.Mainchar.Buffs = { Blessing: { Desc: 'Test buff' } };
@@ -257,6 +308,27 @@ async function main(): Promise<void> {
   });
   const commit = await new EventStore(storage).readCommit(scope, guiCommit.nodeId);
   assert(commit.kind === 'gui' && commit.anchor.lineageAnchorId === 'root', 'StateService writes GUI mutations as lineage-scoped gui commits');
+
+  let coupledServiceRejected = false;
+  try {
+    await state.commitGuiIntent(scope, {
+      expectedParentNodeId: guiCommit.nodeId,
+      expectedParentStateHash: guiCommit.stateHash,
+      intent: { type: 'variable.delete', path: ['Mainchar', 'Equipment', 'sword'] },
+      anchor: { lineageAnchorId: 'root' },
+      requestId: 'gui-equipment-variable-delete',
+    });
+  } catch (error) {
+    coupledServiceRejected = String(error).includes('GUI_VARIABLE_COUPLED_DOMAIN');
+  }
+  const afterCoupledRejectHead = await new EventStore(storage).resolveStoreHead(scope);
+  const afterCoupledRejectState = await state.materializer.materialize(scope, guiCommit.nodeId);
+  assert(coupledServiceRejected
+    && afterCoupledRejectHead.status === 'ok'
+    && afterCoupledRejectHead.head?.semanticTipNodeId === guiCommit.nodeId, 'StateService rejects generic Equipment deletion without writing another StoreRevision');
+  assert(Boolean(afterCoupledRejectState.state.Mainchar.Equipment.sword)
+    && afterCoupledRejectState.state.Mainchar.Strength[0] === 7
+    && afterCoupledRejectState.state.Mainchar.Physical_attack[0] === 19, 'rejected Variables Equipment mutation leaves coupled equipment/stat state unchanged');
 
   const root = await state.anchors.readRoot(scope);
   assert(Boolean(root), 'root anchor exists');

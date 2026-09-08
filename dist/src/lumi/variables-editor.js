@@ -1,4 +1,4 @@
-import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
+import { isGuiVariableCoupledDomainPath, isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import { isRecord } from '../shared/domain/value-utils.js';
 import { isLabeledTupleAtPath } from '../shared/domain/tuple-paths.js';
 export const VARIABLES_EDITOR_CSS = `
@@ -71,7 +71,7 @@ function vePathText(path) {
     return path.join(' › ');
 }
 function veCanEditValue(path) {
-    return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0]));
+    return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0])) && !isGuiVariableCoupledDomainPath(path);
 }
 function veCanManageEntry(path) {
     return isGuiVariableDynamicCollectionPath(path.slice(0, -1));
