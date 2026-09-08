@@ -635,6 +635,7 @@ function renderList(shadow, container, rawData, owner, options) {
             container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Ruins' ? 'Ruins' :
                 container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Events' ? 'Events' :
                     null;
+    const realEstateContainer = container.getAttribute('data-allow-edit') === '1' && listFullPath === 'Mainchar.Real_estate';
     const templateId = listType === 'inventory' ? 'tmpl-inventory' :
         listType === 'equipment-action' ? 'tmpl-equipment-action' :
             listType === 'quest' ? 'tmpl-quest' :
@@ -663,6 +664,9 @@ function renderList(shadow, container, rawData, owner, options) {
         container.replaceChildren();
         const visible = paged ? entries.slice(page * pageSize, page * pageSize + pageSize) : entries;
         for (const [key, raw] of visible) {
+            const realEstateSection = realEstateContainer && ['Estates', 'Buildings', 'Assets'].includes(key)
+                ? key
+                : null;
             const fragment = template.content.cloneNode(true);
             const itemRecord = record(legacyTupleValue(raw));
             const name = statusText(itemRecord.Name ?? itemRecord.name, key);
@@ -709,6 +713,12 @@ function renderList(shadow, container, rawData, owner, options) {
                             onSave: fields => options.onIntent({ type: 'worldcalc.update', section: worldCalcSection, itemKey: key, fields }),
                         });
                     }
+                    else if (realEstateSection) {
+                        showDetail(shadow, title, raw, {
+                            mutationDisabled: options.mutationDisabled,
+                            onSave: fields => options.onIntent({ type: 'realestate.update', section: realEstateSection, fields }),
+                        });
+                    }
                     else {
                         showDetail(shadow, title, raw);
                     }
@@ -737,6 +747,11 @@ function renderList(shadow, container, rawData, owner, options) {
                         if (worldCalcSection) {
                             if (window.confirm('Delete "' + title + '"?'))
                                 options.onIntent({ type: 'worldcalc.delete', section: worldCalcSection, itemKey: key });
+                            return;
+                        }
+                        if (realEstateSection) {
+                            if (window.confirm('Delete "' + title + '"?'))
+                                options.onIntent({ type: 'realestate.clear', section: realEstateSection });
                             return;
                         }
                         if (listType === 'inventory' && owner) {

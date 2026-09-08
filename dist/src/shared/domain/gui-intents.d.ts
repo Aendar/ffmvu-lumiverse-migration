@@ -18,6 +18,7 @@ export type GuiImageRef = {
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
 export type GuiEditableFields = Record<string, JsonValue>;
 export type GuiWorldCalcSection = 'Factions' | 'Locations' | 'Ruins' | 'Events';
+export type GuiRealEstateSection = 'Estates' | 'Buildings' | 'Assets';
 export type GuiIntent = {
     type: 'outfit.move';
     owner: GuiOwnerRef;
@@ -68,6 +69,13 @@ export type GuiIntent = {
     type: 'worldcalc.delete';
     section: GuiWorldCalcSection;
     itemKey: string;
+} | {
+    type: 'realestate.update';
+    section: GuiRealEstateSection;
+    fields: GuiEditableFields;
+} | {
+    type: 'realestate.clear';
+    section: GuiRealEstateSection;
 } | {
     type: 'variable.set';
     path: GuiPath;
