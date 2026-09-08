@@ -1,5 +1,5 @@
 import { canonicalHash } from '../shared/hashing.js';
-import { applyJsonPatch, assertModelOperationPolicy, assertPatchResourceLimits, canonicalizeTupleOperation, type JsonPatchOperation } from '../shared/json-patch.js';
+import { applyJsonPatch, assertModelOperationPolicy, assertPatchResourceLimits, canonicalizeIncomingModelOperation, type JsonPatchOperation } from '../shared/json-patch.js';
 import { assertModelPatchAuthorization, type ModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { computeProjectionConsumptionPatch } from '../shared/projection-consumption.js';
 import type { ProjectionRegistry } from '../shared/projection-registry.js';
@@ -314,9 +314,11 @@ export class StateService {
         assertModelOperationPolicy(rawPatch);
         const patchWithStructuralParents = withRequiredModelStructuralParents(parent.state, rawPatch);
         for (const rawOperation of patchWithStructuralParents) {
-          const operation = canonicalizeTupleOperation(workingState, rawOperation);
-          canonicalPatch.push(structuredClone(operation));
-          workingState = applyJsonPatch(workingState, [operation]);
+          const operations = canonicalizeIncomingModelOperation(workingState, rawOperation);
+          for (const operation of operations) {
+            canonicalPatch.push(structuredClone(operation));
+            workingState = applyJsonPatch(workingState, [operation]);
+          }
         }
         assertPatchResourceLimits(canonicalPatch);
         assertModelPatchAuthorization(parent.state, canonicalPatch, input.authorization);
