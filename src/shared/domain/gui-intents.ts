@@ -2,7 +2,7 @@ import { canonicalStringify } from '../hashing.js';
 import type { JsonPatchOperation } from '../json-patch.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../state-schema.js';
 import { asRecord, clone, isRecord, text, tupleValue } from './value-utils.js';
-import { isGuiVariableDynamicCollectionPath } from './gui-variable-policy.js';
+import { isGuiVariableCoupledDomainPath, isGuiVariableDynamicCollectionPath } from './gui-variable-policy.js';
 
 export type GuiOwnerRef =
   | { kind: 'player' }
@@ -446,8 +446,13 @@ function protectedRootMutation(path: GuiPath): boolean {
   return path.length === 1 && PROTECTED_ROOT_KEYS.has(path[0]);
 }
 
+function assertVariablePathNotCoupled(path: GuiPath): void {
+  if (isGuiVariableCoupledDomainPath(path)) throw new Error('GUI_VARIABLE_COUPLED_DOMAIN');
+}
+
 function variableSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.set' }>): void {
   if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  assertVariablePathNotCoupled(intent.path);
   const { parent, key } = pathParent(state, intent.path);
   if (!hasContainerKey(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
   if (Array.isArray(parent)) {
@@ -461,6 +466,7 @@ function variableSet(state: FFMVUState, intent: Extract<GuiIntent, { type: 'vari
 
 function variableRename(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.rename' }>): void {
   if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  assertVariablePathNotCoupled(intent.path);
   if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1))) throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
   const { parent, key } = pathParent(state, intent.path);
   if (Array.isArray(parent)) throw new Error('GUI_VARIABLE_RENAME_ARRAY_UNSUPPORTED');
@@ -473,6 +479,7 @@ function variableRename(state: FFMVUState, intent: Extract<GuiIntent, { type: 'v
 
 function variableDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.delete' }>): void {
   if (protectedRootMutation(intent.path)) throw new Error('GUI_VARIABLE_PROTECTED_ROOT');
+  assertVariablePathNotCoupled(intent.path);
   if (!isGuiVariableDynamicCollectionPath(intent.path.slice(0, -1))) throw new Error('GUI_VARIABLE_STRUCTURAL_KEY');
   const { parent, key } = pathParent(state, intent.path);
   if (!hasContainerKey(parent, key)) throw new Error('GUI_VARIABLE_PATH_NOT_FOUND');
@@ -486,6 +493,7 @@ function variableDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'v
 }
 
 function variableAdd(state: FFMVUState, intent: Extract<GuiIntent, { type: 'variable.add' }>): void {
+  assertVariablePathNotCoupled(intent.parentPath);
   if (!isGuiVariableDynamicCollectionPath(intent.parentPath)) throw new Error('GUI_VARIABLE_STRUCTURAL_CONTAINER');
   let parent: unknown = state;
   for (const segment of intent.parentPath) {
