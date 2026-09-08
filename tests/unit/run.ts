@@ -1,7 +1,7 @@
 import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { normalizeState } from '../../src/shared/state-normalize.js';
 import { validateState } from '../../src/shared/state-validate.js';
-import { applyJsonPatch, assertModelOperationPolicy, canonicalizeTupleOperation } from '../../src/shared/json-patch.js';
+import { applyJsonPatch, assertModelOperationPolicy, canonicalizeIncomingModelOperation, canonicalizeTupleOperation } from '../../src/shared/json-patch.js';
 import { pointerParts } from '../../src/shared/json-pointer.js';
 import { buildPromptView } from '../../src/shared/projection.js';
 import { createProjectionRegistry } from '../../src/shared/projection-registry.js';
@@ -55,6 +55,25 @@ const tupleOp = canonicalizeTupleOperation(base, { op: 'replace', path: '/Mainch
 equal(tupleOp, { op: 'replace', path: '/Mainchar/Strength/0', value: 12 }, 'scalar tuple replace canonicalized to /0');
 const patched = applyJsonPatch(base, [{ op: 'replace', path: '/Mainchar/Strength', value: 12 }]);
 equal(patched.Mainchar.Strength, [12, 'Strength'], 'tuple label preserved by patch boundary repair');
+
+const arrayState = createDefaultState();
+arrayState.Narrative.Scene.PresentNPCs = ['npc_0001', 'npc_0002'];
+const incomingArrayReplace = canonicalizeIncomingModelOperation(arrayState, {
+  op: 'replace',
+  path: '/Narrative/Scene/PresentNPCs',
+  value: ['npc_0002'],
+});
+equal(incomingArrayReplace, [
+  { op: 'remove', path: '/Narrative/Scene/PresentNPCs' },
+  { op: 'add', path: '/Narrative/Scene/PresentNPCs', value: ['npc_0002'] },
+], 'ordinary two-string array replacement is encoded replay-safe instead of tuple /0 repair');
+
+const incomingTupleReplace = canonicalizeIncomingModelOperation(base, {
+  op: 'replace',
+  path: '/Mainchar/Strength',
+  value: 12,
+});
+equal(incomingTupleReplace, [{ op: 'replace', path: '/Mainchar/Strength/0', value: 12 }], 'known labeled tuple still canonicalizes scalar replace to /0');
 throws(() => pointerParts('/Mainchar/__proto__/x'), 'Unsafe JSON Pointer segment', 'prototype pollution pointer rejected');
 throws(() => assertModelOperationPolicy([{ op: 'move', from: '/a', path: '/b' }]), 'Model operation not allowed', 'model move operation rejected');
 
