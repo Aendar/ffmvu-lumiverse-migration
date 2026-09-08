@@ -2,6 +2,7 @@ import type { StateScope } from '../persistence/types.js';
 import type { ModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { createId, isoNow } from '../persistence/ids.js';
 import type { NarrativeTimestamp, RecentChangesEnvelope } from '../shared/recent-changes.js';
+import type { RecentStateHistoryEnvelope } from '../shared/state-history.js';
 
 export interface FrozenAttemptContext {
   attemptId: string;
@@ -37,6 +38,7 @@ export interface FrozenAttemptContext {
   continueResolvesAttemptId?: string;
   assistantNarrativeTimestamps?: Record<string, NarrativeTimestamp>;
   recentChanges?: RecentChangesEnvelope | null;
+  stateHistory?: RecentStateHistoryEnvelope | null;
 }
 
 export class AttemptContextRegistry {

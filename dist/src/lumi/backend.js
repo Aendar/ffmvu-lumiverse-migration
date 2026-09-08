@@ -9,6 +9,7 @@ import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from 
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
+import { computeRecentStateHistory } from '../shared/state-history.js';
 import { assertGuiIntent } from '../shared/domain/gui-intents.js';
 import { validateGameStartPayload } from '../shared/domain/gamestart.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
@@ -18,7 +19,7 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.16';
+const BRIDGE_VERSION = '0.13.17';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -453,6 +454,7 @@ async function bindGuiCommit(rt, scope, prior, committedNodeId) {
 async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId) {
     const timestamps = {};
     let baselineNodeId = null;
+    const historyNodeIds = [];
     for (const message of messages) {
         if (message.role !== 'assistant')
             continue;
@@ -472,8 +474,11 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
         if (attempt.narrativeTimestamp)
             timestamps[message.id] = structuredClone(attempt.narrativeTimestamp);
         if (attempt.finalNodeId &&
-            (attempt.status === 'committed' || attempt.status === 'no_patch'))
+            (attempt.status === 'committed' || attempt.status === 'no_patch')) {
             baselineNodeId = attempt.finalNodeId;
+            if (historyNodeIds.at(-1) !== attempt.finalNodeId)
+                historyNodeIds.push(attempt.finalNodeId);
+        }
     }
     let recentChanges = null;
     if (baselineNodeId && baselineNodeId !== currentHeadNodeId) {
@@ -488,7 +493,26 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
             spindle.log.warn('[FFMVU] RecentChanges derivation skipped', error);
         }
     }
-    return { timestamps, recentChanges, baselineNodeId };
+    let stateHistory = null;
+    const activeHistoryNodes = [...historyNodeIds];
+    if (activeHistoryNodes.at(-1) !== currentHeadNodeId)
+        activeHistoryNodes.push(currentHeadNodeId);
+    const boundedHistoryNodes = activeHistoryNodes.slice(-8);
+    if (boundedHistoryNodes.length >= 2) {
+        try {
+            const materialized = [];
+            for (const nodeId of boundedHistoryNodes) {
+                if (!await rt.state.store.isNodeCommitted(scope, nodeId))
+                    continue;
+                materialized.push(await rt.state.materializer.materialize(scope, nodeId));
+            }
+            stateHistory = computeRecentStateHistory(materialized.map(item => item.state), { maxTracks: 12, maxChangesPerPath: 3 });
+        }
+        catch (error) {
+            spindle.log.warn('[FFMVU] StateTrail derivation skipped', error);
+        }
+    }
+    return { timestamps, recentChanges, stateHistory, baselineNodeId };
 }
 async function ensureBootstrap(scope, messages) {
     const rt = runtime(scope.userId);
@@ -611,6 +635,7 @@ async function prepareGeneration(context, targetMessageId) {
         diagnosticContinueProbe,
         assistantNarrativeTimestamps: historyContext.timestamps,
         recentChanges: historyContext.recentChanges,
+        stateHistory: historyContext.stateHistory,
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -638,6 +663,7 @@ async function prepareGeneration(context, targetMessageId) {
         continueProbeArmed: continueProbeUsers.has(context.userId),
         narrativeHistoryTimestampCount: Object.keys(historyContext.timestamps).length,
         recentChangeDomains: historyContext.recentChanges ? Object.keys(historyContext.recentChanges).filter(key => key !== 'observedAt') : [],
+        stateHistoryTrackCount: historyContext.stateHistory?.tracks.length ?? 0,
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -1619,7 +1645,7 @@ const interceptorHandler = async (messages, context) => {
     });
     const injected = injectFrozenModelState(messages, pending.projectionView);
     pending.injectionMode = injected.mode;
-    const historyMessages = injectNarrativeHistoryContext(injected.messages, pending.assistantNarrativeTimestamps ?? {}, pending.recentChanges ?? null);
+    const historyMessages = injectNarrativeHistoryContext(injected.messages, pending.assistantNarrativeTimestamps ?? {}, pending.recentChanges ?? null, pending.stateHistory ?? null);
     const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(historyMessages) : historyMessages;
     publish(pending.scope.userId, {
         phase: 'injected', chatId: context.chatId, attemptId: pending.attemptId, mode: injected.mode,
@@ -1628,6 +1654,7 @@ const interceptorHandler = async (messages, context) => {
         diagnosticContinueProbe: pending.diagnosticContinueProbe === true,
         narrativeHistoryTimestampCount: Object.keys(pending.assistantNarrativeTimestamps ?? {}).length,
         recentChangeDomains: pending.recentChanges ? Object.keys(pending.recentChanges).filter(key => key !== 'observedAt') : [],
+        stateHistoryTrackCount: pending.stateHistory?.tracks.length ?? 0,
     });
     if (injected.mode !== 'fallback')
         return finalMessages;

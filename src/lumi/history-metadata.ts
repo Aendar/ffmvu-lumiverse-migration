@@ -1,5 +1,6 @@
 import { canonicalStringify } from '../shared/hashing.js';
 import type { NarrativeTimestamp, RecentChangesEnvelope } from '../shared/recent-changes.js';
+import type { RecentStateHistoryEnvelope } from '../shared/state-history.js';
 import type { LumiLlmMessage } from './spindle-lite.js';
 
 function xmlAttr(value: string): string {
@@ -10,6 +11,7 @@ export function injectNarrativeHistoryContext(
   messages: LumiLlmMessage[],
   timestamps: Record<string, NarrativeTimestamp>,
   recentChanges: RecentChangesEnvelope | null,
+  stateHistory: RecentStateHistoryEnvelope | null = null,
 ): LumiLlmMessage[] {
   const out = structuredClone(messages);
   let tagged = 0;
@@ -24,7 +26,7 @@ export function injectNarrativeHistoryContext(
     tagged += 1;
   }
 
-  if (!tagged && !recentChanges) return out;
+  if (!tagged && !recentChanges && !stateHistory) return out;
 
   const rules = [
     '<FFMVU_HISTORY_CONTEXT>',
@@ -32,6 +34,9 @@ export function injectNarrativeHistoryContext(
     'Use them to preserve chronology across the conversation. Do not infer elapsed in-world time from user message timing.',
     recentChanges
       ? 'RECENT_CHANGES is a net diff between the last state already represented by an assistant response and the state being delivered now. It may include GUI/system changes that never appeared in prose. Treat the current MODEL_STATE as authoritative; use RECENT_CHANGES only to understand what changed off-screen.\n<RECENT_CHANGES>' + canonicalStringify(recentChanges) + '</RECENT_CHANGES>'
+      : '',
+    stateHistory
+      ? 'STATE_TRAIL is a bounded read-only history of structured values along the active semantic lineage. Each change.turn is Narrative.Turn in the post-change state. current MODEL_STATE is authoritative; older values are historical context only and must never override it.\n<STATE_TRAIL>' + canonicalStringify(stateHistory) + '</STATE_TRAIL>'
       : '',
     '</FFMVU_HISTORY_CONTEXT>',
   ].filter(Boolean).join('\n');
