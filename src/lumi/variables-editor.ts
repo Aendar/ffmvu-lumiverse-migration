@@ -316,8 +316,8 @@ function veActionButtons(
     edit.disabled = options.mutationDisabled;
     edit.addEventListener('click', event => {
       event.stopPropagation();
-      const editPath = veIsTuple(value) ? [...path, '0'] : path;
-      const editValue = veIsTuple(value) ? value[0] : value;
+      const editPath = veIsTuple(path, value) ? [...path, '0'] : path;
+      const editValue = veIsTuple(path, value) ? value[0] : value;
       veShowEdit(root, editPath, editValue, options);
     });
     actions.appendChild(edit);
@@ -358,7 +358,7 @@ function veRenderEntry(
 ): HTMLElement | null {
   if (!veMatches(key, value, query, path)) return null;
 
-  const tuple = veIsTuple(value);
+  const tuple = veIsTuple(path, value);
   const effectiveValue = tuple ? value[0] : value;
   const isContainer = !tuple && effectiveValue !== null && typeof effectiveValue === 'object';
 
