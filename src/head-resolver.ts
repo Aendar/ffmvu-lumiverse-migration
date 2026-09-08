@@ -29,7 +29,7 @@ export class HeadResolver {
         const path = await this.eventStore.traceDescendantPath(scope, base.id, root.tipNodeId); if (!path || !path.every(c => isAllowedLineageCommit(c, 'root'))) return this.bad('diverged_history', base, 'invalid root non-message lineage');
         current = await this.materializer.materialize(scope, root.tipNodeId);
       }
-      const committedAttemptTips = await this.eventStore.listCommittedAttemptTips(scope);
+      const committedAttemptTip = await this.eventStore.resolveCommittedAttemptTip(scope);
       let terminalVariant: VariantId | undefined;
 
       for (const message of messages.slice(startIndex)) {
@@ -80,16 +80,19 @@ export class HeadResolver {
         }
 
         const boundAttemptIds = new Set(anchor.attemptIds);
-        for (const candidate of committedAttemptTips) {
-          if (candidate.variantId !== variantId || boundAttemptIds.has(candidate.attemptId)) continue;
-          const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, candidate.nodeId);
+        if (
+          committedAttemptTip &&
+          committedAttemptTip.variantId === variantId &&
+          !boundAttemptIds.has(committedAttemptTip.attemptId)
+        ) {
+          const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, committedAttemptTip.nodeId);
           if (path !== null) {
             return {
               health: 'unreconciled',
               nodeId: current.nodeId,
               stateHash: current.stateHash,
               variantId,
-              reason: `durable committed attempt ${candidate.attemptId} is not bound to active transcript lineage`,
+              reason: `durable committed attempt ${committedAttemptTip.attemptId} is not bound to active transcript lineage`,
             };
           }
         }
