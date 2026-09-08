@@ -427,15 +427,15 @@ async function main(): Promise<void> {
     section: 'Estates',
     fields: { home: { Name: 'Home', Value: 15 } },
   });
-  assert((editedEstates.Mainchar.Real_estate.Estates.home as any).Value === 15
-    && Boolean(editedEstates.Mainchar.Real_estate.Estates.farm), 'Real_estate section edit updates only existing top-level entries and preserves untouched entries');
+  assert(((editedEstates.Mainchar.Real_estate as any).Estates.home as any).Value === 15
+    && Boolean((editedEstates.Mainchar.Real_estate as any).Estates.farm), 'Real_estate section edit updates only existing top-level entries and preserves untouched entries');
 
   const editedBuildings = applyGuiIntent(realEstateLists, {
     type: 'realestate.update',
     section: 'Buildings',
     fields: { mill: { Name: 'Mill', Condition: 'damaged' } },
   });
-  assert((editedBuildings.Mainchar.Real_estate.Buildings.mill as any).Condition === 'damaged', 'Real_estate Buildings edit mirrors frozen section-modal semantics');
+  assert(((editedBuildings.Mainchar.Real_estate as any).Buildings.mill as any).Condition === 'damaged', 'Real_estate Buildings edit mirrors frozen section-modal semantics');
 
   let newEstateRejected = false;
   try {
@@ -450,8 +450,8 @@ async function main(): Promise<void> {
   assert(newEstateRejected, 'Real_estate edit cannot add an entry that the frozen section form did not expose');
 
   const clearedAssets = applyGuiIntent(realEstateLists, { type: 'realestate.clear', section: 'Assets' });
-  assert(Object.keys(clearedAssets.Mainchar.Real_estate.Assets).length === 0
-    && Boolean(clearedAssets.Mainchar.Real_estate.Estates.home), 'legacy Real_estate delete adapts to clearing only the selected fixed-schema section');
+  assert(Object.keys((clearedAssets.Mainchar.Real_estate as any).Assets).length === 0
+    && Boolean((clearedAssets.Mainchar.Real_estate as any).Estates.home), 'legacy Real_estate delete adapts to clearing only the selected fixed-schema section');
 
   const worldStorage = new MemoryJsonStorage();
   const worldService = new StateService(worldStorage, createReducerRegistry(), createProjectionRegistry());
@@ -481,8 +481,8 @@ async function main(): Promise<void> {
     requestId: 'gui-realestate-clear',
   });
   const storedRealEstateCommit = await new EventStore(realEstateStorage).readCommit(realEstateScope, realEstateCommit.nodeId);
-  assert(Object.keys(realEstateCommit.state.Mainchar.Real_estate.Buildings).length === 0
-    && Boolean(realEstateCommit.state.Mainchar.Real_estate.Estates.home)
+  assert(Object.keys((realEstateCommit.state.Mainchar.Real_estate as any).Buildings).length === 0
+    && Boolean((realEstateCommit.state.Mainchar.Real_estate as any).Estates.home)
     && storedRealEstateCommit.note === 'gui-intent:realestate.clear', 'StateService commits Real_estate legacy delete as fixed-shape section clear');
 
   const skillStorage = new MemoryJsonStorage();
