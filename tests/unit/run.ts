@@ -74,6 +74,13 @@ const incomingTupleReplace = canonicalizeIncomingModelOperation(base, {
   value: 12,
 });
 equal(incomingTupleReplace, [{ op: 'replace', path: '/Mainchar/Strength/0', value: 12 }], 'known labeled tuple still canonicalizes scalar replace to /0');
+
+(arrayState.Mainchar.Inventory as any).demo = { Tags: ['alpha', 'beta'] };
+throws(
+  () => canonicalizeIncomingModelOperation(arrayState, { op: 'replace', path: '/Mainchar/Inventory/demo/Tags', value: ['alpha'] }),
+  'AMBIGUOUS_TUPLE_SHAPE',
+  'unknown tuple-shaped model path fails closed instead of guessing tuple versus ordinary array',
+);
 throws(() => pointerParts('/Mainchar/__proto__/x'), 'Unsafe JSON Pointer segment', 'prototype pollution pointer rejected');
 throws(() => assertModelOperationPolicy([{ op: 'move', from: '/a', path: '/b' }]), 'Model operation not allowed', 'model move operation rejected');
 
