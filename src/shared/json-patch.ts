@@ -1,6 +1,6 @@
 import { clone, isLabeledTuple, isRecord, lower } from './domain/value-utils.js';
 import { pointerAdd, pointerGet, pointerParts, pointerRemove, pointerReplace } from './json-pointer.js';
-import { isKnownLabeledTuplePath } from './domain/tuple-paths.js';
+import { isKnownLabeledTuplePath, isKnownOrdinaryArrayPath } from './domain/tuple-paths.js';
 
 export type JsonPatchOperation =
   | { op: 'add' | 'replace' | 'test'; path: string; value: unknown }
@@ -62,11 +62,16 @@ export function canonicalizeIncomingModelOperation(state: unknown, operation: Js
   try { current = pointerGet(state, operation.path); } catch { return [operation]; }
   if (!isLabeledTuple(current) || isLabeledTuple(operation.value)) return [operation];
 
-  if (isKnownLabeledTuplePath(pointerParts(operation.path))) {
+  const path = pointerParts(operation.path);
+  if (isKnownLabeledTuplePath(path)) {
     return [canonicalizeTupleOperation(state, operation)];
   }
 
-  // Legacy replay still uses shape-based tuple repair. Replacing an ordinary two-string array
+  if (!isKnownOrdinaryArrayPath(path)) {
+    throw new Error('AMBIGUOUS_TUPLE_SHAPE: ' + operation.path);
+  }
+
+  // Legacy replay still uses shape-based tuple repair. Replacing a known ordinary two-string array
   // directly would therefore be replayed as a /0 mutation. Encode the same whole-value write
   // as remove+add so historical reducer semantics remain byte-stable while new transactions are correct.
   return [
