@@ -125,6 +125,19 @@ export function assertGuiIntent(value) {
         assertSafeKey(value.talentKey, 'talent_key');
         return;
     }
+    if (value.type === 'worldcalc.update') {
+        if (!['Factions', 'Locations', 'Ruins', 'Events'].includes(String(value.section)))
+            throw new Error('GUI_INTENT_INVALID_WORLDCALC_SECTION');
+        assertSafeKey(value.itemKey, 'worldcalc_item_key');
+        assertEditableFields(value.fields, 'worldcalc');
+        return;
+    }
+    if (value.type === 'worldcalc.delete') {
+        if (!['Factions', 'Locations', 'Ruins', 'Events'].includes(String(value.section)))
+            throw new Error('GUI_INTENT_INVALID_WORLDCALC_SECTION');
+        assertSafeKey(value.itemKey, 'worldcalc_item_key');
+        return;
+    }
     if (value.type === 'variable.set') {
         assertGuiPath(value.path, false);
         assertVariablePayload(value.value);
@@ -441,6 +454,30 @@ function deleteMaincharEditableEntry(state, collectionKey, itemKey) {
     }
     delete collection[itemKey];
 }
+function worldCalcCollection(state, section) {
+    const collection = asRecord(state.World_Calc[section]);
+    if (!isRecord(collection))
+        throw new Error('GUI_WORLDCALC_COLLECTION_NOT_FOUND: ' + section);
+    return collection;
+}
+function worldCalcUpdate(state, intent) {
+    const collection = worldCalcCollection(state, intent.section);
+    const current = collection[intent.itemKey];
+    if (!isRecord(current))
+        throw new Error('GUI_WORLDCALC_ITEM_NOT_EDITABLE: ' + intent.section + '/' + intent.itemKey);
+    for (const [key, value] of Object.entries(intent.fields)) {
+        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
+            throw new Error('GUI_WORLDCALC_FIELD_PROTECTED: ' + key);
+        current[key] = clone(value);
+    }
+}
+function worldCalcDelete(state, intent) {
+    const collection = worldCalcCollection(state, intent.section);
+    if (!Object.prototype.hasOwnProperty.call(collection, intent.itemKey)) {
+        throw new Error('GUI_WORLDCALC_ITEM_NOT_FOUND: ' + intent.section + '/' + intent.itemKey);
+    }
+    delete collection[intent.itemKey];
+}
 function pathParent(root, path) {
     if (!path.length)
         throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
@@ -574,6 +611,10 @@ export function applyGuiIntent(input, intent) {
         updateMaincharEditableEntry(state, 'Talents', intent.talentKey, intent.fields);
     else if (intent.type === 'talent.delete')
         deleteMaincharEditableEntry(state, 'Talents', intent.talentKey);
+    else if (intent.type === 'worldcalc.update')
+        worldCalcUpdate(state, intent);
+    else if (intent.type === 'worldcalc.delete')
+        worldCalcDelete(state, intent);
     else if (intent.type === 'variable.set')
         variableSet(state, intent);
     else if (intent.type === 'variable.rename')

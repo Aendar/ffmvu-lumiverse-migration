@@ -309,6 +309,74 @@ async function main() {
     assert(!withoutBuff.Mainchar.Buffs.Blessing, 'legacy Buff delete uses the validated dynamic collection path');
     const withoutAilment = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Ailments', 'Poisoned'] });
     assert(!withoutAilment.Mainchar.Ailments.Poisoned, 'legacy Ailment delete uses the validated dynamic collection path');
+    const worldLists = createDefaultState();
+    worldLists.World_Calc.Factions = { guild: { Desc: 'Old faction', Influence: 2, name: 'hidden-name' } };
+    worldLists.World_Calc.Locations = { harbor: { Desc: 'Old harbor', Danger: 1 } };
+    worldLists.World_Calc.Ruins = { tower: { Desc: 'Old tower', Explored: false } };
+    worldLists.World_Calc.Events = { storm: { Desc: 'Old storm', Active: true, template: 'hidden-template' } };
+    const editedFaction = applyGuiIntent(worldLists, {
+        type: 'worldcalc.update',
+        section: 'Factions',
+        itemKey: 'guild',
+        fields: { Desc: 'New faction', Influence: 5 },
+    });
+    assert(editedFaction.World_Calc.Factions.guild.Desc === 'New faction'
+        && editedFaction.World_Calc.Factions.guild.Influence === 5
+        && editedFaction.World_Calc.Factions.guild.name === 'hidden-name', 'World_Calc Factions edit merges visible top-level fields and preserves hidden metadata');
+    const editedLocation = applyGuiIntent(worldLists, {
+        type: 'worldcalc.update',
+        section: 'Locations',
+        itemKey: 'harbor',
+        fields: { Desc: 'New harbor', Danger: 3 },
+    });
+    assert(editedLocation.World_Calc.Locations.harbor.Desc === 'New harbor'
+        && editedLocation.World_Calc.Locations.harbor.Danger === 3, 'World_Calc Locations edit uses the same frozen legacy merge semantics');
+    const editedRuin = applyGuiIntent(worldLists, {
+        type: 'worldcalc.update',
+        section: 'Ruins',
+        itemKey: 'tower',
+        fields: { Desc: 'Mapped tower', Explored: true },
+    });
+    assert(editedRuin.World_Calc.Ruins.tower.Explored === true, 'World_Calc Ruins edit preserves boolean field types');
+    const editedEvent = applyGuiIntent(worldLists, {
+        type: 'worldcalc.update',
+        section: 'Events',
+        itemKey: 'storm',
+        fields: { Desc: 'Storm ended', Active: false },
+    });
+    assert(editedEvent.World_Calc.Events.storm.Active === false
+        && editedEvent.World_Calc.Events.storm.template === 'hidden-template', 'World_Calc Events edit preserves hidden template metadata');
+    const deletedFaction = applyGuiIntent(editedFaction, { type: 'worldcalc.delete', section: 'Factions', itemKey: 'guild' });
+    const deletedLocation = applyGuiIntent(editedLocation, { type: 'worldcalc.delete', section: 'Locations', itemKey: 'harbor' });
+    const deletedRuin = applyGuiIntent(editedRuin, { type: 'worldcalc.delete', section: 'Ruins', itemKey: 'tower' });
+    const deletedEvent = applyGuiIntent(editedEvent, { type: 'worldcalc.delete', section: 'Events', itemKey: 'storm' });
+    assert(!deletedFaction.World_Calc.Factions.guild
+        && !deletedLocation.World_Calc.Locations.harbor
+        && !deletedRuin.World_Calc.Ruins.tower
+        && !deletedEvent.World_Calc.Events.storm, 'selected World_Calc delete intents remove only exact section entries');
+    let protectedWorldFieldRejected = false;
+    try {
+        applyGuiIntent(worldLists, { type: 'worldcalc.update', section: 'Events', itemKey: 'storm', fields: { template: 'must-not-change' } });
+    }
+    catch (error) {
+        protectedWorldFieldRejected = String(error).includes('GUI_WORLDCALC_FIELD_PROTECTED');
+    }
+    assert(protectedWorldFieldRejected, 'typed World_Calc edit cannot modify legacy-hidden template metadata');
+    const worldStorage = new MemoryJsonStorage();
+    const worldService = new StateService(worldStorage, createReducerRegistry(), createProjectionRegistry());
+    const worldScope = { userId: 'u', chatId: 'worldcalc-gui' };
+    const worldGenesis = await worldService.createGenesis(worldScope, { state: worldLists });
+    const worldCommit = await worldService.commitGuiIntent(worldScope, {
+        expectedParentNodeId: worldGenesis.nodeId,
+        expectedParentStateHash: worldGenesis.stateHash,
+        intent: { type: 'worldcalc.update', section: 'Locations', itemKey: 'harbor', fields: { Danger: 4 } },
+        anchor: { lineageAnchorId: 'root' },
+        requestId: 'gui-worldcalc-update',
+    });
+    const storedWorldCommit = await new EventStore(worldStorage).readCommit(worldScope, worldCommit.nodeId);
+    assert(worldCommit.state.World_Calc.Locations.harbor.Danger === 4
+        && storedWorldCommit.kind === 'gui'
+        && storedWorldCommit.note === 'gui-intent:worldcalc.update', 'StateService commits selected World_Calc edits through normal optimistic GUI transaction semantics');
     const skillStorage = new MemoryJsonStorage();
     const skillService = new StateService(skillStorage, createReducerRegistry(), createProjectionRegistry());
     const skillScope = { userId: 'u', chatId: 'skills-talents-gui' };

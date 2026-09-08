@@ -17,6 +17,7 @@ export type GuiImageRef =
 
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
 export type GuiEditableFields = Record<string, JsonValue>;
+export type GuiWorldCalcSection = 'Factions' | 'Locations' | 'Ruins' | 'Events';
 
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
@@ -29,6 +30,8 @@ export type GuiIntent =
   | { type: 'skill.delete'; skillKey: string }
   | { type: 'talent.update'; talentKey: string; fields: GuiEditableFields }
   | { type: 'talent.delete'; talentKey: string }
+  | { type: 'worldcalc.update'; section: GuiWorldCalcSection; itemKey: string; fields: GuiEditableFields }
+  | { type: 'worldcalc.delete'; section: GuiWorldCalcSection; itemKey: string }
   | { type: 'variable.set'; path: GuiPath; value: JsonValue }
   | { type: 'variable.rename'; path: GuiPath; newKey: string }
   | { type: 'variable.delete'; path: GuiPath }
@@ -150,6 +153,17 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
   }
   if (value.type === 'talent.delete') {
     assertSafeKey(value.talentKey, 'talent_key');
+    return;
+  }
+  if (value.type === 'worldcalc.update') {
+    if (!['Factions', 'Locations', 'Ruins', 'Events'].includes(String(value.section))) throw new Error('GUI_INTENT_INVALID_WORLDCALC_SECTION');
+    assertSafeKey(value.itemKey, 'worldcalc_item_key');
+    assertEditableFields(value.fields, 'worldcalc');
+    return;
+  }
+  if (value.type === 'worldcalc.delete') {
+    if (!['Factions', 'Locations', 'Ruins', 'Events'].includes(String(value.section))) throw new Error('GUI_INTENT_INVALID_WORLDCALC_SECTION');
+    assertSafeKey(value.itemKey, 'worldcalc_item_key');
     return;
   }
   if (value.type === 'variable.set') {
@@ -478,6 +492,30 @@ function deleteMaincharEditableEntry(
   delete collection[itemKey];
 }
 
+function worldCalcCollection(state: FFMVUState, section: GuiWorldCalcSection): MutableRecord {
+  const collection = asRecord((state.World_Calc as unknown as MutableRecord)[section]);
+  if (!isRecord(collection)) throw new Error('GUI_WORLDCALC_COLLECTION_NOT_FOUND: ' + section);
+  return collection;
+}
+
+function worldCalcUpdate(state: FFMVUState, intent: Extract<GuiIntent, { type: 'worldcalc.update' }>): void {
+  const collection = worldCalcCollection(state, intent.section);
+  const current = collection[intent.itemKey];
+  if (!isRecord(current)) throw new Error('GUI_WORLDCALC_ITEM_NOT_EDITABLE: ' + intent.section + '/' + intent.itemKey);
+  for (const [key, value] of Object.entries(intent.fields)) {
+    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_WORLDCALC_FIELD_PROTECTED: ' + key);
+    current[key] = clone(value);
+  }
+}
+
+function worldCalcDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'worldcalc.delete' }>): void {
+  const collection = worldCalcCollection(state, intent.section);
+  if (!Object.prototype.hasOwnProperty.call(collection, intent.itemKey)) {
+    throw new Error('GUI_WORLDCALC_ITEM_NOT_FOUND: ' + intent.section + '/' + intent.itemKey);
+  }
+  delete collection[intent.itemKey];
+}
+
 function pathParent(root: unknown, path: GuiPath): { parent: MutableRecord | unknown[]; key: string } {
   if (!path.length) throw new Error('GUI_VARIABLE_ROOT_MUTATION_FORBIDDEN');
   let current: unknown = root;
@@ -584,6 +622,8 @@ export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState
   else if (intent.type === 'skill.delete') deleteMaincharEditableEntry(state, 'Skills', intent.skillKey);
   else if (intent.type === 'talent.update') updateMaincharEditableEntry(state, 'Talents', intent.talentKey, intent.fields);
   else if (intent.type === 'talent.delete') deleteMaincharEditableEntry(state, 'Talents', intent.talentKey);
+  else if (intent.type === 'worldcalc.update') worldCalcUpdate(state, intent);
+  else if (intent.type === 'worldcalc.delete') worldCalcDelete(state, intent);
   else if (intent.type === 'variable.set') variableSet(state, intent);
   else if (intent.type === 'variable.rename') variableRename(state, intent);
   else if (intent.type === 'variable.delete') variableDelete(state, intent);

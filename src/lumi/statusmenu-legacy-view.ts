@@ -645,6 +645,12 @@ function renderList(
     container.getAttribute('data-allow-edit') === '1' && listFullPath === 'Mainchar.Skills' ? 'skill' :
     container.getAttribute('data-allow-edit') === '1' && listFullPath === 'Mainchar.Talents' ? 'talent' :
     null;
+  const worldCalcSection =
+    container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Factions' ? 'Factions' :
+    container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Locations' ? 'Locations' :
+    container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Ruins' ? 'Ruins' :
+    container.getAttribute('data-allow-edit') === '1' && listFullPath === 'World_Calc.Events' ? 'Events' :
+    null;
   const templateId =
     listType === 'inventory' ? 'tmpl-inventory' :
     listType === 'equipment-action' ? 'tmpl-equipment-action' :
@@ -716,6 +722,11 @@ function renderList(
               mutationDisabled: options.mutationDisabled,
               onSave: fields => options.onIntent({ type: 'talent.update', talentKey: key, fields }),
             });
+          } else if (worldCalcSection) {
+            showDetail(shadow, title, raw, {
+              mutationDisabled: options.mutationDisabled,
+              onSave: fields => options.onIntent({ type: 'worldcalc.update', section: worldCalcSection, itemKey: key, fields }),
+            });
           } else {
             showDetail(shadow, title, raw);
           }
@@ -735,6 +746,10 @@ function renderList(
           }
           if (editableKind === 'talent') {
             if (window.confirm('Delete "' + title + '"?')) options.onIntent({ type: 'talent.delete', talentKey: key });
+            return;
+          }
+          if (worldCalcSection) {
+            if (window.confirm('Delete "' + title + '"?')) options.onIntent({ type: 'worldcalc.delete', section: worldCalcSection, itemKey: key });
             return;
           }
           if (listType === 'inventory' && owner) {
