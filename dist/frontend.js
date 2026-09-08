@@ -47,7 +47,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['World_Calc', 'Ruins'],
     ['World_Calc', 'Events'],
     ['Mainchar', 'Inventory'],
-    ['Mainchar', 'Equipment'],
     ['Mainchar', 'Quests'],
     ['Mainchar', 'Skills'],
     ['Mainchar', 'Talents'],
@@ -59,7 +58,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['Mainchar', 'Real_estate', 'Buildings'],
     ['Mainchar', 'Real_estate', 'Assets'],
     ['Familiar', '*', 'Inventory'],
-    ['Familiar', '*', 'Equipment'],
     ['Familiar', '*', 'Quests'],
     ['Familiar', '*', 'Skills'],
     ['Familiar', '*', 'Talents'],
@@ -79,6 +77,10 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
 export function isGuiVariableDynamicCollectionPath(path) {
     return VARIABLE_DYNAMIC_COLLECTION_PATTERNS.some(pattern => pattern.length === path.length &&
         pattern.every((segment, index) => segment === '*' || segment === path[index]));
+}
+export function isGuiVariableCoupledDomainPath(path) {
+    return (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Equipment')
+        || (path.length >= 3 && path[0] === 'Familiar' && path[2] === 'Equipment');
 }
 
 // ---- bundled from dist/src/shared/domain/tuple-paths.js ----
@@ -309,7 +311,7 @@ function vePathText(path) {
     return path.join(' › ');
 }
 function veCanEditValue(path) {
-    return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0]));
+    return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0])) && !isGuiVariableCoupledDomainPath(path);
 }
 function veCanManageEntry(path) {
     return isGuiVariableDynamicCollectionPath(path.slice(0, -1));

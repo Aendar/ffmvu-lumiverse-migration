@@ -4,7 +4,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['World_Calc', 'Ruins'],
     ['World_Calc', 'Events'],
     ['Mainchar', 'Inventory'],
-    ['Mainchar', 'Equipment'],
     ['Mainchar', 'Quests'],
     ['Mainchar', 'Skills'],
     ['Mainchar', 'Talents'],
@@ -16,7 +15,6 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['Mainchar', 'Real_estate', 'Buildings'],
     ['Mainchar', 'Real_estate', 'Assets'],
     ['Familiar', '*', 'Inventory'],
-    ['Familiar', '*', 'Equipment'],
     ['Familiar', '*', 'Quests'],
     ['Familiar', '*', 'Skills'],
     ['Familiar', '*', 'Talents'],
@@ -36,5 +34,9 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
 export function isGuiVariableDynamicCollectionPath(path) {
     return VARIABLE_DYNAMIC_COLLECTION_PATTERNS.some(pattern => pattern.length === path.length &&
         pattern.every((segment, index) => segment === '*' || segment === path[index]));
+}
+export function isGuiVariableCoupledDomainPath(path) {
+    return (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Equipment')
+        || (path.length >= 3 && path[0] === 'Familiar' && path[2] === 'Equipment');
 }
 //# sourceMappingURL=gui-variable-policy.js.map
