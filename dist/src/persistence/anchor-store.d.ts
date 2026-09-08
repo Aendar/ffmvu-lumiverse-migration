@@ -21,6 +21,7 @@ export interface SwipeObservation {
     text: string;
     swipeDate?: string;
 }
+export type SwipeMutationAction = 'added' | 'updated' | 'deleted' | 'navigated';
 export interface ReconcileResult {
     status: 'ok' | 'ambiguous';
     index?: MessageVariantIndex;
@@ -35,6 +36,8 @@ export declare class VariantIndexStore {
     applyAdded(scope: StateScope, messageId: string, swipeIndex: number, observation: SwipeObservation): Promise<VariantId>;
     applyUpdated(scope: StateScope, messageId: string, swipeIndex: number, observation: SwipeObservation): Promise<VariantId>;
     applyDeleted(scope: StateScope, messageId: string, swipeIndex: number): Promise<VariantId>;
+    reconcileTyped(scope: StateScope, messageId: string, action: SwipeMutationAction, swipeIndex: number, swipes: SwipeObservation[]): Promise<ReconcileResult>;
     reconcileWholesale(scope: StateScope, messageId: string, swipes: SwipeObservation[]): Promise<ReconcileResult>;
+    private orderedVariantIds;
     private require;
 }
