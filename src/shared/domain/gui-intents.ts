@@ -18,6 +18,7 @@ export type GuiImageRef =
 export type GuiFamiliarFlag = 'Is_present' | 'Is_in_battle_team';
 export type GuiEditableFields = Record<string, JsonValue>;
 export type GuiWorldCalcSection = 'Factions' | 'Locations' | 'Ruins' | 'Events';
+export type GuiRealEstateSection = 'Estates' | 'Buildings' | 'Assets';
 
 export type GuiIntent =
   | { type: 'outfit.move'; owner: GuiOwnerRef; from: 'Worn' | 'Wardrobe'; itemKey: string }
@@ -32,6 +33,8 @@ export type GuiIntent =
   | { type: 'talent.delete'; talentKey: string }
   | { type: 'worldcalc.update'; section: GuiWorldCalcSection; itemKey: string; fields: GuiEditableFields }
   | { type: 'worldcalc.delete'; section: GuiWorldCalcSection; itemKey: string }
+  | { type: 'realestate.update'; section: GuiRealEstateSection; fields: GuiEditableFields }
+  | { type: 'realestate.clear'; section: GuiRealEstateSection }
   | { type: 'variable.set'; path: GuiPath; value: JsonValue }
   | { type: 'variable.rename'; path: GuiPath; newKey: string }
   | { type: 'variable.delete'; path: GuiPath }
@@ -164,6 +167,15 @@ export function assertGuiIntent(value: unknown): asserts value is GuiIntent {
   if (value.type === 'worldcalc.delete') {
     if (!['Factions', 'Locations', 'Ruins', 'Events'].includes(String(value.section))) throw new Error('GUI_INTENT_INVALID_WORLDCALC_SECTION');
     assertSafeKey(value.itemKey, 'worldcalc_item_key');
+    return;
+  }
+  if (value.type === 'realestate.update') {
+    if (!['Estates', 'Buildings', 'Assets'].includes(String(value.section))) throw new Error('GUI_INTENT_INVALID_REALESTATE_SECTION');
+    assertEditableFields(value.fields, 'realestate');
+    return;
+  }
+  if (value.type === 'realestate.clear') {
+    if (!['Estates', 'Buildings', 'Assets'].includes(String(value.section))) throw new Error('GUI_INTENT_INVALID_REALESTATE_SECTION');
     return;
   }
   if (value.type === 'variable.set') {
@@ -465,6 +477,14 @@ function equipmentUnequip(state: FFMVUState, intent: Extract<GuiIntent, { type: 
   reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
 
+function mergeExistingEditableFields(current: MutableRecord, fields: GuiEditableFields, label: string): void {
+  for (const [key, value] of Object.entries(fields)) {
+    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_' + label + '_FIELD_PROTECTED: ' + key);
+    if (!Object.prototype.hasOwnProperty.call(current, key)) throw new Error('GUI_' + label + '_FIELD_NOT_FOUND: ' + key);
+    current[key] = clone(value);
+  }
+}
+
 function updateMaincharEditableEntry(
   state: FFMVUState,
   collectionKey: 'Skills' | 'Talents',
@@ -474,10 +494,7 @@ function updateMaincharEditableEntry(
   const collection = requireCollection(state.Mainchar as unknown as MutableRecord, collectionKey, false);
   const current = collection[itemKey];
   if (!isRecord(current)) throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_EDITABLE: ' + itemKey);
-  for (const [key, value] of Object.entries(fields)) {
-    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_' + collectionKey.toUpperCase() + '_FIELD_PROTECTED: ' + key);
-    current[key] = clone(value);
-  }
+  mergeExistingEditableFields(current, fields, collectionKey.toUpperCase());
 }
 
 function deleteMaincharEditableEntry(
@@ -502,10 +519,7 @@ function worldCalcUpdate(state: FFMVUState, intent: Extract<GuiIntent, { type: '
   const collection = worldCalcCollection(state, intent.section);
   const current = collection[intent.itemKey];
   if (!isRecord(current)) throw new Error('GUI_WORLDCALC_ITEM_NOT_EDITABLE: ' + intent.section + '/' + intent.itemKey);
-  for (const [key, value] of Object.entries(intent.fields)) {
-    if (LEGACY_EDIT_HIDDEN_FIELDS.has(key)) throw new Error('GUI_WORLDCALC_FIELD_PROTECTED: ' + key);
-    current[key] = clone(value);
-  }
+  mergeExistingEditableFields(current, intent.fields, 'WORLDCALC');
 }
 
 function worldCalcDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: 'worldcalc.delete' }>): void {
@@ -514,6 +528,22 @@ function worldCalcDelete(state: FFMVUState, intent: Extract<GuiIntent, { type: '
     throw new Error('GUI_WORLDCALC_ITEM_NOT_FOUND: ' + intent.section + '/' + intent.itemKey);
   }
   delete collection[intent.itemKey];
+}
+
+function realEstateSection(state: FFMVUState, section: GuiRealEstateSection): MutableRecord {
+  const realEstate = requireCollection(state.Mainchar as unknown as MutableRecord, 'Real_estate', false);
+  return requireCollection(realEstate, section, false);
+}
+
+function realEstateUpdate(state: FFMVUState, intent: Extract<GuiIntent, { type: 'realestate.update' }>): void {
+  const section = realEstateSection(state, intent.section);
+  mergeExistingEditableFields(section, intent.fields, 'REALESTATE');
+}
+
+function realEstateClear(state: FFMVUState, intent: Extract<GuiIntent, { type: 'realestate.clear' }>): void {
+  const realEstate = requireCollection(state.Mainchar as unknown as MutableRecord, 'Real_estate', false);
+  if (!isRecord(realEstate[intent.section])) throw new Error('GUI_REALESTATE_SECTION_NOT_FOUND: ' + intent.section);
+  realEstate[intent.section] = {};
 }
 
 function pathParent(root: unknown, path: GuiPath): { parent: MutableRecord | unknown[]; key: string } {
@@ -624,6 +654,8 @@ export function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState
   else if (intent.type === 'talent.delete') deleteMaincharEditableEntry(state, 'Talents', intent.talentKey);
   else if (intent.type === 'worldcalc.update') worldCalcUpdate(state, intent);
   else if (intent.type === 'worldcalc.delete') worldCalcDelete(state, intent);
+  else if (intent.type === 'realestate.update') realEstateUpdate(state, intent);
+  else if (intent.type === 'realestate.clear') realEstateClear(state, intent);
   else if (intent.type === 'variable.set') variableSet(state, intent);
   else if (intent.type === 'variable.rename') variableRename(state, intent);
   else if (intent.type === 'variable.delete') variableDelete(state, intent);

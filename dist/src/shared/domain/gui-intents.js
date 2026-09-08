@@ -138,6 +138,17 @@ export function assertGuiIntent(value) {
         assertSafeKey(value.itemKey, 'worldcalc_item_key');
         return;
     }
+    if (value.type === 'realestate.update') {
+        if (!['Estates', 'Buildings', 'Assets'].includes(String(value.section)))
+            throw new Error('GUI_INTENT_INVALID_REALESTATE_SECTION');
+        assertEditableFields(value.fields, 'realestate');
+        return;
+    }
+    if (value.type === 'realestate.clear') {
+        if (!['Estates', 'Buildings', 'Assets'].includes(String(value.section)))
+            throw new Error('GUI_INTENT_INVALID_REALESTATE_SECTION');
+        return;
+    }
     if (value.type === 'variable.set') {
         assertGuiPath(value.path, false);
         assertVariablePayload(value.value);
@@ -436,16 +447,21 @@ function equipmentUnequip(state, intent) {
     const inventory = requireCollection(owner, 'Inventory', true);
     reverseEquipAndReturn(owner, equipment, intent.equipmentKey, clone(raw), inventory);
 }
+function mergeExistingEditableFields(current, fields, label) {
+    for (const [key, value] of Object.entries(fields)) {
+        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
+            throw new Error('GUI_' + label + '_FIELD_PROTECTED: ' + key);
+        if (!Object.prototype.hasOwnProperty.call(current, key))
+            throw new Error('GUI_' + label + '_FIELD_NOT_FOUND: ' + key);
+        current[key] = clone(value);
+    }
+}
 function updateMaincharEditableEntry(state, collectionKey, itemKey, fields) {
     const collection = requireCollection(state.Mainchar, collectionKey, false);
     const current = collection[itemKey];
     if (!isRecord(current))
         throw new Error('GUI_' + collectionKey.toUpperCase() + '_ITEM_NOT_EDITABLE: ' + itemKey);
-    for (const [key, value] of Object.entries(fields)) {
-        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
-            throw new Error('GUI_' + collectionKey.toUpperCase() + '_FIELD_PROTECTED: ' + key);
-        current[key] = clone(value);
-    }
+    mergeExistingEditableFields(current, fields, collectionKey.toUpperCase());
 }
 function deleteMaincharEditableEntry(state, collectionKey, itemKey) {
     const collection = requireCollection(state.Mainchar, collectionKey, false);
@@ -465,11 +481,7 @@ function worldCalcUpdate(state, intent) {
     const current = collection[intent.itemKey];
     if (!isRecord(current))
         throw new Error('GUI_WORLDCALC_ITEM_NOT_EDITABLE: ' + intent.section + '/' + intent.itemKey);
-    for (const [key, value] of Object.entries(intent.fields)) {
-        if (LEGACY_EDIT_HIDDEN_FIELDS.has(key))
-            throw new Error('GUI_WORLDCALC_FIELD_PROTECTED: ' + key);
-        current[key] = clone(value);
-    }
+    mergeExistingEditableFields(current, intent.fields, 'WORLDCALC');
 }
 function worldCalcDelete(state, intent) {
     const collection = worldCalcCollection(state, intent.section);
@@ -477,6 +489,20 @@ function worldCalcDelete(state, intent) {
         throw new Error('GUI_WORLDCALC_ITEM_NOT_FOUND: ' + intent.section + '/' + intent.itemKey);
     }
     delete collection[intent.itemKey];
+}
+function realEstateSection(state, section) {
+    const realEstate = requireCollection(state.Mainchar, 'Real_estate', false);
+    return requireCollection(realEstate, section, false);
+}
+function realEstateUpdate(state, intent) {
+    const section = realEstateSection(state, intent.section);
+    mergeExistingEditableFields(section, intent.fields, 'REALESTATE');
+}
+function realEstateClear(state, intent) {
+    const realEstate = requireCollection(state.Mainchar, 'Real_estate', false);
+    if (!isRecord(realEstate[intent.section]))
+        throw new Error('GUI_REALESTATE_SECTION_NOT_FOUND: ' + intent.section);
+    realEstate[intent.section] = {};
 }
 function pathParent(root, path) {
     if (!path.length)
@@ -615,6 +641,10 @@ export function applyGuiIntent(input, intent) {
         worldCalcUpdate(state, intent);
     else if (intent.type === 'worldcalc.delete')
         worldCalcDelete(state, intent);
+    else if (intent.type === 'realestate.update')
+        realEstateUpdate(state, intent);
+    else if (intent.type === 'realestate.clear')
+        realEstateClear(state, intent);
     else if (intent.type === 'variable.set')
         variableSet(state, intent);
     else if (intent.type === 'variable.rename')

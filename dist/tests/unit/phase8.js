@@ -303,6 +303,14 @@ async function main() {
         protectedSkillFieldRejected = String(error).includes('GUI_SKILLS_FIELD_PROTECTED');
     }
     assert(protectedSkillFieldRejected, 'typed Skill edit cannot modify legacy-hidden name metadata');
+    let newSkillFieldRejected = false;
+    try {
+        applyGuiIntent(legacyLists, { type: 'skill.update', skillKey: 'fireball', fields: { NewlyInjected: 'x' } });
+    }
+    catch (error) {
+        newSkillFieldRejected = String(error).includes('GUI_SKILLS_FIELD_NOT_FOUND');
+    }
+    assert(newSkillFieldRejected, 'typed Skill edit cannot add a top-level field that frozen legacy form did not expose');
     const withoutQuest = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Quests', 'quest_1'] });
     assert(!withoutQuest.Mainchar.Quests.quest_1, 'legacy Quest delete uses the validated dynamic collection path');
     const withoutBuff = applyGuiIntent(legacyLists, { type: 'variable.delete', path: ['Mainchar', 'Buffs', 'Blessing'] });
@@ -362,6 +370,53 @@ async function main() {
         protectedWorldFieldRejected = String(error).includes('GUI_WORLDCALC_FIELD_PROTECTED');
     }
     assert(protectedWorldFieldRejected, 'typed World_Calc edit cannot modify legacy-hidden template metadata');
+    let newWorldFieldRejected = false;
+    try {
+        applyGuiIntent(worldLists, { type: 'worldcalc.update', section: 'Locations', itemKey: 'harbor', fields: { NewlyInjected: 'x' } });
+    }
+    catch (error) {
+        newWorldFieldRejected = String(error).includes('GUI_WORLDCALC_FIELD_NOT_FOUND');
+    }
+    assert(newWorldFieldRejected, 'typed World_Calc edit cannot add a top-level field absent from the frozen edit form');
+    const realEstateLists = createDefaultState();
+    realEstateLists.Mainchar.Real_estate.Estates = {
+        home: { Name: 'Home', Value: 10 },
+        farm: { Name: 'Farm', Value: 20 },
+    };
+    realEstateLists.Mainchar.Real_estate.Buildings = {
+        mill: { Name: 'Mill', Condition: 'good' },
+    };
+    realEstateLists.Mainchar.Real_estate.Assets = {
+        cart: { Name: 'Cart', Count: 1 },
+    };
+    const editedEstates = applyGuiIntent(realEstateLists, {
+        type: 'realestate.update',
+        section: 'Estates',
+        fields: { home: { Name: 'Home', Value: 15 } },
+    });
+    assert(editedEstates.Mainchar.Real_estate.Estates.home.Value === 15
+        && Boolean(editedEstates.Mainchar.Real_estate.Estates.farm), 'Real_estate section edit updates only existing top-level entries and preserves untouched entries');
+    const editedBuildings = applyGuiIntent(realEstateLists, {
+        type: 'realestate.update',
+        section: 'Buildings',
+        fields: { mill: { Name: 'Mill', Condition: 'damaged' } },
+    });
+    assert(editedBuildings.Mainchar.Real_estate.Buildings.mill.Condition === 'damaged', 'Real_estate Buildings edit mirrors frozen section-modal semantics');
+    let newEstateRejected = false;
+    try {
+        applyGuiIntent(realEstateLists, {
+            type: 'realestate.update',
+            section: 'Estates',
+            fields: { castle: { Name: 'Castle' } },
+        });
+    }
+    catch (error) {
+        newEstateRejected = String(error).includes('GUI_REALESTATE_FIELD_NOT_FOUND');
+    }
+    assert(newEstateRejected, 'Real_estate edit cannot add an entry that the frozen section form did not expose');
+    const clearedAssets = applyGuiIntent(realEstateLists, { type: 'realestate.clear', section: 'Assets' });
+    assert(Object.keys(clearedAssets.Mainchar.Real_estate.Assets).length === 0
+        && Boolean(clearedAssets.Mainchar.Real_estate.Estates.home), 'legacy Real_estate delete adapts to clearing only the selected fixed-schema section');
     const worldStorage = new MemoryJsonStorage();
     const worldService = new StateService(worldStorage, createReducerRegistry(), createProjectionRegistry());
     const worldScope = { userId: 'u', chatId: 'worldcalc-gui' };
@@ -377,6 +432,21 @@ async function main() {
     assert(worldCommit.state.World_Calc.Locations.harbor.Danger === 4
         && storedWorldCommit.kind === 'gui'
         && storedWorldCommit.note === 'gui-intent:worldcalc.update', 'StateService commits selected World_Calc edits through normal optimistic GUI transaction semantics');
+    const realEstateStorage = new MemoryJsonStorage();
+    const realEstateService = new StateService(realEstateStorage, createReducerRegistry(), createProjectionRegistry());
+    const realEstateScope = { userId: 'u', chatId: 'realestate-gui' };
+    const realEstateGenesis = await realEstateService.createGenesis(realEstateScope, { state: realEstateLists });
+    const realEstateCommit = await realEstateService.commitGuiIntent(realEstateScope, {
+        expectedParentNodeId: realEstateGenesis.nodeId,
+        expectedParentStateHash: realEstateGenesis.stateHash,
+        intent: { type: 'realestate.clear', section: 'Buildings' },
+        anchor: { lineageAnchorId: 'root' },
+        requestId: 'gui-realestate-clear',
+    });
+    const storedRealEstateCommit = await new EventStore(realEstateStorage).readCommit(realEstateScope, realEstateCommit.nodeId);
+    assert(Object.keys(realEstateCommit.state.Mainchar.Real_estate.Buildings).length === 0
+        && Boolean(realEstateCommit.state.Mainchar.Real_estate.Estates.home)
+        && storedRealEstateCommit.note === 'gui-intent:realestate.clear', 'StateService commits Real_estate legacy delete as fixed-shape section clear');
     const skillStorage = new MemoryJsonStorage();
     const skillService = new StateService(skillStorage, createReducerRegistry(), createProjectionRegistry());
     const skillScope = { userId: 'u', chatId: 'skills-talents-gui' };
