@@ -1,5 +1,5 @@
 import { canonicalHash } from '../shared/hashing.js';
-import { applyJsonPatch, assertModelOperationPolicy, assertPatchResourceLimits, canonicalizeTupleOperation } from '../shared/json-patch.js';
+import { applyJsonPatch, assertModelOperationPolicy, assertPatchResourceLimits, canonicalizeIncomingModelOperation } from '../shared/json-patch.js';
 import { assertModelPatchAuthorization } from '../shared/patch-policy.js';
 import { computeProjectionConsumptionPatch } from '../shared/projection-consumption.js';
 import { LEGACY_PROJECTION_VERSION, LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION } from '../shared/state-schema.js';
@@ -287,9 +287,11 @@ export class StateService {
                 assertModelOperationPolicy(rawPatch);
                 const patchWithStructuralParents = withRequiredModelStructuralParents(parent.state, rawPatch);
                 for (const rawOperation of patchWithStructuralParents) {
-                    const operation = canonicalizeTupleOperation(workingState, rawOperation);
-                    canonicalPatch.push(structuredClone(operation));
-                    workingState = applyJsonPatch(workingState, [operation]);
+                    const operations = canonicalizeIncomingModelOperation(workingState, rawOperation);
+                    for (const operation of operations) {
+                        canonicalPatch.push(structuredClone(operation));
+                        workingState = applyJsonPatch(workingState, [operation]);
+                    }
                 }
                 assertPatchResourceLimits(canonicalPatch);
                 assertModelPatchAuthorization(parent.state, canonicalPatch, input.authorization);

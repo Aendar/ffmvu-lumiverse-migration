@@ -1,5 +1,6 @@
 import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import { isRecord } from '../shared/domain/value-utils.js';
+import { isLabeledTupleAtPath } from '../shared/domain/tuple-paths.js';
 export const VARIABLES_EDITOR_CSS = `
   .ve-shell{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;color:var(--text-primary);}
   .ve-toolbar{display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:4;padding:4px 0 8px;background:rgba(0,31,63,.96);}
@@ -42,8 +43,8 @@ const VE_PROTECTED_ROOT = new Set([
     'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
     'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
-function veIsTuple(value) {
-    return Array.isArray(value) && value.length >= 2 && typeof value[1] === 'string';
+function veIsTuple(path, value) {
+    return isLabeledTupleAtPath(path, value);
 }
 function veType(value) {
     if (value === null)
@@ -75,21 +76,21 @@ function veCanEditValue(path) {
 function veCanManageEntry(path) {
     return isGuiVariableDynamicCollectionPath(path.slice(0, -1));
 }
-function veMatches(key, value, query, depth = 0) {
+function veMatches(key, value, query, path, depth = 0) {
     if (!query)
         return true;
     if (depth > 20)
         return false;
     if (key.toLocaleLowerCase('ru').includes(query))
         return true;
-    if (veIsTuple(value))
-        return veMatches(key, value[0], query, depth + 1) || value[1].toLocaleLowerCase('ru').includes(query);
+    if (veIsTuple(path, value))
+        return veMatches(key, value[0], query, [...path, '0'], depth + 1) || value[1].toLocaleLowerCase('ru').includes(query);
     if (value === null || typeof value !== 'object')
         return vePrimitiveText(value).toLocaleLowerCase('ru').includes(query);
     if (Array.isArray(value))
-        return value.some((child, index) => veMatches(String(index), child, query, depth + 1));
+        return value.some((child, index) => veMatches(String(index), child, query, [...path, String(index)], depth + 1));
     if (isRecord(value))
-        return Object.entries(value).some(([childKey, child]) => veMatches(childKey, child, query, depth + 1));
+        return Object.entries(value).some(([childKey, child]) => veMatches(childKey, child, query, [...path, childKey], depth + 1));
     return false;
 }
 function veButton(label, className = '') {
@@ -277,13 +278,13 @@ function veActionButtons(root, path, key, value, parentIsArray, options) {
     actions.className = 've-actions';
     const editable = veCanEditValue(path);
     const manageable = !parentIsArray && veCanManageEntry(path);
-    if (editable && (value === null || typeof value !== 'object' || veIsTuple(value))) {
+    if (editable && (value === null || typeof value !== 'object' || veIsTuple(path, value))) {
         const edit = veButton('Edit');
         edit.disabled = options.mutationDisabled;
         edit.addEventListener('click', event => {
             event.stopPropagation();
-            const editPath = veIsTuple(value) ? [...path, '0'] : path;
-            const editValue = veIsTuple(value) ? value[0] : value;
+            const editPath = veIsTuple(path, value) ? [...path, '0'] : path;
+            const editValue = veIsTuple(path, value) ? value[0] : value;
             veShowEdit(root, editPath, editValue, options);
         });
         actions.appendChild(edit);
@@ -311,9 +312,9 @@ function veActionButtons(root, path, key, value, parentIsArray, options) {
     return actions;
 }
 function veRenderEntry(root, key, value, path, parentIsArray, depth, query, options) {
-    if (!veMatches(key, value, query))
+    if (!veMatches(key, value, query, path))
         return null;
-    const tuple = veIsTuple(value);
+    const tuple = veIsTuple(path, value);
     const effectiveValue = tuple ? value[0] : value;
     const isContainer = !tuple && effectiveValue !== null && typeof effectiveValue === 'object';
     if (!isContainer) {
