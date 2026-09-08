@@ -118,6 +118,11 @@ async function main() {
   const tupleCollisionState = new StateService(tupleCollisionStorage, createReducerRegistry(), createProjectionRegistry());
   const tupleCollisionScope = { userId: 'u', chatId: 'tuple-collision' };
   const tupleCollisionSeed = structuredClone(genesis.state);
+  tupleCollisionSeed.Narrative.NPCs = {
+    npc_0001: { ID: 'npc_0001', DisplayName: 'A' },
+    npc_0002: { ID: 'npc_0002', DisplayName: 'B' },
+  };
+  tupleCollisionSeed.Narrative.NextNpcId = 3;
   tupleCollisionSeed.Narrative.Scene.PresentNPCs = ['npc_0001', 'npc_0002'];
   tupleCollisionSeed.Narrative.Scene.Changed = false;
   const tupleCollisionGenesis = await tupleCollisionState.createGenesis(tupleCollisionScope, { state: tupleCollisionSeed });
