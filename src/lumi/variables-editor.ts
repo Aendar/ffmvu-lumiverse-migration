@@ -1,5 +1,5 @@
 import type { GuiIntent, GuiPath } from '../shared/domain/gui-intents.js';
-import { isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
+import { isGuiVariableCoupledDomainPath, isGuiVariableDynamicCollectionPath } from '../shared/domain/gui-variable-policy.js';
 import type { FFMVUState, JsonValue, MutableRecord } from '../shared/state-schema.js';
 import { isRecord } from '../shared/domain/value-utils.js';
 import { isLabeledTupleAtPath } from '../shared/domain/tuple-paths.js';
@@ -83,7 +83,7 @@ function vePathText(path: GuiPath): string {
 }
 
 function veCanEditValue(path: GuiPath): boolean {
-  return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0]));
+  return !(path.length === 1 && VE_PROTECTED_ROOT.has(path[0])) && !isGuiVariableCoupledDomainPath(path);
 }
 
 function veCanManageEntry(path: GuiPath): boolean {
