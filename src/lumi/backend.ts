@@ -22,7 +22,7 @@ import { DiagnosticTraceStore } from './diagnostic-trace.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.15';
+const BRIDGE_VERSION = '0.13.16';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
