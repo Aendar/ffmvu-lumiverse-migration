@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 const parts = [
   'dist/src/shared/domain/value-utils.js',
   'dist/src/shared/domain/gui-variable-policy.js',
+  'dist/src/shared/domain/tuple-paths.js',
   'dist/src/lumi/statusmenu-model.js',
   'dist/src/lumi/statusmenu-legacy-template.js',
   'dist/src/lumi/variables-editor.js',
@@ -18,6 +19,7 @@ function stripKnownImports(_path, text) {
   const localDependencies = new Set([
     '../shared/domain/value-utils.js',
     '../shared/domain/gui-variable-policy.js',
+    '../shared/domain/tuple-paths.js',
     './statusmenu-model.js',
     './statusmenu-legacy-template.js',
     './variables-editor.js',
