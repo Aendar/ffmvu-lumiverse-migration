@@ -29,6 +29,7 @@ export class HeadResolver {
         const path = await this.eventStore.traceDescendantPath(scope, base.id, root.tipNodeId); if (!path || !path.every(c => isAllowedLineageCommit(c, 'root'))) return this.bad('diverged_history', base, 'invalid root non-message lineage');
         current = await this.materializer.materialize(scope, root.tipNodeId);
       }
+      const committedAttemptTip = await this.eventStore.resolveCommittedAttemptTip(scope);
       let terminalVariant: VariantId | undefined;
 
       for (const message of messages.slice(startIndex)) {
@@ -76,6 +77,24 @@ export class HeadResolver {
           const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, anchor.tipNodeId);
           if (!path || !path.every(c => isAllowedLineageCommit(c, variantId))) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'invalid post-attempt lineage' };
           current = await this.materializer.materialize(scope, anchor.tipNodeId);
+        }
+
+        const boundAttemptIds = new Set(anchor.attemptIds);
+        if (
+          committedAttemptTip &&
+          committedAttemptTip.variantId === variantId &&
+          !boundAttemptIds.has(committedAttemptTip.attemptId)
+        ) {
+          const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, committedAttemptTip.nodeId);
+          if (path !== null) {
+            return {
+              health: 'unreconciled',
+              nodeId: current.nodeId,
+              stateHash: current.stateHash,
+              variantId,
+              reason: `durable committed attempt ${committedAttemptTip.attemptId} is not bound to active transcript lineage`,
+            };
+          }
         }
         // Once a VariantId has immutable attempt/commit provenance, current assistant prose is mutable transcript
         // presentation. Text fingerprints remain rebuildable diagnostics and must not gate state reachability.

@@ -193,6 +193,72 @@ async function main() {
     const recoverResolver = new HeadResolver(recoverService.store, recoverService.materializer, new AnchorStore(recoverStorage), recoverAttempts, recoverVariants);
     const recovered = await recoverResolver.resolve(scope, recoverBase.nodeId, [{ id: 'recover', role: 'assistant', content: finalText, swipes: [finalText], swipeId: 0 }]);
     assert(recovered.health === 'ok' && recovered.nodeId === recoveredCommit.nodeId, 'linked Continue attempt resolves a stopped predecessor without rewriting its forensic evidence');
+    // A durable model transaction that was committed but never appended to Anchor/Attempt evidence
+    // must fail closed after restart instead of silently resolving the previous good state as health=ok.
+    const unboundStorage = new MemoryJsonStorage();
+    const unboundService = new StateService(unboundStorage, createReducerRegistry(), createProjectionRegistry());
+    const unboundBase = await unboundService.createGenesis(scope);
+    const unboundVariants = new VariantIndexStore(unboundStorage);
+    const unboundIndex = await unboundVariants.create(scope, 'unbound', [{ text: 'continue-result' }]);
+    const unboundVariant = unboundIndex.bySwipeIndex[0];
+    const firstAttemptId = createId('attempt');
+    const unboundProjection = await unboundService.getProjectionForNode(scope, unboundBase.nodeId);
+    const unboundAttempts = new TranscriptAttemptStore(unboundStorage);
+    await unboundAttempts.append({
+        id: firstAttemptId, scope, variantId: unboundVariant, messageId: 'unbound', generationType: 'normal', ordinal: 1,
+        baseNodeId: unboundBase.nodeId, baseStateHash: unboundBase.stateHash,
+        projectionSourceKind: 'node', projectionSourceNodeId: unboundBase.nodeId, projectionSourceStateHash: unboundBase.stateHash,
+        projectionVersion: unboundProjection.projectionVersion, promptProtocolVersion: unboundProjection.promptProtocolVersion, promptViewHash: unboundProjection.viewHash,
+        modelCommitId: null, status: 'no_patch', storedMessageTextHash: unboundIndex.swipeFingerprints[unboundVariant].storedMessageTextHash,
+        createdAt: isoNow(),
+    });
+    const unboundAnchors = new AnchorStore(unboundStorage);
+    await unboundAnchors.put({
+        variantId: unboundVariant, scope, messageId: 'unbound', observedSwipeIndex: 0,
+        initialBaseNodeId: unboundBase.nodeId, initialBaseStateHash: unboundBase.stateHash,
+        attemptIds: [firstAttemptId], lastAttemptId: firstAttemptId,
+        storedMessageTextHash: unboundIndex.swipeFingerprints[unboundVariant].storedMessageTextHash,
+        tipNodeId: unboundBase.nodeId, status: 'no_patch', createdAt: isoNow(), updatedAt: isoNow(),
+    });
+    const unboundAttemptId = createId('attempt');
+    const durablyCommitted = await unboundService.commitPatch(scope, {
+        parentNodeId: unboundBase.nodeId,
+        kind: 'model',
+        anchor: { messageId: 'unbound', variantId: unboundVariant, attemptId: unboundAttemptId, lineageAnchorId: unboundVariant, messageRole: 'assistant' },
+        patch: [{ op: 'replace', path: '/Narrative/Turn', value: 1 }],
+    });
+    const restartedService = new StateService(unboundStorage, createReducerRegistry(), createProjectionRegistry());
+    const restartedResolver = new HeadResolver(restartedService.store, restartedService.materializer, new AnchorStore(unboundStorage), new TranscriptAttemptStore(unboundStorage), new VariantIndexStore(unboundStorage));
+    const afterRestart = await restartedResolver.resolve(scope, unboundBase.nodeId, [{ id: 'unbound', role: 'assistant', content: 'continue-result', swipes: ['continue-result'], swipeId: 0 }]);
+    assert(afterRestart.health === 'unreconciled' && afterRestart.nodeId === unboundBase.nodeId && String(afterRestart.reason).includes(unboundAttemptId), 'committed-but-unbound attempt is explicit fail-closed after restart instead of stale health=ok');
+    // If later valid evidence deliberately advances a sibling branch from the same old base,
+    // the historical orphan is not auto-selected and does not poison the now-bound active tip.
+    const reboundAttemptId = createId('attempt');
+    const reboundCommit = await unboundService.commitPatch(scope, {
+        parentNodeId: unboundBase.nodeId,
+        kind: 'model',
+        anchor: { messageId: 'unbound', variantId: unboundVariant, attemptId: reboundAttemptId, lineageAnchorId: unboundVariant, messageRole: 'assistant' },
+        patch: [{ op: 'replace', path: '/Narrative/Turn', value: 2 }],
+    });
+    await unboundAttempts.append({
+        id: reboundAttemptId, scope, variantId: unboundVariant, messageId: 'unbound', generationType: 'continue', ordinal: 2,
+        baseNodeId: unboundBase.nodeId, baseStateHash: unboundBase.stateHash,
+        projectionSourceKind: 'node', projectionSourceNodeId: unboundBase.nodeId, projectionSourceStateHash: unboundBase.stateHash,
+        projectionVersion: unboundProjection.projectionVersion, promptProtocolVersion: unboundProjection.promptProtocolVersion, promptViewHash: unboundProjection.viewHash,
+        modelCommitId: reboundCommit.nodeId, status: 'committed', storedMessageTextHash: unboundIndex.swipeFingerprints[unboundVariant].storedMessageTextHash,
+        createdAt: isoNow(),
+    });
+    const reboundAnchor = await unboundAnchors.read(scope, unboundVariant);
+    if (!reboundAnchor)
+        throw new Error('rebound anchor missing');
+    reboundAnchor.attemptIds = [...reboundAnchor.attemptIds, reboundAttemptId];
+    reboundAnchor.lastAttemptId = reboundAttemptId;
+    reboundAnchor.tipNodeId = reboundCommit.nodeId;
+    reboundAnchor.status = 'committed';
+    reboundAnchor.updatedAt = isoNow();
+    await unboundAnchors.put(reboundAnchor);
+    const reboundResolved = await restartedResolver.resolve(scope, unboundBase.nodeId, [{ id: 'unbound', role: 'assistant', content: 'continue-result', swipes: ['continue-result'], swipeId: 0 }]);
+    assert(reboundResolved.health === 'ok' && reboundResolved.nodeId === reboundCommit.nodeId && reboundResolved.nodeId !== durablyCommitted.nodeId, 'superseded sibling orphan is not silently rebound or selected');
     console.log(`phase3 tests passed: ${passed}`);
 }
 void main();

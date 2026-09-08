@@ -7,6 +7,14 @@ export interface StoreHeadResolution {
     candidates?: string[];
     reason?: string;
 }
+export interface CommittedAttemptTip {
+    revisionId: string;
+    transactionId: string;
+    nodeId: string;
+    stateHash: string;
+    variantId: string;
+    attemptId: string;
+}
 export declare class EventStore {
     private readonly storage;
     private readonly immutable;
@@ -24,6 +32,7 @@ export declare class EventStore {
         value: StateCommit;
     }>;
     traceDescendantPath(scope: StateScope, ancestorNodeId: string, descendantNodeId: string): Promise<StateCommit[] | null>;
+    resolveCommittedAttemptTip(scope: StateScope): Promise<CommittedAttemptTip | null>;
     isNodeCommitted(scope: StateScope, nodeId: string): Promise<boolean>;
     resolveStoreHead(scope: StateScope): Promise<StoreHeadResolution>;
 }

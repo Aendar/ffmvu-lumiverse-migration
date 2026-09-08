@@ -50,6 +50,39 @@ export class EventStore {
         }
         return reverse.reverse();
     }
+    async resolveCommittedAttemptTip(scope) {
+        const physical = await this.resolveStoreHead(scope);
+        if (physical.status === 'empty')
+            return null;
+        if (physical.status !== 'ok' || !physical.head) {
+            throw new Error('STORE_HEAD_' + physical.status.toUpperCase() + (physical.reason ? ': ' + physical.reason : ''));
+        }
+        const revision = physical.head;
+        const tip = await this.readNode(scope, revision.semanticTipNodeId);
+        if (tip.type !== 'commit')
+            return null;
+        const attemptId = tip.value.anchor.attemptId;
+        const variantId = tip.value.anchor.variantId;
+        if (!attemptId || !variantId)
+            return null;
+        if (tip.value.transactionId !== revision.transactionId)
+            throw new Error('REVISION_TIP_TRANSACTION_MISMATCH: ' + revision.revisionId);
+        if (tip.value.resultStateHash !== revision.semanticTipStateHash)
+            throw new Error('REVISION_TIP_STATE_HASH_MISMATCH: ' + revision.revisionId);
+        const ref = revision.committedArtifacts.find(item => item.type === 'commit' && item.id === tip.value.id);
+        if (!ref)
+            throw new Error('REVISION_TIP_NOT_COMMITTED: ' + revision.revisionId);
+        if (ref.hash !== await canonicalHash(tip.value))
+            throw new Error('REVISION_TIP_ARTIFACT_HASH_MISMATCH: ' + revision.revisionId);
+        return {
+            revisionId: revision.revisionId,
+            transactionId: revision.transactionId,
+            nodeId: tip.value.id,
+            stateHash: revision.semanticTipStateHash,
+            variantId,
+            attemptId,
+        };
+    }
     async isNodeCommitted(scope, nodeId) {
         const prefix = `${scopeRoot(scope)}/store-revisions/`;
         const paths = (await this.storage.list(prefix)).filter(path => path.endsWith('.json'));
