@@ -2,7 +2,7 @@ import { canonicalStringify } from '../shared/hashing.js';
 function xmlAttr(value) {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-export function injectNarrativeHistoryContext(messages, timestamps, recentChanges) {
+export function injectNarrativeHistoryContext(messages, timestamps, recentChanges, stateHistory = null) {
     const out = structuredClone(messages);
     let tagged = 0;
     for (let i = 0; i < out.length; i++) {
@@ -17,7 +17,7 @@ export function injectNarrativeHistoryContext(messages, timestamps, recentChange
             message.content = marker + '\n' + message.content;
         tagged += 1;
     }
-    if (!tagged && !recentChanges)
+    if (!tagged && !recentChanges && !stateHistory)
         return out;
     const rules = [
         '<FFMVU_HISTORY_CONTEXT>',
@@ -25,6 +25,9 @@ export function injectNarrativeHistoryContext(messages, timestamps, recentChange
         'Use them to preserve chronology across the conversation. Do not infer elapsed in-world time from user message timing.',
         recentChanges
             ? 'RECENT_CHANGES is a net diff between the last state already represented by an assistant response and the state being delivered now. It may include GUI/system changes that never appeared in prose. Treat the current MODEL_STATE as authoritative; use RECENT_CHANGES only to understand what changed off-screen.\n<RECENT_CHANGES>' + canonicalStringify(recentChanges) + '</RECENT_CHANGES>'
+            : '',
+        stateHistory
+            ? 'STATE_TRAIL is a bounded read-only history of structured values along the active semantic lineage. Each change.turn is Narrative.Turn in the post-change state. current MODEL_STATE is authoritative; older values are historical context only and must never override it.\n<STATE_TRAIL>' + canonicalStringify(stateHistory) + '</STATE_TRAIL>'
             : '',
         '</FFMVU_HISTORY_CONTEXT>',
     ].filter(Boolean).join('\n');
