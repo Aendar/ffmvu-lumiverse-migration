@@ -4,7 +4,7 @@ import { validateState } from '../state-validate.js';
 import { LEGACY_PROJECTION_VERSION } from '../state-schema.js';
 import type { FFMVUState, PromptView } from '../state-schema.js';
 import { isRecord } from './value-utils.js';
-import type { ProjectionSeed } from '../../persistence/types.js';
+import { PORTABLE_SNAPSHOT_FORMAT, type ProjectionSeed } from '../../persistence/types.js';
 
 export interface LegacyImportExtraction {
   state: FFMVUState;
@@ -14,6 +14,7 @@ export interface LegacyImportExtraction {
 
 export async function extractLegacyImport(input: unknown): Promise<LegacyImportExtraction> {
   if (!isRecord(input)) throw new Error('LEGACY_IMPORT_NOT_OBJECT');
+  if (input.format === PORTABLE_SNAPSHOT_FORMAT) throw new Error('LEGACY_IMPORT_PORTABLE_SNAPSHOT_USE_NATIVE_IMPORT');
   const wrappedState = isRecord(input.stat_data) ? input.stat_data : input;
   const state = normalizeState(wrappedState);
   const errors = validateState(state);

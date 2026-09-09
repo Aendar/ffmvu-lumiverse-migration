@@ -4,6 +4,7 @@ import { createProjectionRegistry } from '../../src/shared/projection-registry.j
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { buildModelPatchAuthorizationView } from '../../src/shared/patch-policy.js';
+import { ACTIVE_PREFIX_FINGERPRINT_VERSION } from '../../src/persistence/types.js';
 let passed = 0;
 function assert(value, message) { if (!value)
     throw new Error('ASSERT: ' + message); passed += 1; }
@@ -49,10 +50,28 @@ async function main() {
     const snapshot = await service2.exportPortableSnapshot(source2, finalized.nodeId);
     const target = { userId: 'u', chatId: 'target' };
     const service3 = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
-    const loaded = await service3.importPortableSnapshot(target, snapshot);
+    const boundary = {
+        throughMessageId: 'fresh-greeting',
+        activePrefixHash: 'fresh-prefix-hash',
+        fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+    };
+    const loaded = await service3.importPortableSnapshot(target, snapshot, boundary);
     const afterImport = await service3.getProjectionForNode(target, loaded.nodeId);
     assert(loaded.stateHash === finalized.stateHash, 'portable snapshot preserves authoritative state exactly');
     assert(afterImport.sourceKind === 'base-seed' && afterImport.viewHash === beforeExport.viewHash, 'portable snapshot preserves exact next-turn projection across chat fork');
+    const importedBase = await service3.store.readNode(target, loaded.nodeId);
+    assert(importedBase.type === 'base' &&
+        importedBase.value.kind === 'fork' &&
+        importedBase.value.provenance?.source === 'portable-snapshot' &&
+        importedBase.value.transcriptBoundary?.throughMessageId === 'fresh-greeting', 'portable import creates a fork base with portable provenance and fresh-chat transcript boundary');
+    let wrongImporterRejected = false;
+    try {
+        await service3.importLegacyState({ userId: 'u', chatId: 'portable-through-legacy' }, snapshot);
+    }
+    catch (error) {
+        wrongImporterRejected = String(error).includes('LEGACY_IMPORT_PORTABLE_SNAPSHOT_USE_NATIVE_IMPORT');
+    }
+    assert(wrongImporterRejected, 'legacy import rejects portable snapshot format instead of normalizing the wrapper as state');
     let tamper = false;
     try {
         const bad = structuredClone(snapshot);

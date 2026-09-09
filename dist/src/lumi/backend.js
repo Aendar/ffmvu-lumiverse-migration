@@ -14,12 +14,12 @@ import { assertGuiIntent } from '../shared/domain/gui-intents.js';
 import { validateGameStartPayload } from '../shared/domain/gamestart.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
 import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
-import { filterTranscriptForGeneration, swipeObservations, toHostTranscript } from './host-adapter.js';
+import { filterTranscriptForGeneration, suppressChatHistoryBySourceIds, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.19';
+const BRIDGE_VERSION = '0.13.20';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -611,6 +611,18 @@ async function prepareGeneration(context, targetMessageId) {
         continueResolvesAttemptId = lastAttempt.id;
         head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
     }
+    let suppressedHistoryMessageIds = [];
+    const baseArtifact = await rt.state.store.readNode(scope, baseId);
+    if (baseArtifact.type === 'base' &&
+        baseArtifact.value.kind === 'fork' &&
+        baseArtifact.value.provenance?.source === 'portable-snapshot' &&
+        baseArtifact.value.transcriptBoundary) {
+        const boundaryMessageId = baseArtifact.value.transcriptBoundary.throughMessageId;
+        const boundaryIndex = rawAll.findIndex(message => String(message.id) === boundaryMessageId);
+        if (boundaryIndex >= 0) {
+            suppressedHistoryMessageIds = rawAll.slice(0, boundaryIndex + 1).map(message => String(message.id));
+        }
+    }
     const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
     const historyContext = await buildNarrativeHistoryContext(rt, scope, raw, head.nodeId);
@@ -636,6 +648,7 @@ async function prepareGeneration(context, targetMessageId) {
         assistantNarrativeTimestamps: historyContext.timestamps,
         recentChanges: historyContext.recentChanges,
         stateHistory: historyContext.stateHistory,
+        ...(suppressedHistoryMessageIds.length ? { suppressedHistoryMessageIds } : {}),
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -664,6 +677,7 @@ async function prepareGeneration(context, targetMessageId) {
         narrativeHistoryTimestampCount: Object.keys(historyContext.timestamps).length,
         recentChangeDomains: historyContext.recentChanges ? Object.keys(historyContext.recentChanges).filter(key => key !== 'observedAt') : [],
         stateHistoryTrackCount: historyContext.stateHistory?.tracks.length ?? 0,
+        suppressedHistoryMessageCount: suppressedHistoryMessageIds.length,
         ...(continueSnapshot ? {
             continuePreMessageId: continueSnapshot.messageId,
             continuePreSwipeId: continueSnapshot.swipeId,
@@ -1643,7 +1657,8 @@ const interceptorHandler = async (messages, context) => {
         generationType: pending.generationType,
         messageCount: messages.length,
     });
-    const injected = injectFrozenModelState(messages, pending.projectionView);
+    const promptMessages = suppressChatHistoryBySourceIds(messages, pending.suppressedHistoryMessageIds ?? []);
+    const injected = injectFrozenModelState(promptMessages, pending.projectionView);
     pending.injectionMode = injected.mode;
     const historyMessages = injectNarrativeHistoryContext(injected.messages, pending.assistantNarrativeTimestamps ?? {}, pending.recentChanges ?? null, pending.stateHistory ?? null);
     const finalMessages = pending.diagnosticNoPatchProbe ? injectNoPatchProbe(historyMessages) : historyMessages;
@@ -1655,6 +1670,7 @@ const interceptorHandler = async (messages, context) => {
         narrativeHistoryTimestampCount: Object.keys(pending.assistantNarrativeTimestamps ?? {}).length,
         recentChangeDomains: pending.recentChanges ? Object.keys(pending.recentChanges).filter(key => key !== 'observedAt') : [],
         stateHistoryTrackCount: pending.stateHistory?.tracks.length ?? 0,
+        suppressedHistoryMessageCount: pending.suppressedHistoryMessageIds?.length ?? 0,
     });
     if (injected.mode !== 'fallback')
         return finalMessages;
@@ -1857,6 +1873,66 @@ spindle.onFrontendMessage(async (payload, userId) => {
                 type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId,
                 reason: String(error),
             }, userId);
+        }
+        return;
+    }
+    if (payload?.type === 'ffmvu_import_snapshot') {
+        const chatId = String(payload.chatId ?? '');
+        const requestId = String(payload.requestId ?? createId('snapshot_import'));
+        if (!chatId) {
+            spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, reason: 'SNAPSHOT_IMPORT_CHAT_ID_REQUIRED' }, userId);
+            return;
+        }
+        const cfg = await config(userId);
+        if (!cfg.enabled) {
+            spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_BRIDGE_DISABLED' }, userId);
+            return;
+        }
+        const scope = { userId, chatId };
+        knownScopeByChat.set(chatId, scope);
+        if (contexts.getForScope(scope)) {
+            spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_BLOCKED_DURING_GENERATION' }, userId);
+            return;
+        }
+        try {
+            const rt = runtime(userId);
+            const existingRoot = await rt.anchors.readRoot(scope);
+            if (existingRoot) {
+                spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_ALREADY_INITIALIZED' }, userId);
+                return;
+            }
+            const messages = await spindle.chat.getMessages(chatId);
+            const transcript = toHostTranscript(messages);
+            const last = transcript.at(-1);
+            const boundary = last ? {
+                throughMessageId: last.id,
+                activePrefixHash: await activePrefixHash(transcript, last.id),
+                fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+            } : undefined;
+            const portable = payload.snapshot;
+            const created = await rt.state.importPortableSnapshot(scope, portable, boundary);
+            const projection = await rt.state.getProjectionForNode(scope, created.nodeId);
+            publish(userId, {
+                phase: 'snapshot_import_complete', chatId, requestId,
+                finalNodeId: created.nodeId,
+                finalStateHash: created.stateHash,
+                promptViewHash: projection.viewHash,
+                sourceSnapshotHash: portable?.snapshotHash ?? null,
+                turn: Number(created.state.Narrative.Turn) || 0,
+                gameStarted: created.state.GameStarted === true,
+                suppressedPreImportMessageCount: boundary ? transcript.length : 0,
+            });
+            spindle.sendToFrontend({
+                type: 'ffmvu_snapshot_import_result', ok: true, requestId, chatId,
+                headNodeId: created.nodeId, headStateHash: created.stateHash,
+                promptViewHash: projection.viewHash,
+                variantId: null, generationPending: false, state: created.state,
+                sourceSnapshotHash: portable?.snapshotHash ?? null,
+            }, userId);
+        }
+        catch (error) {
+            publish(userId, { phase: 'snapshot_import_error', chatId, requestId, error: String(error) });
+            spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: String(error) }, userId);
         }
         return;
     }

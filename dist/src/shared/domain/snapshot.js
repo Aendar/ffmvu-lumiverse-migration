@@ -3,9 +3,12 @@ import { normalizeState } from '../state-normalize.js';
 import { validateState } from '../state-validate.js';
 import { LEGACY_PROJECTION_VERSION } from '../state-schema.js';
 import { isRecord } from './value-utils.js';
+import { PORTABLE_SNAPSHOT_FORMAT } from '../../persistence/types.js';
 export async function extractLegacyImport(input) {
     if (!isRecord(input))
         throw new Error('LEGACY_IMPORT_NOT_OBJECT');
+    if (input.format === PORTABLE_SNAPSHOT_FORMAT)
+        throw new Error('LEGACY_IMPORT_PORTABLE_SNAPSHOT_USE_NATIVE_IMPORT');
     const wrappedState = isRecord(input.stat_data) ? input.stat_data : input;
     const state = normalizeState(wrappedState);
     const errors = validateState(state);

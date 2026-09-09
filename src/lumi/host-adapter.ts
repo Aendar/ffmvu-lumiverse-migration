@@ -1,5 +1,5 @@
 import type { HostTranscriptMessage } from '../transcript-fingerprint.js';
-import type { LumiChatMessage } from './spindle-lite.js';
+import type { LumiChatMessage, LumiLlmMessage } from './spindle-lite.js';
 
 export function toHostTranscript(messages: LumiChatMessage[]): HostTranscriptMessage[] {
   return messages.map(message => ({
@@ -26,4 +26,16 @@ export function filterTranscriptForGeneration(
   if (!targetMessageId) return messages;
   if (!['normal', 'regenerate', 'swipe'].includes(generationType)) return messages;
   return messages.filter(message => String(message.id) !== String(targetMessageId));
+}
+
+
+export function suppressChatHistoryBySourceIds(
+  messages: LumiLlmMessage[],
+  excludedSourceMessageIds: readonly string[],
+): LumiLlmMessage[] {
+  if (!excludedSourceMessageIds.length) return messages;
+  const excluded = new Set(excludedSourceMessageIds.map(String));
+  return messages.filter(message =>
+    !(message.__isChatHistory === true && message.sourceMessageId && excluded.has(String(message.sourceMessageId)))
+  );
 }

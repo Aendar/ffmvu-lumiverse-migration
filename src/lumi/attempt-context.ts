@@ -39,6 +39,7 @@ export interface FrozenAttemptContext {
   assistantNarrativeTimestamps?: Record<string, NarrativeTimestamp>;
   recentChanges?: RecentChangesEnvelope | null;
   stateHistory?: RecentStateHistoryEnvelope | null;
+  suppressedHistoryMessageIds?: string[];
 }
 
 export class AttemptContextRegistry {
