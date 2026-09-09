@@ -489,13 +489,7 @@ export function renderVariablesEditor(root: ShadowRoot, options: VariablesEditor
   search.value = options.search;
   const hint = document.createElement('span');
   hint.className = 've-hint';
-  const legacyFieldsHidden = hasRetiredStateFields(options.state);
-  hint.textContent = legacyFieldsHidden
-    ? 'Legacy fields hidden · migrate state to v1.6'
-    : 'Edit values · manage user entries';
-  if (legacyFieldsHidden) {
-    hint.title = 'Retired legacy fields are hidden from this view. Use the migration controls above to convert the chat state to FFMVU-1.6.0.';
-  }
+  hint.textContent = 'Edit values · manage user entries';
   toolbar.append(search, hint);
 
   const tree = document.createElement('div');
