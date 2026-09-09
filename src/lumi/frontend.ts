@@ -187,39 +187,6 @@ export function setup(ctx: SpindleFrontendContextLite) {
       overflow:hidden;
       box-sizing:border-box;
     }
-    .ffsm-initialized {
-      height:100%;
-      min-height:0;
-      display:flex;
-      flex-direction:column;
-    }
-    .ffsm-snapshotbar {
-      flex:0 0 auto;
-      display:flex;
-      align-items:center;
-      justify-content:flex-end;
-      gap:6px;
-      padding:5px 8px;
-      border:1px solid var(--ffsm-border);
-      border-bottom:0;
-      border-radius:10px 10px 0 0;
-      background:rgba(0,31,63,.92);
-      box-sizing:border-box;
-    }
-    .ffsm-snapshotbar-note {
-      margin-right:auto;
-      min-width:0;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-      font-size:11px;
-      opacity:.78;
-    }
-    .ffsm-snapshotbar + * {
-      flex:1 1 auto !important;
-      min-height:0 !important;
-      height:auto !important;
-    }
     .ffsm-shell {
       height:100%;
       box-sizing:border-box;
@@ -427,6 +394,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
   let snapshotExportBusy = false;
   let snapshotExportRequestId: string | null = null;
   let snapshotExportAction: 'copy' | 'download' | null = null;
+  let snapshotExportNotice = '';
 
   const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
   const DEFAULT_PANEL_HEIGHT = 520;
@@ -609,7 +577,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     snapshotExportBusy = true;
     snapshotExportRequestId = id;
     snapshotExportAction = action;
-    notice = action === 'copy' ? 'Preparing authoritative snapshot…' : 'Preparing snapshot download…';
+    snapshotExportNotice = action === 'copy' ? 'Preparing authoritative snapshot…' : 'Preparing snapshot download…';
     render();
     ctx.sendToBackend({
       type: 'ffmvu_export_snapshot',
@@ -618,26 +586,6 @@ export function setup(ctx: SpindleFrontendContextLite) {
       expectedHeadStateHash: snapshot.headStateHash,
       requestId: id,
     });
-  }
-
-  function renderSnapshotBar(): HTMLElement {
-    const bar = make('div', 'ffsm-snapshotbar');
-    const note = make(
-      'div',
-      'ffsm-snapshotbar-note',
-      notice || 'Portable Snapshot · current semantic head · read-only',
-    );
-    const blocked = snapshotExportBusy || snapshot?.generationPending === true || !snapshot?.headNodeId || !snapshot?.headStateHash;
-    const copy = make('button', 'ffsm-btn', snapshotExportBusy && snapshotExportAction === 'copy' ? 'Copying…' : 'Copy Snapshot') as HTMLButtonElement;
-    copy.disabled = blocked;
-    copy.title = 'Copy a full portable snapshot of the current authoritative semantic head. This does not mutate the chat or state.';
-    copy.addEventListener('click', () => requestPortableSnapshot('copy'));
-    const download = make('button', 'ffsm-btn', snapshotExportBusy && snapshotExportAction === 'download' ? 'Preparing…' : 'Download JSON') as HTMLButtonElement;
-    download.disabled = blocked;
-    download.title = 'Download the same full portable snapshot as JSON. This does not mutate the chat or state.';
-    download.addEventListener('click', () => requestPortableSnapshot('download'));
-    bar.append(note, copy, download);
-    return bar;
   }
 
   function sendIntent(intent: GuiIntent): void {
@@ -1426,9 +1374,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
 
     const state = activeState();
     if (state && snapshot?.ok && snapshot.initialized) {
-      const initialized = make('div', 'ffsm-initialized');
-      initialized.appendChild(renderSnapshotBar());
-      initialized.appendChild(renderLegacyStatusMenu({
+      content.appendChild(renderLegacyStatusMenu({
         state,
         activeTab,
         selectedOwnerId,
@@ -1437,13 +1383,16 @@ export function setup(ctx: SpindleFrontendContextLite) {
         onOwner: ownerId => { selectedOwnerId = ownerId; },
         variablesSearch,
         onVariablesSearch: value => { variablesSearch = value; },
+        snapshotExportDisabled: snapshotExportBusy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
+        snapshotExportBusy,
+        snapshotExportNotice,
+        onSnapshotExport: requestPortableSnapshot,
         onIntent: sendIntent,
         onUnsupported: message => {
           notice = message;
           window.alert(message);
         },
       }));
-      content.appendChild(initialized);
     } else {
       const shell = make('div', 'ffsm-shell');
       renderHeader(shell);
@@ -1507,7 +1456,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
       snapshotExportRequestId = null;
       snapshotExportAction = null;
       if (!payload.ok || !payload.snapshot) {
-        notice = 'Snapshot export failed: ' + String(payload.reason ?? 'unknown error');
+        snapshotExportNotice = 'Snapshot export failed: ' + String(payload.reason ?? 'unknown error');
         render();
         requestState();
         return;
@@ -1515,12 +1464,12 @@ export function setup(ctx: SpindleFrontendContextLite) {
       const portable = payload.snapshot as PortableSnapshot;
       if (action === 'download') {
         downloadPortableSnapshot(portable);
-        notice = 'Portable snapshot downloaded · turn ' + String(portable.source?.turn ?? '—') + '.';
+        snapshotExportNotice = 'Portable snapshot downloaded · turn ' + String(portable.source?.turn ?? '—') + '.';
         render();
         return;
       }
       void copyPortableSnapshot(portable).then(ok => {
-        notice = ok
+        snapshotExportNotice = ok
           ? 'Portable snapshot copied · turn ' + String(portable.source?.turn ?? '—') + '.'
           : 'Clipboard failed. Use Download JSON instead.';
         render();
@@ -1625,6 +1574,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     snapshotExportBusy = false;
     snapshotExportRequestId = null;
     snapshotExportAction = null;
+    snapshotExportNotice = '';
     render();
     requestState();
   }
