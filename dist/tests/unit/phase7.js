@@ -2,6 +2,7 @@ import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../../src/shared/recent-changes.js';
 import { computeRecentStateHistory } from '../../src/shared/state-history.js';
 import { injectNarrativeHistoryContext } from '../../src/lumi/history-metadata.js';
+import { suppressChatHistoryBySourceIds } from '../../src/lumi/host-adapter.js';
 let passed = 0;
 function assert(value, message) {
     if (!value)
@@ -74,6 +75,15 @@ function main() {
     assert(typeof system?.content === 'string' && system.content.includes('not real-world clock time') && system.content.includes('<RECENT_CHANGES>') && system.content.includes('<STATE_TRAIL>') && system.content.includes('older values are historical context only'), 'history rules separate narrative time, net off-screen changes, and bounded state trail from current authority');
     const untouched = injectNarrativeHistoryContext(messages, {}, null);
     assert(JSON.stringify(untouched) === JSON.stringify(messages), 'no metadata is injected when no proven timestamps or recent changes exist');
+    const forkPrompt = [
+        { role: 'system', content: 'preset' },
+        { role: 'assistant', content: 'fresh greeting', __isChatHistory: true, sourceMessageId: 'greeting' },
+        { role: 'user', content: 'pre-import note', __isChatHistory: true, sourceMessageId: 'pre-user' },
+        { role: 'user', content: 'continue from the snapshot', __isChatHistory: true, sourceMessageId: 'post-user' },
+    ];
+    const forkFiltered = suppressChatHistoryBySourceIds(forkPrompt, ['greeting', 'pre-user']);
+    assert(forkFiltered.length === 2, 'portable fork removes only explicitly bounded pre-import chat-history messages');
+    assert(forkFiltered[0]?.role === 'system' && forkFiltered[1]?.sourceMessageId === 'post-user', 'portable fork preserves preset/system context and post-import chat history');
     console.log(`phase7 narrative history tests passed: ${passed}`);
 }
 main();

@@ -19,4 +19,10 @@ export function filterTranscriptForGeneration(messages, generationType, targetMe
         return messages;
     return messages.filter(message => String(message.id) !== String(targetMessageId));
 }
+export function suppressChatHistoryBySourceIds(messages, excludedSourceMessageIds) {
+    if (!excludedSourceMessageIds.length)
+        return messages;
+    const excluded = new Set(excludedSourceMessageIds.map(String));
+    return messages.filter(message => !(message.__isChatHistory === true && message.sourceMessageId && excluded.has(String(message.sourceMessageId))));
+}
 //# sourceMappingURL=host-adapter.js.map

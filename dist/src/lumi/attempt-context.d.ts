@@ -37,6 +37,7 @@ export interface FrozenAttemptContext {
     assistantNarrativeTimestamps?: Record<string, NarrativeTimestamp>;
     recentChanges?: RecentChangesEnvelope | null;
     stateHistory?: RecentStateHistoryEnvelope | null;
+    suppressedHistoryMessageIds?: string[];
 }
 export declare class AttemptContextRegistry {
     private readonly byScope;
