@@ -771,23 +771,31 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
   if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
 
   let suppressedHistoryMessageIds: string[] = [];
-  const baseArtifact = await rt.state.store.readNode(scope, baseId);
-  if (
-    baseArtifact.type === 'base' &&
-    baseArtifact.value.kind === 'fork' &&
-    baseArtifact.value.provenance?.source === 'portable-snapshot' &&
-    baseArtifact.value.transcriptBoundary
-  ) {
-    const boundaryMessageId = baseArtifact.value.transcriptBoundary.throughMessageId;
-    const boundaryIndex = rawAll.findIndex(message => String(message.id) === boundaryMessageId);
-    if (boundaryIndex >= 0) {
-      suppressedHistoryMessageIds = rawAll.slice(0, boundaryIndex + 1).map(message => String(message.id));
+  let lineageMessages = raw;
+  const activeRoot = await rt.anchors.readRoot(scope);
+  if (!activeRoot) return { ok: false, reason: 'root anchor missing after state resolution' };
+  const activeBaseArtifact = await rt.state.store.readNode(scope, activeRoot.baseNodeId);
+  if (activeBaseArtifact.type !== 'base') return { ok: false, reason: 'active root base is not a BaseSnapshot' };
+
+  if (activeBaseArtifact.value.transcriptBoundary) {
+    const boundaryMessageId = activeBaseArtifact.value.transcriptBoundary.throughMessageId;
+    const rawBoundaryIndex = raw.findIndex(message => String(message.id) === boundaryMessageId);
+    if (rawBoundaryIndex >= 0) lineageMessages = raw.slice(rawBoundaryIndex + 1);
+
+    if (
+      activeBaseArtifact.value.kind === 'fork' &&
+      activeBaseArtifact.value.provenance?.source === 'portable-snapshot'
+    ) {
+      const allBoundaryIndex = rawAll.findIndex(message => String(message.id) === boundaryMessageId);
+      if (allBoundaryIndex >= 0) {
+        suppressedHistoryMessageIds = rawAll.slice(0, allBoundaryIndex + 1).map(message => String(message.id));
+      }
     }
   }
 
   const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
   const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-  const historyContext = await buildNarrativeHistoryContext(rt, scope, raw, head.nodeId);
+  const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId);
   const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
   contexts.create({
     scope,
