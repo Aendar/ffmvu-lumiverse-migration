@@ -56,6 +56,42 @@ const VE_PROTECTED_ROOT = new Set([
   'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
 
+const RETIRED_NPC_FIELDS = new Set(['CurrentThought', 'Mental_state', 'InternalThoughts', 'Thoughts']);
+
+/**
+ * Returns true for state paths that are kept only for legacy replay/migration
+ * compatibility and must not be presented as editable current variables.
+ * This is a display rule only; it never mutates the authoritative state.
+ */
+export function isStatePathHiddenFromUi(path: readonly string[]): boolean {
+  if (path.length === 1 && (path[0] === 'ProjectionMeta' || path[0] === 'ColdIndex')) return true;
+  if (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Mental_state') return true;
+  if (path.length >= 2 && path[0] === 'Narrative' && path[1] === 'Chekhov') return true;
+  if (path.length >= 4 && path[0] === 'Narrative' && path[1] === 'NPCs' && RETIRED_NPC_FIELDS.has(path[3])) return true;
+  if (path.length >= 3 && path[0] === 'Familiar' && RETIRED_NPC_FIELDS.has(path[2])) return true;
+  return false;
+}
+
+/** Whether a state contains any retired paths that are currently hidden. */
+export function hasRetiredStateFields(state: unknown): boolean {
+  let found = false;
+  const visit = (value: unknown, path: readonly string[]): void => {
+    if (found || isStatePathHiddenFromUi(path)) {
+      found = true;
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((child, index) => visit(child, [...path, String(index)]));
+      return;
+    }
+    if (isRecord(value)) {
+      for (const [key, child] of Object.entries(value)) visit(child, [...path, key]);
+    }
+  };
+  visit(state, []);
+  return found;
+}
+
 function veIsTuple(path: GuiPath, value: unknown): value is [unknown, string] {
   return isLabeledTupleAtPath(path, value);
 }
@@ -356,6 +392,7 @@ function veRenderEntry(
   query: string,
   options: VariablesEditorOptions,
 ): HTMLElement | null {
+  if (isStatePathHiddenFromUi(path)) return null;
   if (!veMatches(key, value, query, path)) return null;
 
   const tuple = veIsTuple(path, value);
@@ -391,10 +428,13 @@ function veRenderEntry(
   const keyElement = document.createElement('span');
   keyElement.className = 've-key';
   keyElement.textContent = key;
+  const childEntries = Array.isArray(effectiveValue)
+    ? effectiveValue.map((child, index) => [String(index), child] as const)
+    : Object.entries(effectiveValue as MutableRecord);
+  const visibleEntries = childEntries.filter(([childKey]) => !isStatePathHiddenFromUi([...path, childKey]));
   const count = document.createElement('span');
   count.className = 've-count';
-  const childCount = Array.isArray(effectiveValue) ? effectiveValue.length : Object.keys(effectiveValue as MutableRecord).length;
-  count.textContent = String(childCount);
+  count.textContent = String(visibleEntries.length);
   const spacer = document.createElement('span');
   spacer.className = 've-spacer';
   summary.append(keyElement, count, spacer, veActionButtons(root, path, key, value, parentIsArray, options));
@@ -403,13 +443,13 @@ function veRenderEntry(
   children.className = 've-children';
 
   if (Array.isArray(effectiveValue)) {
-    effectiveValue.forEach((child, index) => {
-      const rendered = veRenderEntry(root, String(index), child, [...path, String(index)], true, depth + 1, query, options);
+    visibleEntries.forEach(([childKey, child]) => {
+      const rendered = veRenderEntry(root, childKey, child, [...path, childKey], true, depth + 1, query, options);
       if (rendered) children.appendChild(rendered);
     });
   } else {
     const object = effectiveValue as MutableRecord;
-    for (const [childKey, child] of Object.entries(object)) {
+    for (const [childKey, child] of visibleEntries) {
       const rendered = veRenderEntry(root, childKey, child, [...path, childKey], false, depth + 1, query, options);
       if (rendered) children.appendChild(rendered);
     }
@@ -449,7 +489,13 @@ export function renderVariablesEditor(root: ShadowRoot, options: VariablesEditor
   search.value = options.search;
   const hint = document.createElement('span');
   hint.className = 've-hint';
-  hint.textContent = 'Edit values · manage user entries';
+  const legacyFieldsHidden = hasRetiredStateFields(options.state);
+  hint.textContent = legacyFieldsHidden
+    ? 'Legacy fields hidden · migrate state to v1.6'
+    : 'Edit values · manage user entries';
+  if (legacyFieldsHidden) {
+    hint.title = 'Retired legacy fields are hidden from this view. Use the migration controls above to convert the chat state to FFMVU-1.6.0.';
+  }
   toolbar.append(search, hint);
 
   const tree = document.createElement('div');

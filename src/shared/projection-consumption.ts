@@ -1,13 +1,33 @@
 import type { JsonPatchOperation } from './json-patch.js';
-import type { FFMVUState, PromptView } from './state-schema.js';
+import type { FFMVUState, MutableRecord, PromptView } from './state-schema.js';
+import { LEGACY_REDUCER_VERSION } from './state-schema.js';
 import { asRecord } from './domain/value-utils.js';
 
-export function computeProjectionConsumptionPatch(state: FFMVUState, nextProjection: PromptView): JsonPatchOperation[] {
+/** v1.6 has no audit subsystem: only clear the one-turn scene-change cache. */
+export function computeProjectionConsumptionPatch(state: FFMVUState, _nextProjection: PromptView): JsonPatchOperation[] {
+  if (state.Narrative.Scene.Changed === false) return [];
+  return [{ op: 'replace', path: '/Narrative/Scene/Changed', value: false }];
+}
+
+/** Frozen 1.5.8 behavior for historic commits. */
+export function computeProjectionConsumptionPatchV158(state: FFMVUState, nextProjection: PromptView): JsonPatchOperation[] {
   const operations: JsonPatchOperation[] = [];
   const meta = asRecord(nextProjection.ProjectionMeta);
-  if (meta.ChekhovAuditDue === true && state.Narrative.Chekhov.LastAuditTurn !== state.Narrative.Turn) {
+  const narrative = state.Narrative as unknown as MutableRecord;
+  const chekhov = asRecord(narrative.Chekhov);
+  if (meta.ChekhovAuditDue === true && Number(chekhov.LastAuditTurn) !== state.Narrative.Turn) {
     operations.push({ op: 'replace', path: '/Narrative/Chekhov/LastAuditTurn', value: state.Narrative.Turn });
   }
   if (state.Narrative.Scene.Changed !== false) operations.push({ op: 'replace', path: '/Narrative/Scene/Changed', value: false });
   return operations;
+}
+
+export function computeProjectionConsumptionPatchForReducer(
+  reducerVersion: string,
+  state: FFMVUState,
+  nextProjection: PromptView,
+): JsonPatchOperation[] {
+  return reducerVersion === LEGACY_REDUCER_VERSION
+    ? computeProjectionConsumptionPatchV158(state, nextProjection)
+    : computeProjectionConsumptionPatch(state, nextProjection);
 }

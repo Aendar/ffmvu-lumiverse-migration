@@ -1,7 +1,7 @@
 import type { FFMVUState } from './state-schema.js';
-import { LEGACY_REDUCER_VERSION } from './state-schema.js';
-import { normalizeState } from './state-normalize.js';
-import { validateState } from './state-validate.js';
+import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from './state-schema.js';
+import { normalizeState, normalizeStateV158 } from './state-normalize.js';
+import { validateState, validateStateV158 } from './state-validate.js';
 
 export interface ReducerImplementation {
   readonly version: string;
@@ -26,6 +26,12 @@ export class ReducerRegistry {
 
 export const legacyReducerV158: ReducerImplementation = {
   version: LEGACY_REDUCER_VERSION,
+  normalize: input => normalizeStateV158(input) as unknown as FFMVUState,
+  validate: validateStateV158,
+};
+
+export const currentReducerV160: ReducerImplementation = {
+  version: CURRENT_REDUCER_VERSION,
   normalize: normalizeState,
   validate: validateState,
 };
@@ -33,5 +39,6 @@ export const legacyReducerV158: ReducerImplementation = {
 export function createReducerRegistry(): ReducerRegistry {
   const registry = new ReducerRegistry();
   registry.register(legacyReducerV158);
+  registry.register(currentReducerV160);
   return registry;
 }

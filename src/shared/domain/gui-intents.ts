@@ -699,8 +699,13 @@ function diffValue(before: unknown, after: unknown, path: string, out: JsonPatch
   out.push({ op: 'replace', path, value: clone(after) });
 }
 
-export function buildGuiIntentPatch(before: FFMVUState, after: FFMVUState): JsonPatchOperation[] {
+/** Generic deterministic deep diff used by both GUI intents and migration preflight. */
+export function buildStatePatch(before: unknown, after: unknown): JsonPatchOperation[] {
   const out: JsonPatchOperation[] = [];
   diffValue(before, after, '', out);
   return out;
+}
+
+export function buildGuiIntentPatch(before: FFMVUState, after: FFMVUState): JsonPatchOperation[] {
+  return buildStatePatch(before, after);
 }

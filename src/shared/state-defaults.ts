@@ -1,8 +1,8 @@
-import type { FFMVUState } from './state-schema.js';
+import type { FFMVUState, LegacyFFMVUState, MutableRecord } from './state-schema.js';
 import { STATE_SCHEMA_VERSION } from './state-schema.js';
 import { clone } from './domain/value-utils.js';
 
-export const DEFAULT_STATE: FFMVUState = {
+export const LEGACY_DEFAULT_STATE: LegacyFFMVUState = {
   World_Calc: { Factions: {}, Locations: {}, Ruins: {}, Events: {} },
   World: {
     Date: ['Day 1', 'Date'],
@@ -38,10 +38,27 @@ export const DEFAULT_STATE: FFMVUState = {
       RelevantWorldKeys: [], Changed: true,
     },
   },
-  MVUStatMenu_DB_Ver: STATE_SCHEMA_VERSION,
+  MVUStatMenu_DB_Ver: 'FFMVU-1.5.8',
   GameStarted: false,
 };
 
+function createCurrentDefault(): FFMVUState {
+  const state = clone(LEGACY_DEFAULT_STATE) as unknown as MutableRecord;
+  const mainchar = state.Mainchar as MutableRecord;
+  const narrative = state.Narrative as MutableRecord;
+  delete mainchar.Mental_state;
+  mainchar.Conditions = {};
+  delete narrative.Chekhov;
+  state.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
+  return state as unknown as FFMVUState;
+}
+
+export const DEFAULT_STATE: FFMVUState = createCurrentDefault();
+
 export function createDefaultState(): FFMVUState {
   return clone(DEFAULT_STATE);
+}
+
+export function createLegacyDefaultState(): LegacyFFMVUState {
+  return clone(LEGACY_DEFAULT_STATE);
 }

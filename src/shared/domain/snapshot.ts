@@ -1,13 +1,13 @@
 import { canonicalHash } from '../hashing.js';
-import { normalizeState } from '../state-normalize.js';
-import { validateState } from '../state-validate.js';
+import { normalizeStateV158 } from '../state-normalize.js';
+import { validateStateV158 } from '../state-validate.js';
 import { LEGACY_PROJECTION_VERSION } from '../state-schema.js';
-import type { FFMVUState, PromptView } from '../state-schema.js';
+import type { LegacyFFMVUState, PromptView } from '../state-schema.js';
 import { isRecord } from './value-utils.js';
 import { PORTABLE_SNAPSHOT_FORMAT, type ProjectionSeed } from '../../persistence/types.js';
 
 export interface LegacyImportExtraction {
-  state: FFMVUState;
+  state: LegacyFFMVUState;
   projectionSeed?: ProjectionSeed;
   provenance: Record<string, unknown>;
 }
@@ -16,8 +16,8 @@ export async function extractLegacyImport(input: unknown): Promise<LegacyImportE
   if (!isRecord(input)) throw new Error('LEGACY_IMPORT_NOT_OBJECT');
   if (input.format === PORTABLE_SNAPSHOT_FORMAT) throw new Error('LEGACY_IMPORT_PORTABLE_SNAPSHOT_USE_NATIVE_IMPORT');
   const wrappedState = isRecord(input.stat_data) ? input.stat_data : input;
-  const state = normalizeState(wrappedState);
-  const errors = validateState(state);
+  const state = normalizeStateV158(wrappedState);
+  const errors = validateStateV158(state);
   if (errors.length) throw new Error('LEGACY_IMPORT_INVALID_STATE: ' + errors.join('; '));
 
   let projectionSeed: ProjectionSeed | undefined;

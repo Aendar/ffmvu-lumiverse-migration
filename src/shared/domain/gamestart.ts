@@ -19,7 +19,8 @@ export interface GameStartPayload {
   gender: string;
   race: string;
   occupation: string;
-  mental: string;
+  /** Accepted from older start forms, but no longer persisted as player intent. */
+  mental?: string;
   charisma: number;
   level: number;
   exp: number;
@@ -74,7 +75,6 @@ export function applyGameStartPayload(inputState: FFMVUState, payloadInput: Game
   tupleSet(mc, 'Gender', payload.gender, 'Gender');
   tupleSet(mc, 'Race', payload.race, 'Race');
   tupleSet(mc, 'Occupation', payload.occupation, 'Occupation');
-  tupleSet(mc, 'Mental_state', payload.mental, 'Mental State');
 
   const level = Math.max(1, Math.min(140, Number(payload.level) || 1));
   const str = Math.max(5, Number(payload.stats.str) || 5);
