@@ -178,6 +178,10 @@ function shadowCss() {
         + '.tab-content{min-height:0;}'
         + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
         + 'button,input,textarea,select{font-family:inherit;}'
+        + '.ve-snapshot-layout{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}'
+        + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:2px 0 0;}'
+        + '.ve-snapshot-note{flex:1;min-width:0;color:var(--text-secondary);font-size:.76em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+        + '.ve-snapshot-layout>.ve-shell{flex:1 1 auto;height:auto;min-height:0;}'
         + VARIABLES_EDITOR_CSS;
 }
 function bindValues(root, data) {
@@ -1235,13 +1239,37 @@ function installVariablesTab(shadow, options) {
     const tab = document.createElement('div');
     tab.id = 'tab-variables';
     tab.className = 'tab-content';
-    tab.appendChild(renderVariablesEditor(shadow, {
+    const layout = document.createElement('div');
+    layout.className = 've-snapshot-layout';
+    const tools = document.createElement('div');
+    tools.className = 've-snapshot-tools';
+    const note = document.createElement('div');
+    note.className = 've-snapshot-note';
+    note.textContent = options.snapshotExportNotice || 'Portable Snapshot · current semantic head · read-only';
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 've-btn';
+    copy.textContent = options.snapshotExportBusy ? 'Working…' : 'Copy Snapshot';
+    copy.disabled = options.snapshotExportDisabled;
+    copy.title = 'Copy a full portable snapshot of the current authoritative semantic head.';
+    copy.addEventListener('click', () => options.onSnapshotExport('copy'));
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.className = 've-btn';
+    download.textContent = 'Download JSON';
+    download.disabled = options.snapshotExportDisabled;
+    download.title = 'Download the same portable snapshot as JSON.';
+    download.addEventListener('click', () => options.onSnapshotExport('download'));
+    tools.append(note, copy, download);
+    layout.appendChild(tools);
+    layout.appendChild(renderVariablesEditor(shadow, {
         state: options.state,
         mutationDisabled: options.mutationDisabled,
         search: options.variablesSearch,
         onSearch: options.onVariablesSearch,
         onIntent: options.onIntent,
     }));
+    tab.appendChild(layout);
     container.appendChild(tab);
 }
 function selectInitialTab(shadow, options) {
