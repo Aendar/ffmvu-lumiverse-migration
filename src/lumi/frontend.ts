@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord } from '../shared/state-schema.js';
-import type { PortableSnapshot } from '../persistence/types.js';
+import { PORTABLE_SNAPSHOT_FORMAT, type PortableSnapshot } from '../persistence/types.js';
 import type { GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import type { SpindleFrontendContextLite } from './spindle-lite.js';
@@ -385,6 +385,8 @@ export function setup(ctx: SpindleFrontendContextLite) {
   let variablesSearch = '';
   let notice = '';
   let panelOpen = false;
+  let portableImportOpen = false;
+  let portableImportText = '';
   let legacyImportOpen = false;
   let legacyImportText = '';
   let diagnosticsOpen = false;
@@ -1093,6 +1095,84 @@ export function setup(ctx: SpindleFrontendContextLite) {
     intro.appendChild(make('div', 'ffsm-head-sub', 'Core attributes: STR/AGI/CON/INT/WIS start at 5 and share up to 50 distributable points. Charisma is separate: 80–100.'));
     content.appendChild(intro);
 
+    const portableCard = card('Continue from Portable Snapshot');
+    portableCard.appendChild(make(
+      'div',
+      'ffsm-head-sub',
+      'Native FFMVU fork import. Paste or choose an FFMVU-Portable-Snapshot-v1 JSON exported from another chat. State hash, snapshot hash, and exact next MODEL_STATE projection are verified before initialization. Messages already present in this fresh chat are kept visible but excluded from model history after the import boundary.',
+    ));
+    const portableToggle = make('button', 'ffsm-btn', portableImportOpen ? 'Hide Portable Import' : 'Import Portable Snapshot') as HTMLButtonElement;
+    portableToggle.type = 'button';
+    portableToggle.style.marginTop = '8px';
+    portableToggle.disabled = busy;
+    portableToggle.addEventListener('click', () => {
+      portableImportOpen = !portableImportOpen;
+      if (portableImportOpen) legacyImportOpen = false;
+      render();
+    });
+    portableCard.appendChild(portableToggle);
+    if (portableImportOpen) {
+      const fileInput = make('input', 'ffsm-input') as HTMLInputElement;
+      fileInput.type = 'file';
+      fileInput.accept = '.json,application/json';
+      fileInput.style.marginTop = '8px';
+      fileInput.disabled = busy;
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        void file.text().then(value => {
+          portableImportText = value;
+          notice = 'Loaded portable snapshot file: ' + file.name;
+          render();
+        }).catch(error => {
+          notice = 'Snapshot file read failed: ' + String(error);
+          render();
+        });
+      });
+
+      const portableText = make('textarea', 'ffsm-textarea') as HTMLTextAreaElement;
+      portableText.placeholder = '{ "format": "FFMVU-Portable-Snapshot-v1", ... }';
+      portableText.value = portableImportText;
+      portableText.style.minHeight = '150px';
+      portableText.style.marginTop = '8px';
+      portableText.addEventListener('input', () => { portableImportText = portableText.value; });
+
+      const importPortableButton = make('button', 'ffsm-btn', 'Import Portable Snapshot') as HTMLButtonElement;
+      importPortableButton.type = 'button';
+      importPortableButton.style.width = '100%';
+      importPortableButton.style.marginTop = '8px';
+      importPortableButton.disabled = !enabled || busy;
+      importPortableButton.addEventListener('click', () => {
+        if (!activeChatId || busy || !enabled) return;
+        let portable: PortableSnapshot;
+        try {
+          portable = JSON.parse(portableText.value) as PortableSnapshot;
+        } catch (error) {
+          notice = 'Portable snapshot JSON parse failed: ' + String(error);
+          render();
+          return;
+        }
+        if (!portable || portable.format !== PORTABLE_SNAPSHOT_FORMAT) {
+          notice = 'Unsupported snapshot format. Expected ' + PORTABLE_SNAPSHOT_FORMAT + '.';
+          render();
+          return;
+        }
+        portableImportText = portableText.value;
+        busy = true;
+        notice = 'Verifying and importing portable snapshot…';
+        render();
+        ctx.sendToBackend({
+          type: 'ffmvu_import_snapshot',
+          chatId: activeChatId,
+          requestId: requestId('snapshot_import'),
+          snapshot: portable,
+        });
+      });
+
+      portableCard.append(fileInput, portableText, importPortableButton);
+    }
+    content.appendChild(portableCard);
+
     const importCard = card('Continue Existing FF+MVU Save');
     importCard.appendChild(make('div', 'ffsm-head-sub', 'Tier-1 legacy import. Paste the wrapper containing stat_data and, when available, ff_mvu_prompt_view + ff_mvu_snapshot_meta. The current Lumiverse transcript through its last message is treated as already represented by this snapshot.'));
     const importToggle = make('button', 'ffsm-btn', legacyImportOpen ? 'Hide Legacy Import' : 'Import Legacy Save') as HTMLButtonElement;
@@ -1101,6 +1181,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     importToggle.disabled = busy;
     importToggle.addEventListener('click', () => {
       legacyImportOpen = !legacyImportOpen;
+      if (legacyImportOpen) portableImportOpen = false;
       render();
     });
     importCard.appendChild(importToggle);
@@ -1531,6 +1612,33 @@ export function setup(ctx: SpindleFrontendContextLite) {
       }
       return;
     }
+    if (payload?.type === 'ffmvu_snapshot_import_result') {
+      if (payload.chatId !== activeChatId) return;
+      busy = false;
+      if (payload.ok) {
+        snapshot = {
+          ok: true,
+          initialized: true,
+          chatId: payload.chatId,
+          headNodeId: payload.headNodeId,
+          headStateHash: payload.headStateHash,
+          variantId: null,
+          generationPending: false,
+          state: payload.state,
+        };
+        portableImportOpen = false;
+        portableImportText = '';
+        legacyImportOpen = false;
+        legacyImportText = '';
+        notice = 'Portable snapshot imported · turn ' + String(payload.state?.Narrative?.Turn ?? '—') + '.';
+        activeTab = 'overview';
+        render();
+      } else {
+        notice = String(payload.reason ?? 'Portable snapshot import failed');
+        render();
+      }
+      return;
+    }
     if (payload?.type === 'ffmvu_legacy_import_result') {
       if (payload.chatId !== activeChatId) return;
       busy = false;
@@ -1575,6 +1683,10 @@ export function setup(ctx: SpindleFrontendContextLite) {
     snapshotExportRequestId = null;
     snapshotExportAction = null;
     snapshotExportNotice = '';
+    portableImportOpen = false;
+    portableImportText = '';
+    legacyImportOpen = false;
+    legacyImportText = '';
     render();
     requestState();
   }
