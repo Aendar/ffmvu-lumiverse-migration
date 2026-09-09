@@ -149,6 +149,39 @@ export function setup(ctx) {
       overflow:hidden;
       box-sizing:border-box;
     }
+    .ffsm-initialized {
+      height:100%;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+    }
+    .ffsm-snapshotbar {
+      flex:0 0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:6px;
+      padding:5px 8px;
+      border:1px solid var(--ffsm-border);
+      border-bottom:0;
+      border-radius:10px 10px 0 0;
+      background:rgba(0,31,63,.92);
+      box-sizing:border-box;
+    }
+    .ffsm-snapshotbar-note {
+      margin-right:auto;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:11px;
+      opacity:.78;
+    }
+    .ffsm-snapshotbar + * {
+      flex:1 1 auto !important;
+      min-height:0 !important;
+      height:auto !important;
+    }
     .ffsm-shell {
       height:100%;
       box-sizing:border-box;
@@ -348,6 +381,9 @@ export function setup(ctx) {
     let diagnosticsBusy = false;
     let diagnosticReport = null;
     let diagnosticNotice = '';
+    let snapshotExportBusy = false;
+    let snapshotExportRequestId = null;
+    let snapshotExportAction = null;
     const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
     const DEFAULT_PANEL_HEIGHT = 520;
     let panelHeight = (() => {
@@ -468,6 +504,83 @@ export function setup(ctx) {
             return;
         }
         ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
+    }
+    async function copyPortableSnapshot(value) {
+        const text = JSON.stringify(value, null, 2);
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        catch {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.readOnly = true;
+            area.style.position = 'fixed';
+            area.style.left = '-10000px';
+            area.style.top = '0';
+            document.body.appendChild(area);
+            area.focus();
+            area.select();
+            try {
+                return document.execCommand('copy');
+            }
+            catch {
+                return false;
+            }
+            finally {
+                area.remove();
+            }
+        }
+    }
+    function downloadPortableSnapshot(value) {
+        const json = JSON.stringify(value, null, 2);
+        const blobUrl = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const link = document.createElement('a');
+        const turn = Number(value.source?.turn) || 0;
+        link.href = blobUrl;
+        link.download = 'FFMVU_Portable_Snapshot_turn_' + turn + '.json';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+    }
+    function requestPortableSnapshot(action) {
+        if (!activeChatId ||
+            !snapshot?.ok ||
+            !snapshot.initialized ||
+            !snapshot.headNodeId ||
+            !snapshot.headStateHash ||
+            snapshot.generationPending ||
+            snapshotExportBusy)
+            return;
+        const id = requestId('snapshot');
+        snapshotExportBusy = true;
+        snapshotExportRequestId = id;
+        snapshotExportAction = action;
+        notice = action === 'copy' ? 'Preparing authoritative snapshot…' : 'Preparing snapshot download…';
+        render();
+        ctx.sendToBackend({
+            type: 'ffmvu_export_snapshot',
+            chatId: activeChatId,
+            expectedHeadNodeId: snapshot.headNodeId,
+            expectedHeadStateHash: snapshot.headStateHash,
+            requestId: id,
+        });
+    }
+    function renderSnapshotBar() {
+        const bar = make('div', 'ffsm-snapshotbar');
+        const note = make('div', 'ffsm-snapshotbar-note', notice || 'Portable Snapshot · current semantic head · read-only');
+        const blocked = snapshotExportBusy || snapshot?.generationPending === true || !snapshot?.headNodeId || !snapshot?.headStateHash;
+        const copy = make('button', 'ffsm-btn', snapshotExportBusy && snapshotExportAction === 'copy' ? 'Copying…' : 'Copy Snapshot');
+        copy.disabled = blocked;
+        copy.title = 'Copy a full portable snapshot of the current authoritative semantic head. This does not mutate the chat or state.';
+        copy.addEventListener('click', () => requestPortableSnapshot('copy'));
+        const download = make('button', 'ffsm-btn', snapshotExportBusy && snapshotExportAction === 'download' ? 'Preparing…' : 'Download JSON');
+        download.disabled = blocked;
+        download.title = 'Download the same full portable snapshot as JSON. This does not mutate the chat or state.';
+        download.addEventListener('click', () => requestPortableSnapshot('download'));
+        bar.append(note, copy, download);
+        return bar;
     }
     function sendIntent(intent) {
         if (!activeChatId || !snapshot?.headNodeId || !snapshot.headStateHash || mutationDisabled())
@@ -1220,7 +1333,9 @@ export function setup(ctx) {
         frame.append(resizeGrip(), content);
         const state = activeState();
         if (state && snapshot?.ok && snapshot.initialized) {
-            content.appendChild(renderLegacyStatusMenu({
+            const initialized = make('div', 'ffsm-initialized');
+            initialized.appendChild(renderSnapshotBar());
+            initialized.appendChild(renderLegacyStatusMenu({
                 state,
                 activeTab,
                 selectedOwnerId,
@@ -1235,6 +1350,7 @@ export function setup(ctx) {
                     window.alert(message);
                 },
             }));
+            content.appendChild(initialized);
         }
         else {
             const shell = make('div', 'ffsm-shell');
@@ -1293,6 +1409,36 @@ export function setup(ctx) {
             diagnosticsOpen = true;
             panelOpen = true;
             render();
+            return;
+        }
+        if (payload?.type === 'ffmvu_snapshot_export_result') {
+            if (payload.chatId && payload.chatId !== activeChatId)
+                return;
+            if (snapshotExportRequestId && payload.requestId !== snapshotExportRequestId)
+                return;
+            const action = snapshotExportAction;
+            snapshotExportBusy = false;
+            snapshotExportRequestId = null;
+            snapshotExportAction = null;
+            if (!payload.ok || !payload.snapshot) {
+                notice = 'Snapshot export failed: ' + String(payload.reason ?? 'unknown error');
+                render();
+                requestState();
+                return;
+            }
+            const portable = payload.snapshot;
+            if (action === 'download') {
+                downloadPortableSnapshot(portable);
+                notice = 'Portable snapshot downloaded · turn ' + String(portable.source?.turn ?? '—') + '.';
+                render();
+                return;
+            }
+            void copyPortableSnapshot(portable).then(ok => {
+                notice = ok
+                    ? 'Portable snapshot copied · turn ' + String(portable.source?.turn ?? '—') + '.'
+                    : 'Clipboard failed. Use Download JSON instead.';
+                render();
+            });
             return;
         }
         if (payload?.type === 'ffmvu_gui_state') {
@@ -1398,6 +1544,9 @@ export function setup(ctx) {
         diagnosticsBusy = false;
         diagnosticReport = null;
         diagnosticNotice = diagnosticsOpen ? 'Chat changed. Collect a new snapshot for this chat.' : '';
+        snapshotExportBusy = false;
+        snapshotExportRequestId = null;
+        snapshotExportAction = null;
         render();
         requestState();
     }
