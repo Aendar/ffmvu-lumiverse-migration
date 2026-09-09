@@ -3,7 +3,7 @@ import type { GuiImageRef, GuiIntent, GuiOwnerRef } from '../shared/domain/gui-i
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusItems, statusLegacyDeletePath, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
-import { renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
+import { isStatePathHiddenFromUi, renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
 
 export type LegacyStatusTab =
   | 'overview'
@@ -252,6 +252,16 @@ function bindValues(root: ParentNode, data: unknown): void {
 }
 
 function bindOverview(root: ShadowRoot, state: FFMVUState): void {
+  const conditionsValue = root.querySelector<HTMLElement>('[data-ff25-conditions]');
+  const conditionsRow = conditionsValue?.closest<HTMLElement>('.ff25-row');
+  const conditions = Object.values(record(state.Mainchar.Conditions));
+  if (conditionsValue) {
+    conditionsValue.textContent = conditions.length
+      ? conditions.map(value => statusText(record(value).State, '')).filter(Boolean).join(' · ')
+      : '—';
+  }
+  const conditionsLabel = conditionsRow?.querySelector<HTMLElement>('.ff25-label');
+  if (conditionsLabel) conditionsLabel.textContent = 'Conditions';
   root.querySelectorAll<HTMLElement>('[data-ff25-cur]').forEach(row => {
     const current = numberAt(state, row.getAttribute('data-ff25-cur') || '');
     const maximum = numberAt(state, row.getAttribute('data-ff25-max') || '');
@@ -916,6 +926,95 @@ function familiarIdentity(state: FFMVUState, id: string, member: MutableRecord):
   return '—';
 }
 
+function renderFamiliarInterior(member: MutableRecord, familiarId: string, options: LegacyStatusViewOptions): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'ffmvu-familiar-interior';
+  panel.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,229,255,.2);display:grid;gap:6px;';
+  const heading = document.createElement('div');
+  heading.textContent = 'Familiar interior';
+  heading.style.cssText = 'font-size:.88em;font-weight:bold;color:#81d4fa;';
+  panel.appendChild(heading);
+
+  const collection = (title: string, domain: 'Conditions' | 'MentalStates' | 'InnerThreads') => {
+    const box = document.createElement('div');
+    box.style.cssText = 'display:grid;gap:3px;';
+    const label = document.createElement('div');
+    label.textContent = title;
+    label.style.cssText = 'font-size:.78em;color:rgba(129,212,250,.82);';
+    box.appendChild(label);
+    const entries = Object.entries(record(member[domain]));
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.textContent = '—';
+      empty.style.cssText = 'font-size:.78em;color:rgba(224,247,250,.48);';
+      box.appendChild(empty);
+      panel.appendChild(box);
+      return;
+    }
+    for (const [key, raw] of entries) {
+      const entry = record(raw);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+      const text = document.createElement('div');
+      text.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+      if (domain === 'InnerThreads') {
+        text.textContent = [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key;
+      } else {
+        text.textContent = [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
+      }
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
+      edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+      edit.addEventListener('click', () => {
+        const next = window.prompt('Edit ' + title + ' entry as JSON:', JSON.stringify(entry, null, 2));
+        if (next === null) return;
+        try {
+          const value = JSON.parse(next) as JsonValue;
+          options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value });
+        } catch { window.alert('Expected valid JSON.'); }
+      });
+      const resolve = document.createElement('button');
+      resolve.type = 'button'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
+      resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+      resolve.addEventListener('click', () => {
+        if (window.confirm('Resolve ' + key + '?')) options.onIntent({ type: 'variable.delete', path: ['Familiar', familiarId, domain, key] });
+      });
+      row.append(text, edit, resolve);
+      box.appendChild(row);
+    }
+    panel.appendChild(box);
+  };
+
+  collection('Conditions', 'Conditions');
+  collection('Mental states', 'MentalStates');
+  collection('Inner threads', 'InnerThreads');
+  const agenda = record(member.Agenda);
+  const agendaRow = document.createElement('div');
+  agendaRow.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+  const agendaText = document.createElement('div');
+  agendaText.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+  agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, 'Agenda —');
+  agendaRow.appendChild(agendaText);
+  if (Object.keys(agenda).length) {
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
+    edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+    edit.addEventListener('click', () => {
+      const next = window.prompt('Edit Agenda as JSON:', JSON.stringify(agenda, null, 2));
+      if (next === null) return;
+      try { options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: JSON.parse(next) as JsonValue }); }
+      catch { window.alert('Expected valid JSON.'); }
+    });
+    const resolve = document.createElement('button');
+    resolve.type = 'button'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
+    resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+    resolve.addEventListener('click', () => options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: { Status: 'resolved' } }));
+    agendaRow.append(edit, resolve);
+  }
+  panel.appendChild(agendaRow);
+  return panel;
+}
+
 function renderFamiliars(shadow: ShadowRoot, options: LegacyStatusViewOptions): void {
   const container = shadow.getElementById('blk-blk-1770140160072') as HTMLElement | null;
   const template = shadow.getElementById('tpl-blk-blk-1770140160072') as HTMLTemplateElement | null;
@@ -990,6 +1089,9 @@ function renderFamiliars(shadow: ShadowRoot, options: LegacyStatusViewOptions): 
         corePoints.style.fontWeight = 'bold';
       }
       renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
+      const groups = wrapper.querySelectorAll<HTMLElement>('.grid-group-card');
+      const interiorHost = groups[1]?.querySelector<HTMLElement>('.grid-group-content') ?? wrapper;
+      interiorHost.appendChild(renderFamiliarInterior(member, id, options));
       wrapper.querySelectorAll<HTMLElement>('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
       wrapper.querySelectorAll<HTMLInputElement>('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
       wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
@@ -1107,7 +1209,7 @@ function renderWardrobe(shadow: ShadowRoot, options: LegacyStatusViewOptions): v
   draw();
 }
 
-function renderFfState(shadow: ShadowRoot, narrative: unknown): void {
+function renderFfState(shadow: ShadowRoot, state: FFMVUState): void {
   const root = shadow.getElementById('ffsm-root');
   const search = shadow.getElementById('ffsm-search') as HTMLInputElement | null;
   if (!root || !search) return;
@@ -1123,17 +1225,25 @@ function renderFfState(shadow: ShadowRoot, narrative: unknown): void {
     if (isRecord(value)) return '{' + Object.keys(value).length + '}';
     return String(value);
   };
-  const count = (value: unknown) => Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0;
+  const visibleEntries = (value: unknown, path: readonly string[]): Array<readonly [string, unknown]> => {
+    const entries = Array.isArray(value)
+      ? value.map((child, index) => [String(index), child] as const)
+      : Object.entries(record(value));
+    return entries.filter(([key]) => !isStatePathHiddenFromUi([...path, key]));
+  };
 
-  const rows = (container: HTMLElement, value: unknown, depth: number) => {
+  const count = (value: unknown, path: readonly string[] = []) => visibleEntries(value, path).length;
+
+  const rows = (container: HTMLElement, value: unknown, depth: number, path: readonly string[]): void => {
     if (primitive(value)) {
       const element = document.createElement('div'); element.className = 'ffsm-val'; element.textContent = label(value); container.appendChild(element); return;
     }
-    const entries = Array.isArray(value) ? value.map((child, index) => [String(index), child] as const) : Object.entries(record(value));
+    const entries = visibleEntries(value, path);
     if (!entries.length) {
       const empty = document.createElement('div'); empty.className = 'ffsm-empty'; empty.textContent = 'No data'; container.appendChild(empty); return;
     }
     for (const [key, item] of entries) {
+      const itemPath = [...path, key];
       if (primitive(item) || (Array.isArray(item) && item.every(primitive))) {
         const row = document.createElement('div'); row.className = 'ffsm-row';
         const keyElement = document.createElement('div'); keyElement.className = 'ffsm-key'; keyElement.textContent = key;
@@ -1149,29 +1259,30 @@ function renderFfState(shadow: ShadowRoot, narrative: unknown): void {
       }
       const details = document.createElement('details'); details.className = 'ffsm-node'; details.open = depth < 1;
       const summary = document.createElement('summary'); summary.textContent = key;
-      const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(item)); summary.appendChild(counter);
-      const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, item, depth + 1);
+      const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(item, itemPath)); summary.appendChild(counter);
+      const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, item, depth + 1, itemPath);
       details.append(summary, body); container.appendChild(details);
     }
   };
 
-  const section = (title: string, value: unknown, open: boolean) => {
+  const section = (title: string, value: unknown, open: boolean, path: readonly string[] = []) => {
     const details = document.createElement('details'); details.className = 'ffsm-top'; details.open = open;
     const summary = document.createElement('summary'); summary.textContent = title;
-    const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(value)); summary.appendChild(counter);
-    const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, value, 0);
+    const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(value, path)); summary.appendChild(counter);
+    const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, value, 0, path);
     details.append(summary, body); root.appendChild(details);
   };
 
+  const narrative = state.Narrative;
   if (!isRecord(narrative)) {
     const empty = document.createElement('div'); empty.className = 'ffsm-empty'; empty.textContent = 'Narrative state is not initialized yet.'; root.appendChild(empty);
   } else {
     section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
-    section('NPC Registry', narrative.NPCs || {}, true);
-    section('Relationships', narrative.Relationships || {}, true);
-    section('GM Notes', narrative.GM_Notes || {}, false);
-    section('Chekhov', narrative.Chekhov || {}, false);
-    section('WorldSim', narrative.WorldSim || {}, false);
+    section('NPC Registry', narrative.NPCs || {}, true, ['Narrative', 'NPCs']);
+    section('Relationships', narrative.Relationships || {}, true, ['Narrative', 'Relationships']);
+    section('Player Conditions', state.Mainchar.Conditions || {}, false, ['Mainchar', 'Conditions']);
+    section('GM Notes', narrative.GM_Notes || {}, false, ['Narrative', 'GM_Notes']);
+    section('WorldSim', narrative.WorldSim || {}, false, ['Narrative', 'WorldSim']);
   }
 
   const filter = () => {
@@ -1268,7 +1379,10 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
   style.textContent = shadowCss();
   const body = document.createElement('div');
   body.className = 'status-body';
-  body.innerHTML = LEGACY_STATUS_BODY_HTML;
+  body.innerHTML = LEGACY_STATUS_BODY_HTML.replace(
+    'Mental State</span><span class="ff25-value" data-bind-val="Mainchar.Mental_state">',
+    'Conditions</span><span class="ff25-value" data-ff25-conditions>',
+  );
   shadow.append(style, body);
   installVariablesTab(shadow, options);
 
@@ -1290,7 +1404,7 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
 
   renderFamiliars(shadow, options);
   renderWardrobe(shadow, options);
-  renderFfState(shadow, options.state.Narrative);
+  renderFfState(shadow, options.state);
   bindOverview(shadow, options.state);
   wireImages(shadow, options.state, options.onIntent, options.mutationDisabled, options.onUnsupported);
   wireCollapsibles(shadow);

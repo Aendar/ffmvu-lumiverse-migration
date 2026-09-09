@@ -1,6 +1,6 @@
 import { STATE_SCHEMA_VERSION } from './state-schema.js';
 import { clone } from './domain/value-utils.js';
-export const DEFAULT_STATE = {
+export const LEGACY_DEFAULT_STATE = {
     World_Calc: { Factions: {}, Locations: {}, Ruins: {}, Events: {} },
     World: {
         Date: ['Day 1', 'Date'],
@@ -36,10 +36,24 @@ export const DEFAULT_STATE = {
             RelevantWorldKeys: [], Changed: true,
         },
     },
-    MVUStatMenu_DB_Ver: STATE_SCHEMA_VERSION,
+    MVUStatMenu_DB_Ver: 'FFMVU-1.5.8',
     GameStarted: false,
 };
+function createCurrentDefault() {
+    const state = clone(LEGACY_DEFAULT_STATE);
+    const mainchar = state.Mainchar;
+    const narrative = state.Narrative;
+    delete mainchar.Mental_state;
+    mainchar.Conditions = {};
+    delete narrative.Chekhov;
+    state.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
+    return state;
+}
+export const DEFAULT_STATE = createCurrentDefault();
 export function createDefaultState() {
     return clone(DEFAULT_STATE);
+}
+export function createLegacyDefaultState() {
+    return clone(LEGACY_DEFAULT_STATE);
 }
 //# sourceMappingURL=state-defaults.js.map

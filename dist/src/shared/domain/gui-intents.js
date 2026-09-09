@@ -692,9 +692,13 @@ function diffValue(before, after, path, out) {
     }
     out.push({ op: 'replace', path, value: clone(after) });
 }
-export function buildGuiIntentPatch(before, after) {
+/** Generic deterministic deep diff used by both GUI intents and migration preflight. */
+export function buildStatePatch(before, after) {
     const out = [];
     diffValue(before, after, '', out);
     return out;
+}
+export function buildGuiIntentPatch(before, after) {
+    return buildStatePatch(before, after);
 }
 //# sourceMappingURL=gui-intents.js.map

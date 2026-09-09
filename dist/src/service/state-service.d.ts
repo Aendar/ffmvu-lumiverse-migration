@@ -18,6 +18,10 @@ export interface CreateGenesisInput {
     transcriptBoundary?: TranscriptBaseBoundary;
     projectionSeed?: ProjectionSeed;
     provenance?: Record<string, unknown>;
+    reducerVersion?: string;
+    projectionVersion?: string;
+    promptProtocolVersion?: string;
+    stateSchemaVersion?: string;
 }
 export interface CommitPatchInput {
     parentNodeId: string;
@@ -27,11 +31,28 @@ export interface CommitPatchInput {
     anchor?: CommitAnchor;
     requestId?: string;
     note?: string;
+    /** A migration deliberately changes reducer/projection ownership at this commit. */
+    reducerVersion?: string;
+    projectionVersion?: string;
+    promptProtocolVersion?: string;
+    /** Require that no unrelated durable commit landed while this operation was prepared. */
+    requireCurrentPhysicalTip?: boolean;
 }
 export interface CommitGuiIntentInput {
     expectedParentNodeId: string;
     expectedParentStateHash: string;
     intent: GuiIntent;
+    anchor: CommitAnchor;
+    requestId: string;
+}
+/**
+ * Deterministic in-place upgrade for a legacy semantic head. Unlike the
+ * generic migration draft, it has no user-supplied target state: the current
+ * reducer is the sole migration definition.
+ */
+export interface AutoMigrateLegacyStateInput {
+    parentNodeId: string;
+    expectedParentStateHash: string;
     anchor: CommitAnchor;
     requestId: string;
 }
@@ -73,6 +94,13 @@ export declare class StateService {
     importLegacyState(scope: StateScope, input: unknown, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     exportPortableSnapshot(scope: StateScope, nodeId: string): Promise<PortableSnapshot>;
     importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
+    /**
+     * Upgrade one legacy head to the current schema without involving the UI,
+     * a copied snapshot, or an LLM. The resulting migration commit preserves
+     * the existing transcript/variant lineage just like any other system state
+     * transition.
+     */
+    autoMigrateLegacyState(scope: StateScope, input: AutoMigrateLegacyStateInput): Promise<MaterializedState>;
     commitGuiIntent(scope: StateScope, input: CommitGuiIntentInput): Promise<MaterializedState>;
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;

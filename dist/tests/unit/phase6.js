@@ -29,6 +29,22 @@ async function main() {
     assert(imported.state.Narrative.Turn === 115 && imported.state.World.Time[0] === '11:00', 'legacy import takes authoritative state from stat_data');
     const importedProjection = await service.getProjectionForNode(source, imported.nodeId);
     assert(importedProjection.sourceKind === 'base-seed' && importedProjection.view.Marker === 'legacy-exact-projection', 'legacy ff_mvu_prompt_view is used only as exact first-turn projection seed');
+    const automaticScope = { userId: 'u', chatId: 'automatic-schema-upgrade' };
+    const automaticLegacy = await service.importLegacyState(automaticScope, {
+        stat_data: { ...createDefaultState(), MVUStatMenu_DB_Ver: 'FFMVU-1.5.8', GameStarted: true },
+    });
+    const automatic = await service.autoMigrateLegacyState(automaticScope, {
+        parentNodeId: automaticLegacy.nodeId,
+        expectedParentStateHash: automaticLegacy.stateHash,
+        anchor: { lineageAnchorId: 'root' },
+        requestId: 'automatic-schema-upgrade',
+    });
+    const automaticNode = await service.store.readNode(automaticScope, automatic.nodeId);
+    assert(automaticNode.type === 'commit' && automaticNode.value.kind === 'migration'
+        && automaticNode.value.note === 'automatic-schema-upgrade-v1.6'
+        && automaticNode.value.reducerVersion === 'FFMVU-1.6.0'
+        && automatic.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0'
+        && !('Mental_state' in automatic.state.Mainchar) && !('Chekhov' in automatic.state.Narrative), 'legacy schema upgrade is deterministic and requires no user-supplied migration draft');
     const source2 = { userId: 'u', chatId: 'source2' };
     const service2 = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
     const state = createDefaultState();

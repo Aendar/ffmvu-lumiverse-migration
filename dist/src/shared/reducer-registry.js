@@ -1,6 +1,6 @@
-import { LEGACY_REDUCER_VERSION } from './state-schema.js';
-import { normalizeState } from './state-normalize.js';
-import { validateState } from './state-validate.js';
+import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from './state-schema.js';
+import { normalizeState, normalizeStateV158 } from './state-normalize.js';
+import { validateState, validateStateV158 } from './state-validate.js';
 export class ReducerRegistry {
     implementations = new Map();
     register(implementation) {
@@ -17,12 +17,18 @@ export class ReducerRegistry {
 }
 export const legacyReducerV158 = {
     version: LEGACY_REDUCER_VERSION,
+    normalize: input => normalizeStateV158(input),
+    validate: validateStateV158,
+};
+export const currentReducerV160 = {
+    version: CURRENT_REDUCER_VERSION,
     normalize: normalizeState,
     validate: validateState,
 };
 export function createReducerRegistry() {
     const registry = new ReducerRegistry();
     registry.register(legacyReducerV158);
+    registry.register(currentReducerV160);
     return registry;
 }
 //# sourceMappingURL=reducer-registry.js.map

@@ -1,5 +1,5 @@
-import { LEGACY_PROJECTION_VERSION } from './state-schema.js';
-import { buildPromptView } from './projection.js';
+import { CURRENT_PROJECTION_VERSION, LEGACY_PROJECTION_VERSION } from './state-schema.js';
+import { buildPromptView, buildPromptViewV158 } from './projection.js';
 export class ProjectionRegistry {
     implementations = new Map();
     register(implementation) {
@@ -16,11 +16,16 @@ export class ProjectionRegistry {
 }
 export const legacyProjectionV158 = {
     version: LEGACY_PROJECTION_VERSION,
+    build: state => buildPromptViewV158(state, { consumeAudit: false }).view,
+};
+export const currentProjectionV160 = {
+    version: CURRENT_PROJECTION_VERSION,
     build: state => buildPromptView(state, { consumeAudit: false }).view,
 };
 export function createProjectionRegistry() {
     const registry = new ProjectionRegistry();
     registry.register(legacyProjectionV158);
+    registry.register(currentProjectionV160);
     return registry;
 }
 //# sourceMappingURL=projection-registry.js.map

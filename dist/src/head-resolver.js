@@ -142,5 +142,8 @@ export class HeadResolver {
     }
     async bad(health, base, reason) { const state = await this.materializer.materialize(base.scope, base.id); return { health, nodeId: state.nodeId, stateHash: state.stateHash, reason }; }
 }
-function isAllowedLineageCommit(commit, lineage) { return (commit.kind === 'gui' || commit.kind === 'system' || commit.kind === 'repair') && commit.anchor.lineageAnchorId === lineage; }
+function isAllowedLineageCommit(commit, lineage) {
+    return (commit.kind === 'gui' || commit.kind === 'system' || commit.kind === 'migration' || commit.kind === 'repair')
+        && commit.anchor.lineageAnchorId === lineage;
+}
 //# sourceMappingURL=head-resolver.js.map

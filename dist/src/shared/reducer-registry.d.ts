@@ -10,4 +10,5 @@ export declare class ReducerRegistry {
     get(version: string): ReducerImplementation;
 }
 export declare const legacyReducerV158: ReducerImplementation;
+export declare const currentReducerV160: ReducerImplementation;
 export declare function createReducerRegistry(): ReducerRegistry;

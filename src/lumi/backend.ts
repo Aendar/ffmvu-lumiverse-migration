@@ -8,6 +8,7 @@ import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
+import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from '../shared/state-schema.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
 import { computeRecentStateHistory } from '../shared/state-history.js';
 import { assertGuiIntent } from '../shared/domain/gui-intents.js';
@@ -23,8 +24,8 @@ import { DiagnosticTraceStore } from './diagnostic-trace.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.20';
-const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
+const BRIDGE_VERSION = '0.13.23';
+const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
 interface UserRuntime {
@@ -476,6 +477,61 @@ async function bindGuiCommit(
   await rt.anchors.putRoot(root);
 }
 
+/**
+ * Legacy heads are upgraded as soon as the extension observes them. This is
+ * intentionally backend-owned: the user never has to manufacture a migration
+ * draft merely to move to the schema shipped by this extension.
+ */
+async function autoMigrateLegacyHead(
+  rt: UserRuntime,
+  scope: StateScope,
+  head: import('../head-resolver.js').HeadResolution,
+): Promise<import('../head-resolver.js').HeadResolution> {
+  if (head.health !== 'ok') return head;
+  const artifact = await rt.state.store.readNode(scope, head.nodeId);
+  if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION) return head;
+
+  const lineageAnchorId = head.variantId ?? 'root';
+  const lineageAnchor = head.variantId ? await rt.anchors.read(scope, head.variantId) : null;
+  if (head.variantId && !lineageAnchor) throw new Error('AUTO_MIGRATION_LINEAGE_ANCHOR_MISSING');
+
+  try {
+    const committed = await rt.state.autoMigrateLegacyState(scope, {
+      parentNodeId: head.nodeId,
+      expectedParentStateHash: head.stateHash,
+      anchor: {
+        lineageAnchorId,
+        ...(head.variantId ? { variantId: head.variantId } : {}),
+        ...(lineageAnchor?.messageId ? { messageId: lineageAnchor.messageId, messageRole: 'assistant' as const } : {}),
+      },
+      requestId: createId('auto_schema_migration'),
+    });
+    await bindGuiCommit(rt, scope, head, committed.nodeId);
+    const verified = await resolveGuiHead(rt, scope);
+    if (
+      verified.head.health !== 'ok' ||
+      verified.head.nodeId !== committed.nodeId ||
+      verified.head.stateHash !== committed.stateHash
+    ) throw new Error('AUTO_MIGRATION_BINDING_VERIFICATION_FAILED');
+    publish(scope.userId, {
+      phase: 'schema_auto_migrated',
+      chatId: scope.chatId,
+      previousNodeId: head.nodeId,
+      finalNodeId: committed.nodeId,
+      finalStateHash: committed.stateHash,
+      reducerVersion: artifact.value.reducerVersion + '→' + CURRENT_REDUCER_VERSION,
+    });
+    return verified.head;
+  } catch (error) {
+    // Two simultaneous state reads may race to migrate the same legacy head.
+    // The winner commits; the loser simply resolves the new durable head.
+    if (String(error).includes('AUTO_MIGRATION_STALE_HEAD') || String(error).includes('COMMIT_STALE_HEAD')) {
+      return (await resolveGuiHead(rt, scope)).head;
+    }
+    throw error;
+  }
+}
+
 async function buildNarrativeHistoryContext(
   rt: UserRuntime,
   scope: StateScope,
@@ -650,6 +706,9 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     continueResolvesAttemptId = lastAttempt.id;
     head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
   }
+
+  head = await autoMigrateLegacyHead(rt, scope, head);
+  if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
 
   let suppressedHistoryMessageIds: string[] = [];
   const baseArtifact = await rt.state.store.readNode(scope, baseId);
@@ -2149,7 +2208,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
         spindle.sendToFrontend({ type: 'ffmvu_gui_state', ok: true, initialized: false, chatId }, userId);
         return;
       }
-      const resolved = await resolveGuiHead(rt, scope);
+      let resolved = await resolveGuiHead(rt, scope);
       if (resolved.head.health !== 'ok') {
         spindle.sendToFrontend({
           type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
@@ -2157,6 +2216,19 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
           headStateHash: resolved.head.stateHash, reason: resolved.head.reason ?? 'head unresolved',
         }, userId);
         return;
+      }
+      const cfg = await config(userId);
+      if (cfg.enabled) {
+        const migratedHead = await autoMigrateLegacyHead(rt, scope, resolved.head);
+        if (migratedHead.health !== 'ok') {
+          spindle.sendToFrontend({
+            type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
+            headHealth: migratedHead.health, headNodeId: migratedHead.nodeId,
+            headStateHash: migratedHead.stateHash, reason: migratedHead.reason ?? 'head unresolved after automatic schema migration',
+          }, userId);
+          return;
+        }
+        if (!sameGuiHead(resolved.head, migratedHead)) resolved = await resolveGuiHead(rt, scope);
       }
       const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
       spindle.sendToFrontend({
@@ -2295,7 +2367,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.8 bridge armed. Read-only lifecycle trace and Diagnostic Snapshot are active; Scene.HPH structural canonicalization and existing GUI safety remain unchanged.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.21 bridge armed. State ownership, current-chat migration, familiar interior state, and existing GUI safety are active.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -2335,4 +2407,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.8 read-only lifecycle diagnostics + Scene.HPH structural canonicalization + existing state/GUI safety).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (state ownership, current-chat migration, familiar interior state, and branch-safe GUI intents).`);

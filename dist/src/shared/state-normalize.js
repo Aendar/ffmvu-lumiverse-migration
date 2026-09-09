@@ -1,5 +1,5 @@
-import { STATE_SCHEMA_VERSION } from './state-schema.js';
-import { createDefaultState, DEFAULT_STATE } from './state-defaults.js';
+import { LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION } from './state-schema.js';
+import { createLegacyDefaultState, DEFAULT_STATE, LEGACY_DEFAULT_STATE } from './state-defaults.js';
 import { asArray, asRecord, clamp, clone, isRecord, lower, text, tupleValue, uniqueStrings } from './domain/value-utils.js';
 const CLOTHING_SLOTS = new Set(['Head', 'Torso', 'Legs', 'Feet', 'Extra']);
 const CLOTHING_LAYERS = new Set(['Underwear', 'Base', 'Outerwear']);
@@ -224,11 +224,14 @@ function canonicalActorRef(value, aliases) {
     const raw = text(value).trim();
     return aliases.get(lower(raw)) || raw;
 }
-export function normalizeState(input) {
-    const raw = isRecord(input) ? clone(input) : createDefaultState();
+export function normalizeStateV158(input) {
+    const raw = isRecord(input) ? clone(input) : createLegacyDefaultState();
     migrateProjectionPaths(raw);
-    mergeDefaults(raw, clone(DEFAULT_STATE));
+    mergeDefaults(raw, clone(LEGACY_DEFAULT_STATE));
     const state = raw;
+    // Omit<> preserves the legacy index signature, so explicitly restore the
+    // structural narrative type here instead of letting known fields widen to
+    // `unknown` under strict compilation.
     const narrative = state.Narrative;
     normalizeOutfit(state.Mainchar);
     for (const member of Object.values(asRecord(state.Familiar))) {
@@ -293,8 +296,126 @@ export function normalizeState(input) {
     narrative.WorldSim.Archive = archiveResolved(narrative.WorldSim.Threads, narrative.WorldSim.Archive, turn, 'thread:');
     narrative.WorldSim.Archive = archiveResolved(narrative.WorldSim.Pressures, narrative.WorldSim.Archive, turn, 'pressure:');
     narrative.WorldSim.Archive = trimRecord(narrative.WorldSim.Archive, 30);
-    state.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
+    state.MVUStatMenu_DB_Ver = LEGACY_REDUCER_VERSION;
     state.GameStarted = Boolean(state.GameStarted);
     return state;
+}
+const CONDITION_SEVERITIES = new Set(['low', 'moderate', 'high']);
+function compactStateText(value, limit = 320) {
+    return text(value).trim().slice(0, limit);
+}
+function currentStatus(value) {
+    return RESOLVED_STATUSES.has(lower(value)) ? 'resolved' : 'active';
+}
+function optionalTurn(value) {
+    const turn = Math.trunc(Number(value));
+    return Number.isFinite(turn) && turn >= 0 ? turn : undefined;
+}
+function normalizeConditions(value, limit) {
+    const result = {};
+    for (const [id, raw] of Object.entries(asRecord(value))) {
+        if (Object.keys(result).length >= limit || !isRecord(raw))
+            break;
+        if (currentStatus(raw.Status) === 'resolved')
+            continue;
+        const state = compactStateText(raw.State || raw.Name || raw.Label);
+        if (!state)
+            continue;
+        const severityRaw = lower(raw.Severity);
+        const entry = {
+            State: state,
+            Severity: CONDITION_SEVERITIES.has(severityRaw) ? severityRaw : 'moderate',
+            Status: 'active',
+        };
+        const cause = compactStateText(raw.Cause);
+        const clearWhen = compactStateText(raw.ClearWhen);
+        const lastTouchedTurn = optionalTurn(raw.LastTouchedTurn);
+        if (cause)
+            entry.Cause = cause;
+        if (clearWhen)
+            entry.ClearWhen = clearWhen;
+        if (lastTouchedTurn !== undefined)
+            entry.LastTouchedTurn = lastTouchedTurn;
+        result[id] = entry;
+    }
+    return result;
+}
+function normalizeInnerThreads(value, limit) {
+    const result = {};
+    for (const [id, raw] of Object.entries(asRecord(value))) {
+        if (Object.keys(result).length >= limit || !isRecord(raw))
+            break;
+        if (currentStatus(raw.Status) === 'resolved')
+            continue;
+        const subject = compactStateText(raw.Subject);
+        const stance = compactStateText(raw.Stance);
+        const tension = compactStateText(raw.Tension);
+        if (!subject && !tension)
+            continue;
+        const entry = { Subject: subject, Stance: stance, Tension: tension, Status: 'active' };
+        const lastTouchedTurn = optionalTurn(raw.LastTouchedTurn);
+        if (lastTouchedTurn !== undefined)
+            entry.LastTouchedTurn = lastTouchedTurn;
+        result[id] = entry;
+    }
+    return result;
+}
+function normalizeAgenda(value) {
+    if (!isRecord(value) || currentStatus(value.Status) === 'resolved')
+        return undefined;
+    const agenda = { Status: 'active' };
+    for (const key of ['CurrentGoal', 'NextAction', 'Deadline', 'Location', 'Pressure']) {
+        const current = compactStateText(value[key]);
+        if (current)
+            agenda[key] = current;
+    }
+    return Object.keys(agenda).length > 1 ? agenda : undefined;
+}
+export function normalizeState(input) {
+    const legacy = normalizeStateV158(input);
+    const raw = clone(legacy);
+    mergeDefaults(raw, clone(DEFAULT_STATE));
+    const mainchar = asRecord(raw.Mainchar);
+    const narrative = asRecord(raw.Narrative);
+    delete mainchar.Mental_state;
+    mainchar.Conditions = normalizeConditions(mainchar.Conditions, 8);
+    delete narrative.Chekhov;
+    const scene = asRecord(narrative.Scene);
+    scene.OpenLoops = uniqueStrings(scene.OpenLoops).slice(-2);
+    narrative.Scene = scene;
+    const npcs = asRecord(narrative.NPCs);
+    for (const npcRaw of Object.values(npcs)) {
+        if (!isRecord(npcRaw))
+            continue;
+        delete npcRaw.CurrentThought;
+        delete npcRaw.Mental_state;
+        delete npcRaw.InternalThoughts;
+        delete npcRaw.Thoughts;
+        const agenda = normalizeAgenda(npcRaw.Agenda);
+        if (agenda)
+            npcRaw.Agenda = agenda;
+        else
+            delete npcRaw.Agenda;
+    }
+    narrative.NPCs = npcs;
+    const familiar = asRecord(raw.Familiar);
+    for (const memberRaw of Object.values(familiar)) {
+        if (!isRecord(memberRaw))
+            continue;
+        delete memberRaw.Mental_state;
+        delete memberRaw.CurrentThought;
+        memberRaw.Conditions = normalizeConditions(memberRaw.Conditions, 8);
+        memberRaw.MentalStates = normalizeConditions(memberRaw.MentalStates, 2);
+        memberRaw.InnerThreads = normalizeInnerThreads(memberRaw.InnerThreads, 2);
+        const agenda = normalizeAgenda(memberRaw.Agenda);
+        if (agenda)
+            memberRaw.Agenda = agenda;
+        else
+            delete memberRaw.Agenda;
+    }
+    raw.Familiar = familiar;
+    raw.Narrative = narrative;
+    raw.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
+    return raw;
 }
 //# sourceMappingURL=state-normalize.js.map
