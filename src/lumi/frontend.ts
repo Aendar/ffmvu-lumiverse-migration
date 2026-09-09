@@ -31,7 +31,7 @@ interface GuiSnapshot {
 }
 
 type TabId = LegacyStatusTab;
-const PORTABLE_SNAPSHOT_FORMAT_UI_UI = 'FFMVU-Portable-Snapshot-v1';
+const PORTABLE_SNAPSHOT_FORMAT_UI = 'FFMVU-Portable-Snapshot-v1';
 
 const TAB_DEFS: Array<[TabId, string]> = [
   ['overview', 'Overview'],
