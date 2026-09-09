@@ -528,7 +528,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
   }
 
-  async function copyPortableSnapshot(value: PortableSnapshot): Promise<boolean> {
+  async function copyJson(value: unknown): Promise<boolean> {
     const text = JSON.stringify(value, null, 2);
     try {
       await navigator.clipboard.writeText(text);
@@ -711,8 +711,9 @@ export function setup(ctx: SpindleFrontendContextLite) {
     const character = card('Character Status');
     for (const [key, label] of [
       ['Name', 'Name'], ['Age', 'Age'], ['Gender', 'Gender'], ['Occupation', 'Occupation'],
-      ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Mental_state', 'Mental State'], ['Core-points', 'Core Point'],
+      ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Core-points', 'Core Point'],
     ] as Array<[keyof typeof state.Mainchar, string]>) addRow(character, label, state.Mainchar[key]);
+    addRow(character, 'Conditions', Object.values(valueRecord(state.Mainchar.Conditions)).map(item => statusText(valueRecord(item).State, '')).filter(Boolean).join(' · ') || '—');
 
     const avatar = card('Avatar');
     const image = statusText(state.Mainchar.Image, '');
@@ -1496,7 +1497,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
       const phase = String(payload.status?.phase ?? '');
       if (payload.status?.chatId === activeChatId && [
         'commit_complete', 'swipe_navigated', 'gui_commit_complete', 'new_game_complete', 'legacy_import_complete',
-        'continue_commit_complete', 'no_patch', 'stopped_durable',
+        'schema_auto_migrated', 'continue_commit_complete', 'no_patch', 'stopped_durable',
       ].includes(phase)) requestState();
       render();
       return;
@@ -1550,7 +1551,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
         render();
         return;
       }
-      void copyPortableSnapshot(portable).then(ok => {
+      void copyJson(portable).then(ok => {
         snapshotExportNotice = ok
           ? 'Portable snapshot copied · turn ' + String(portable.source?.turn ?? '—') + '.'
           : 'Clipboard failed. Use Download JSON instead.';

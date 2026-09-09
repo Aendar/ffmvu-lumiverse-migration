@@ -86,21 +86,20 @@ throws(() => assertModelOperationPolicy([{ op: 'move', from: '/a', path: '/b' }]
 
 const auditState = createDefaultState();
 auditState.Narrative.Turn = 8;
-auditState.Narrative.Chekhov.LastAuditTurn = 0;
 auditState.Narrative.Scene.Changed = true;
 const prepared = buildPromptView(auditState, { consumeAudit: true });
 const viewNarrative = prepared.view.Narrative as Record<string, unknown>;
 const viewScene = (viewNarrative.Scene as Record<string, unknown>);
-const viewChekhov = (viewNarrative.Chekhov as Record<string, unknown>);
 equal(viewScene.Changed, true, 'projection sees pre-consumption Scene.Changed');
-equal(viewChekhov.LastAuditTurn, 0, 'projection sees pre-consumption LastAuditTurn');
+assert(viewNarrative.Chekhov === undefined, 'v1.6 projection does not expose retired Chekhov state');
 equal(prepared.state.Narrative.Scene.Changed, false, 'returned state consumes Scene.Changed');
-equal(prepared.state.Narrative.Chekhov.LastAuditTurn, 8, 'returned state consumes audit turn');
 
 const projectionRegistry = createProjectionRegistry();
 assert(Boolean(projectionRegistry.get('FFMVU-1.5.8')), 'legacy projection registered by explicit version');
+assert(Boolean(projectionRegistry.get('FFMVU-1.6.0')), 'current projection registered by explicit version');
 const reducerRegistry = createReducerRegistry();
 assert(Boolean(reducerRegistry.get('FFMVU-1.5.8')), 'legacy reducer registered by explicit version');
+assert(Boolean(reducerRegistry.get('FFMVU-1.6.0')), 'current reducer registered by explicit version');
 
 assert(normalizeClock('6:07') === '06:07', 'clock normalizes H:MM');
 const started = applyGameStartPayload(createDefaultState(), {

@@ -26,6 +26,7 @@ export interface ProjectionSeed {
     provenance: 'fork-exact' | 'legacy-exact';
 }
 export declare const PORTABLE_SNAPSHOT_FORMAT = "FFMVU-Portable-Snapshot-v1";
+/** A chat-bound draft used by the Variables-tab migration flow. */
 export interface PortableSnapshot {
     format: typeof PORTABLE_SNAPSHOT_FORMAT;
     createdAt: string;

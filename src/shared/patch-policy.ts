@@ -12,6 +12,8 @@ export interface ModelPatchAuthorizationView {
   npcIds: string[];
   relationshipIds: string[];
   gmNoteIds: string[];
+  /** True only for frozen v1.5.8 projections. */
+  allowChekhov: boolean;
   chekhovIds: string[];
   worldSimThreadIds: string[];
   worldSimPressureIds: string[];
@@ -36,6 +38,7 @@ export function buildModelPatchAuthorizationView(view: PromptView): ModelPatchAu
     npcIds: Object.keys(asRecord(narrative.NPCs)),
     relationshipIds: Object.keys(asRecord(narrative.Relationships)),
     gmNoteIds: Object.keys(asRecord(gm.Active)),
+    allowChekhov: narrative.Chekhov !== undefined,
     chekhovIds: Object.keys(asRecord(chekhov.Active)),
     worldSimThreadIds: Object.keys(asRecord(worldSim.Threads)),
     worldSimPressureIds: Object.keys(asRecord(worldSim.Pressures)),
@@ -68,6 +71,36 @@ function authorizeProjectedCollection(
 function numericNpcId(id: string): number | null {
   const match = /^npc_(\d{4,})$/.exec(id);
   return match ? Number(match[1]) : null;
+}
+
+function authorizeFamiliarInterior(
+  operation: JsonPatchOperation,
+  parts: string[],
+  baseState: FFMVUState,
+): void {
+  const familiarId = parts[1];
+  const domain = parts[2];
+  if (!familiarId || !domain) return;
+  const member = asRecord(baseState.Familiar[familiarId]);
+  if (domain === 'Agenda') {
+    if (parts.length === 3) {
+      if (!['add', 'replace', 'remove'].includes(operation.op)) deny('Familiar agenda requires a direct add, replace, or remove');
+      return;
+    }
+    if (parts.length !== 4) deny('Familiar agenda cannot store nested history');
+    return;
+  }
+  const limits: Record<string, number> = { Conditions: 8, MentalStates: 2, InnerThreads: 2 };
+  const limit = limits[domain];
+  if (!limit) return;
+  const entryId = parts[3];
+  if (!entryId) deny('Familiar.' + domain + ' collection replacement is not allowed');
+  const entries = asRecord(member[domain]);
+  const exists = hasOwn(entries, entryId);
+  if (!exists) {
+    if (operation.op !== 'add' || parts.length !== 4) deny('new Familiar.' + domain + ' entry must be one exact add');
+    if (Object.keys(entries).length >= limit) deny('Familiar.' + domain + ' active-entry limit reached');
+  }
 }
 
 export function assertModelPatchAuthorization(
@@ -104,6 +137,7 @@ export function assertModelPatchAuthorization(
     if (parts[0] === 'Familiar') {
       authorizeProjectedCollection(operation, parts, baseState.Familiar, authorization.familiarIds, 'Familiar', 1);
       if (!hasOwn(baseState.Familiar, parts[1])) deny('model-created Familiar is not authorized by v0.5');
+      authorizeFamiliarInterior(operation, parts, baseState);
       continue;
     }
     if (parts[0] !== 'Narrative') deny('persistent root is not model-writable: ' + parts[0]);
@@ -138,8 +172,10 @@ export function assertModelPatchAuthorization(
       continue;
     }
     if (parts[1] === 'Chekhov') {
+      if (!authorization.allowChekhov) deny('Chekhov is retired in this state schema');
       if (parts[2] !== 'Active') deny('Chekhov audit/archive fields are backend-owned');
-      authorizeProjectedCollection(operation, parts, baseState.Narrative.Chekhov.Active, authorization.chekhovIds, 'Narrative.Chekhov.Active', 3);
+      const legacyNarrative = baseState.Narrative as unknown as Record<string, unknown>;
+      authorizeProjectedCollection(operation, parts, asRecord(legacyNarrative.Chekhov).Active, authorization.chekhovIds, 'Narrative.Chekhov.Active', 3);
       continue;
     }
     if (parts[1] === 'WorldSim') {

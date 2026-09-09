@@ -80,20 +80,19 @@ throws(() => pointerParts('/Mainchar/__proto__/x'), 'Unsafe JSON Pointer segment
 throws(() => assertModelOperationPolicy([{ op: 'move', from: '/a', path: '/b' }]), 'Model operation not allowed', 'model move operation rejected');
 const auditState = createDefaultState();
 auditState.Narrative.Turn = 8;
-auditState.Narrative.Chekhov.LastAuditTurn = 0;
 auditState.Narrative.Scene.Changed = true;
 const prepared = buildPromptView(auditState, { consumeAudit: true });
 const viewNarrative = prepared.view.Narrative;
 const viewScene = viewNarrative.Scene;
-const viewChekhov = viewNarrative.Chekhov;
 equal(viewScene.Changed, true, 'projection sees pre-consumption Scene.Changed');
-equal(viewChekhov.LastAuditTurn, 0, 'projection sees pre-consumption LastAuditTurn');
+assert(viewNarrative.Chekhov === undefined, 'v1.6 projection does not expose retired Chekhov state');
 equal(prepared.state.Narrative.Scene.Changed, false, 'returned state consumes Scene.Changed');
-equal(prepared.state.Narrative.Chekhov.LastAuditTurn, 8, 'returned state consumes audit turn');
 const projectionRegistry = createProjectionRegistry();
 assert(Boolean(projectionRegistry.get('FFMVU-1.5.8')), 'legacy projection registered by explicit version');
+assert(Boolean(projectionRegistry.get('FFMVU-1.6.0')), 'current projection registered by explicit version');
 const reducerRegistry = createReducerRegistry();
 assert(Boolean(reducerRegistry.get('FFMVU-1.5.8')), 'legacy reducer registered by explicit version');
+assert(Boolean(reducerRegistry.get('FFMVU-1.6.0')), 'current reducer registered by explicit version');
 assert(normalizeClock('6:07') === '06:07', 'clock normalizes H:MM');
 const started = applyGameStartPayload(createDefaultState(), {
     date: 'Day 2', time: '6:07', weather: 'Rain', location: 'Gate', name: 'Player', age: '20', gender: 'M', race: 'Human',

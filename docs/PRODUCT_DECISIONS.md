@@ -39,7 +39,16 @@ The user must be able to:
 - A fresh-chat snapshot import creates a self-contained fork base and must not depend on the source chat remaining available.
 - If the user wants narrative continuity without old-chat context bloat, a separate handoff/summary can be placed in the fresh chat.
 
-**Current implementation status:** backend `StateService.exportPortableSnapshot()` and `importPortableSnapshot()` already exist; user-facing frontend/backend RPC for Save/Import Snapshot is still pending.
+**Current implementation status:** export is available from the initialized StatusMenu; import is available on the uninitialized GameStart surface. Import remains explicit because it creates a new chat fork.
+
+## D6 — Schema upgrades are automatic
+
+An initialized legacy FFMVU head is upgraded in place when the enabled bridge first observes it, and again defensively before generation if needed.
+
+- The extension constructs the current-schema state itself; the user does not copy a template, edit JSON, run a preflight, or press a migration button.
+- The upgrade is one durable `migration` commit bound to the existing semantic lineage, preserving transcript and branch history.
+- This upgrade removes retired legacy fields and creates the current schema-owned collections through the current reducer.
+- Portable Snapshot import remains a separate explicit action because it loads state from another chat rather than upgrading the chat already open.
 
 ## D3 — Outfit/GUI changes must be visible to the model as NET off-screen changes
 

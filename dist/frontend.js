@@ -52,6 +52,7 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['Mainchar', 'Talents'],
     ['Mainchar', 'Buffs'],
     ['Mainchar', 'Ailments'],
+    ['Mainchar', 'Conditions'],
     ['Mainchar', 'Outfit', 'Worn'],
     ['Mainchar', 'Outfit', 'Wardrobe'],
     ['Mainchar', 'Real_estate', 'Estates'],
@@ -63,13 +64,14 @@ const VARIABLE_DYNAMIC_COLLECTION_PATTERNS = [
     ['Familiar', '*', 'Talents'],
     ['Familiar', '*', 'Buffs'],
     ['Familiar', '*', 'Ailments'],
+    ['Familiar', '*', 'Conditions'],
+    ['Familiar', '*', 'MentalStates'],
+    ['Familiar', '*', 'InnerThreads'],
     ['Familiar', '*', 'Spells'],
     ['Familiar', '*', 'Outfit', 'Worn'],
     ['Familiar', '*', 'Outfit', 'Wardrobe'],
     ['Narrative', 'GM_Notes', 'Active'],
     ['Narrative', 'GM_Notes', 'Archive'],
-    ['Narrative', 'Chekhov', 'Active'],
-    ['Narrative', 'Chekhov', 'Archive'],
     ['Narrative', 'WorldSim', 'Threads'],
     ['Narrative', 'WorldSim', 'Pressures'],
     ['Narrative', 'WorldSim', 'Archive'],
@@ -88,7 +90,7 @@ const WORLD_LABELED_FIELDS = new Set([
     'Date', 'Time', 'Location', 'Weather',
 ]);
 const CHARACTER_LABELED_FIELDS = new Set([
-    'Name', 'Image', 'Race', 'Age', 'Gender', 'Occupation', 'Level', 'Exp', 'Core-points', 'Mental_state',
+    'Name', 'Image', 'Race', 'Age', 'Gender', 'Occupation', 'Level', 'Exp', 'Core-points',
     'Strength', 'Agility', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
     'Hp_curr', 'Hp_max', 'Mp_curr', 'Mp_max', 'Sta_curr', 'Sta_max',
     'Physical_attack', 'Physical_defense', 'Magic_attack', 'Magic_defense', 'Magic_assist',
@@ -283,6 +285,45 @@ const VE_PROTECTED_ROOT = new Set([
     'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
     'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
+const RETIRED_NPC_FIELDS = new Set(['CurrentThought', 'Mental_state', 'InternalThoughts', 'Thoughts']);
+/**
+ * Returns true for state paths that are kept only for legacy replay/migration
+ * compatibility and must not be presented as editable current variables.
+ * This is a display rule only; it never mutates the authoritative state.
+ */
+export function isStatePathHiddenFromUi(path) {
+    if (path.length === 1 && (path[0] === 'ProjectionMeta' || path[0] === 'ColdIndex'))
+        return true;
+    if (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Mental_state')
+        return true;
+    if (path.length >= 2 && path[0] === 'Narrative' && path[1] === 'Chekhov')
+        return true;
+    if (path.length >= 4 && path[0] === 'Narrative' && path[1] === 'NPCs' && RETIRED_NPC_FIELDS.has(path[3]))
+        return true;
+    if (path.length >= 3 && path[0] === 'Familiar' && RETIRED_NPC_FIELDS.has(path[2]))
+        return true;
+    return false;
+}
+/** Whether a state contains any retired paths that are currently hidden. */
+export function hasRetiredStateFields(state) {
+    let found = false;
+    const visit = (value, path) => {
+        if (found || isStatePathHiddenFromUi(path)) {
+            found = true;
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach((child, index) => visit(child, [...path, String(index)]));
+            return;
+        }
+        if (isRecord(value)) {
+            for (const [key, child] of Object.entries(value))
+                visit(child, [...path, key]);
+        }
+    };
+    visit(state, []);
+    return found;
+}
 function veIsTuple(path, value) {
     return isLabeledTupleAtPath(path, value);
 }
@@ -552,6 +593,8 @@ function veActionButtons(root, path, key, value, parentIsArray, options) {
     return actions;
 }
 function veRenderEntry(root, key, value, path, parentIsArray, depth, query, options) {
+    if (isStatePathHiddenFromUi(path))
+        return null;
     if (!veMatches(key, value, query, path))
         return null;
     const tuple = veIsTuple(path, value);
@@ -584,25 +627,28 @@ function veRenderEntry(root, key, value, path, parentIsArray, depth, query, opti
     const keyElement = document.createElement('span');
     keyElement.className = 've-key';
     keyElement.textContent = key;
+    const childEntries = Array.isArray(effectiveValue)
+        ? effectiveValue.map((child, index) => [String(index), child])
+        : Object.entries(effectiveValue);
+    const visibleEntries = childEntries.filter(([childKey]) => !isStatePathHiddenFromUi([...path, childKey]));
     const count = document.createElement('span');
     count.className = 've-count';
-    const childCount = Array.isArray(effectiveValue) ? effectiveValue.length : Object.keys(effectiveValue).length;
-    count.textContent = String(childCount);
+    count.textContent = String(visibleEntries.length);
     const spacer = document.createElement('span');
     spacer.className = 've-spacer';
     summary.append(keyElement, count, spacer, veActionButtons(root, path, key, value, parentIsArray, options));
     const children = document.createElement('div');
     children.className = 've-children';
     if (Array.isArray(effectiveValue)) {
-        effectiveValue.forEach((child, index) => {
-            const rendered = veRenderEntry(root, String(index), child, [...path, String(index)], true, depth + 1, query, options);
+        visibleEntries.forEach(([childKey, child]) => {
+            const rendered = veRenderEntry(root, childKey, child, [...path, childKey], true, depth + 1, query, options);
             if (rendered)
                 children.appendChild(rendered);
         });
     }
     else {
         const object = effectiveValue;
-        for (const [childKey, child] of Object.entries(object)) {
+        for (const [childKey, child] of visibleEntries) {
             const rendered = veRenderEntry(root, childKey, child, [...path, childKey], false, depth + 1, query, options);
             if (rendered)
                 children.appendChild(rendered);
@@ -639,7 +685,13 @@ export function renderVariablesEditor(root, options) {
     search.value = options.search;
     const hint = document.createElement('span');
     hint.className = 've-hint';
-    hint.textContent = 'Edit values · manage user entries';
+    const legacyFieldsHidden = hasRetiredStateFields(options.state);
+    hint.textContent = legacyFieldsHidden
+        ? 'Legacy fields hidden · migrate state to v1.6'
+        : 'Edit values · manage user entries';
+    if (legacyFieldsHidden) {
+        hint.title = 'Retired legacy fields are hidden from this view. Use the migration controls above to convert the chat state to FFMVU-1.6.0.';
+    }
     toolbar.append(search, hint);
     const tree = document.createElement('div');
     tree.className = 've-tree';
@@ -902,6 +954,17 @@ function bindValues(root, data) {
     });
 }
 function bindOverview(root, state) {
+    const conditionsValue = root.querySelector('[data-ff25-conditions]');
+    const conditionsRow = conditionsValue?.closest('.ff25-row');
+    const conditions = Object.values(record(state.Mainchar.Conditions));
+    if (conditionsValue) {
+        conditionsValue.textContent = conditions.length
+            ? conditions.map(value => statusText(record(value).State, '')).filter(Boolean).join(' · ')
+            : '—';
+    }
+    const conditionsLabel = conditionsRow?.querySelector('.ff25-label');
+    if (conditionsLabel)
+        conditionsLabel.textContent = 'Conditions';
     root.querySelectorAll('[data-ff25-cur]').forEach(row => {
         const current = numberAt(state, row.getAttribute('data-ff25-cur') || '');
         const maximum = numberAt(state, row.getAttribute('data-ff25-max') || '');
@@ -1566,6 +1629,111 @@ function familiarIdentity(state, id, member) {
     }
     return '—';
 }
+function renderFamiliarInterior(member, familiarId, options) {
+    const panel = document.createElement('div');
+    panel.className = 'ffmvu-familiar-interior';
+    panel.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,229,255,.2);display:grid;gap:6px;';
+    const heading = document.createElement('div');
+    heading.textContent = 'Familiar interior';
+    heading.style.cssText = 'font-size:.88em;font-weight:bold;color:#81d4fa;';
+    panel.appendChild(heading);
+    const collection = (title, domain) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'display:grid;gap:3px;';
+        const label = document.createElement('div');
+        label.textContent = title;
+        label.style.cssText = 'font-size:.78em;color:rgba(129,212,250,.82);';
+        box.appendChild(label);
+        const entries = Object.entries(record(member[domain]));
+        if (!entries.length) {
+            const empty = document.createElement('div');
+            empty.textContent = '—';
+            empty.style.cssText = 'font-size:.78em;color:rgba(224,247,250,.48);';
+            box.appendChild(empty);
+            panel.appendChild(box);
+            return;
+        }
+        for (const [key, raw] of entries) {
+            const entry = record(raw);
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+            const text = document.createElement('div');
+            text.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+            if (domain === 'InnerThreads') {
+                text.textContent = [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key;
+            }
+            else {
+                text.textContent = [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
+            }
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.textContent = 'Edit';
+            edit.disabled = options.mutationDisabled;
+            edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+            edit.addEventListener('click', () => {
+                const next = window.prompt('Edit ' + title + ' entry as JSON:', JSON.stringify(entry, null, 2));
+                if (next === null)
+                    return;
+                try {
+                    const value = JSON.parse(next);
+                    options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value });
+                }
+                catch {
+                    window.alert('Expected valid JSON.');
+                }
+            });
+            const resolve = document.createElement('button');
+            resolve.type = 'button';
+            resolve.textContent = 'Resolve';
+            resolve.disabled = options.mutationDisabled;
+            resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+            resolve.addEventListener('click', () => {
+                if (window.confirm('Resolve ' + key + '?'))
+                    options.onIntent({ type: 'variable.delete', path: ['Familiar', familiarId, domain, key] });
+            });
+            row.append(text, edit, resolve);
+            box.appendChild(row);
+        }
+        panel.appendChild(box);
+    };
+    collection('Conditions', 'Conditions');
+    collection('Mental states', 'MentalStates');
+    collection('Inner threads', 'InnerThreads');
+    const agenda = record(member.Agenda);
+    const agendaRow = document.createElement('div');
+    agendaRow.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+    const agendaText = document.createElement('div');
+    agendaText.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+    agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, 'Agenda —');
+    agendaRow.appendChild(agendaText);
+    if (Object.keys(agenda).length) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.textContent = 'Edit';
+        edit.disabled = options.mutationDisabled;
+        edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+        edit.addEventListener('click', () => {
+            const next = window.prompt('Edit Agenda as JSON:', JSON.stringify(agenda, null, 2));
+            if (next === null)
+                return;
+            try {
+                options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: JSON.parse(next) });
+            }
+            catch {
+                window.alert('Expected valid JSON.');
+            }
+        });
+        const resolve = document.createElement('button');
+        resolve.type = 'button';
+        resolve.textContent = 'Resolve';
+        resolve.disabled = options.mutationDisabled;
+        resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+        resolve.addEventListener('click', () => options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: { Status: 'resolved' } }));
+        agendaRow.append(edit, resolve);
+    }
+    panel.appendChild(agendaRow);
+    return panel;
+}
 function renderFamiliars(shadow, options) {
     const container = shadow.getElementById('blk-blk-1770140160072');
     const template = shadow.getElementById('tpl-blk-blk-1770140160072');
@@ -1650,6 +1818,9 @@ function renderFamiliars(shadow, options) {
                 corePoints.style.fontWeight = 'bold';
             }
             renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
+            const groups = wrapper.querySelectorAll('.grid-group-card');
+            const interiorHost = groups[1]?.querySelector('.grid-group-content') ?? wrapper;
+            interiorHost.appendChild(renderFamiliarInterior(member, id, options));
             wrapper.querySelectorAll('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
             wrapper.querySelectorAll('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
             wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
@@ -1767,7 +1938,7 @@ function renderWardrobe(shadow, options) {
     };
     draw();
 }
-function renderFfState(shadow, narrative) {
+function renderFfState(shadow, state) {
     const root = shadow.getElementById('ffsm-root');
     const search = shadow.getElementById('ffsm-search');
     if (!root || !search)
@@ -1789,8 +1960,14 @@ function renderFfState(shadow, narrative) {
             return '{' + Object.keys(value).length + '}';
         return String(value);
     };
-    const count = (value) => Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0;
-    const rows = (container, value, depth) => {
+    const visibleEntries = (value, path) => {
+        const entries = Array.isArray(value)
+            ? value.map((child, index) => [String(index), child])
+            : Object.entries(record(value));
+        return entries.filter(([key]) => !isStatePathHiddenFromUi([...path, key]));
+    };
+    const count = (value, path = []) => visibleEntries(value, path).length;
+    const rows = (container, value, depth, path) => {
         if (primitive(value)) {
             const element = document.createElement('div');
             element.className = 'ffsm-val';
@@ -1798,7 +1975,7 @@ function renderFfState(shadow, narrative) {
             container.appendChild(element);
             return;
         }
-        const entries = Array.isArray(value) ? value.map((child, index) => [String(index), child]) : Object.entries(record(value));
+        const entries = visibleEntries(value, path);
         if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'ffsm-empty';
@@ -1807,6 +1984,7 @@ function renderFfState(shadow, narrative) {
             return;
         }
         for (const [key, item] of entries) {
+            const itemPath = [...path, key];
             if (primitive(item) || (Array.isArray(item) && item.every(primitive))) {
                 const row = document.createElement('div');
                 row.className = 'ffsm-row';
@@ -1838,16 +2016,16 @@ function renderFfState(shadow, narrative) {
             summary.textContent = key;
             const counter = document.createElement('span');
             counter.className = 'ffsm-count';
-            counter.textContent = String(count(item));
+            counter.textContent = String(count(item, itemPath));
             summary.appendChild(counter);
             const body = document.createElement('div');
             body.className = 'ffsm-body';
-            rows(body, item, depth + 1);
+            rows(body, item, depth + 1, itemPath);
             details.append(summary, body);
             container.appendChild(details);
         }
     };
-    const section = (title, value, open) => {
+    const section = (title, value, open, path = []) => {
         const details = document.createElement('details');
         details.className = 'ffsm-top';
         details.open = open;
@@ -1855,14 +2033,15 @@ function renderFfState(shadow, narrative) {
         summary.textContent = title;
         const counter = document.createElement('span');
         counter.className = 'ffsm-count';
-        counter.textContent = String(count(value));
+        counter.textContent = String(count(value, path));
         summary.appendChild(counter);
         const body = document.createElement('div');
         body.className = 'ffsm-body';
-        rows(body, value, 0);
+        rows(body, value, 0, path);
         details.append(summary, body);
         root.appendChild(details);
     };
+    const narrative = state.Narrative;
     if (!isRecord(narrative)) {
         const empty = document.createElement('div');
         empty.className = 'ffsm-empty';
@@ -1871,11 +2050,11 @@ function renderFfState(shadow, narrative) {
     }
     else {
         section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
-        section('NPC Registry', narrative.NPCs || {}, true);
-        section('Relationships', narrative.Relationships || {}, true);
-        section('GM Notes', narrative.GM_Notes || {}, false);
-        section('Chekhov', narrative.Chekhov || {}, false);
-        section('WorldSim', narrative.WorldSim || {}, false);
+        section('NPC Registry', narrative.NPCs || {}, true, ['Narrative', 'NPCs']);
+        section('Relationships', narrative.Relationships || {}, true, ['Narrative', 'Relationships']);
+        section('Player Conditions', state.Mainchar.Conditions || {}, false, ['Mainchar', 'Conditions']);
+        section('GM Notes', narrative.GM_Notes || {}, false, ['Narrative', 'GM_Notes']);
+        section('WorldSim', narrative.WorldSim || {}, false, ['Narrative', 'WorldSim']);
     }
     const filter = () => {
         const query = search.value.trim().toLocaleLowerCase('ru');
@@ -1967,7 +2146,7 @@ export function renderLegacyStatusMenu(options) {
     style.textContent = shadowCss();
     const body = document.createElement('div');
     body.className = 'status-body';
-    body.innerHTML = LEGACY_STATUS_BODY_HTML;
+    body.innerHTML = LEGACY_STATUS_BODY_HTML.replace('Mental State</span><span class="ff25-value" data-bind-val="Mainchar.Mental_state">', 'Conditions</span><span class="ff25-value" data-ff25-conditions>');
     shadow.append(style, body);
     installVariablesTab(shadow, options);
     shadow.querySelectorAll('[onclick]').forEach(element => element.removeAttribute('onclick'));
@@ -1986,7 +2165,7 @@ export function renderLegacyStatusMenu(options) {
     instantiateRecordBlock(shadow, 'blk-blk-1776467005665', options.state.World_Calc, null, options);
     renderFamiliars(shadow, options);
     renderWardrobe(shadow, options);
-    renderFfState(shadow, options.state.Narrative);
+    renderFfState(shadow, options.state);
     bindOverview(shadow, options.state);
     wireImages(shadow, options.state, options.onIntent, options.mutationDisabled, options.onUnsupported);
     wireCollapsibles(shadow);
@@ -2477,7 +2656,7 @@ export function setup(ctx) {
         }
         ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
     }
-    async function copyPortableSnapshot(value) {
+    async function copyJson(value) {
         const text = JSON.stringify(value, null, 2);
         try {
             await navigator.clipboard.writeText(text);
@@ -2643,9 +2822,10 @@ export function setup(ctx) {
         const character = card('Character Status');
         for (const [key, label] of [
             ['Name', 'Name'], ['Age', 'Age'], ['Gender', 'Gender'], ['Occupation', 'Occupation'],
-            ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Mental_state', 'Mental State'], ['Core-points', 'Core Point'],
+            ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Core-points', 'Core Point'],
         ])
             addRow(character, label, state.Mainchar[key]);
+        addRow(character, 'Conditions', Object.values(valueRecord(state.Mainchar.Conditions)).map(item => statusText(valueRecord(item).State, '')).filter(Boolean).join(' · ') || '—');
         const avatar = card('Avatar');
         const image = statusText(state.Mainchar.Image, '');
         if (image && image !== '—') {
@@ -3407,7 +3587,7 @@ export function setup(ctx) {
             const phase = String(payload.status?.phase ?? '');
             if (payload.status?.chatId === activeChatId && [
                 'commit_complete', 'swipe_navigated', 'gui_commit_complete', 'new_game_complete', 'legacy_import_complete',
-                'continue_commit_complete', 'no_patch', 'stopped_durable',
+                'schema_auto_migrated', 'continue_commit_complete', 'no_patch', 'stopped_durable',
             ].includes(phase))
                 requestState();
             render();
@@ -3467,7 +3647,7 @@ export function setup(ctx) {
                 render();
                 return;
             }
-            void copyPortableSnapshot(portable).then(ok => {
+            void copyJson(portable).then(ok => {
                 snapshotExportNotice = ok
                     ? 'Portable snapshot copied · turn ' + String(portable.source?.turn ?? '—') + '.'
                     : 'Clipboard failed. Use Download JSON instead.';

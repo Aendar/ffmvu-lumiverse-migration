@@ -1,5 +1,6 @@
 import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { statusCoreBudget, statusHphOverview, statusItems, statusLegacyDeletePath, statusOwnerById, statusOwners, statusPath, statusText, } from '../../src/lumi/statusmenu-model.js';
+import { hasRetiredStateFields, isStatePathHiddenFromUi } from '../../src/lumi/variables-editor.js';
 let passed = 0;
 function assert(value, message) {
     if (!value)
@@ -41,6 +42,14 @@ function main() {
     assert(statusCoreBudget({ str: 16, agi: 15, con: 15, int: 15, wis: 15 }).valid === false, 'GameStart budget rejects >50 spent points');
     assert(statusText(['08:00', 'Time']) === '08:00', 'StatusMenu display unwraps labeled tuples');
     assert(statusPath(state, 'Narrative.Scene.HPH.player.Physiology.Arousal') === 6, 'StatusMenu state path reader is deterministic');
+    assert(isStatePathHiddenFromUi(['Mainchar', 'Mental_state']), 'Variables UI hides retired player Mental_state');
+    assert(isStatePathHiddenFromUi(['Narrative', 'Chekhov']), 'Variables UI hides retired Chekhov domain');
+    assert(isStatePathHiddenFromUi(['Narrative', 'NPCs', 'npc_0001', 'CurrentThought']), 'Variables UI hides legacy NPC thought field');
+    assert(isStatePathHiddenFromUi(['Familiar', 'evelyn', 'Mental_state']), 'Variables UI hides legacy familiar mental field');
+    assert(!isStatePathHiddenFromUi(['Narrative', 'Scene']), 'Variables UI keeps operational Scene state visible');
+    assert(!isStatePathHiddenFromUi(['Narrative', 'WorldSim', 'Pressures']), 'Variables UI keeps WorldSim pressure state visible');
+    assert(hasRetiredStateFields({ Mainchar: { Mental_state: ['Calm', 'Mental State'] } }), 'legacy field detector flags retired state');
+    assert(!hasRetiredStateFields(createDefaultState()), 'legacy field detector accepts current state');
     console.log(`phase9 native StatusMenu model tests passed: ${passed}`);
 }
 main();

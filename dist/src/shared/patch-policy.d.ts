@@ -8,6 +8,8 @@ export interface ModelPatchAuthorizationView {
     npcIds: string[];
     relationshipIds: string[];
     gmNoteIds: string[];
+    /** True only for frozen v1.5.8 projections. */
+    allowChekhov: boolean;
     chekhovIds: string[];
     worldSimThreadIds: string[];
     worldSimPressureIds: string[];

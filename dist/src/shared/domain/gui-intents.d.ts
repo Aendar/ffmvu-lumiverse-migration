@@ -95,4 +95,6 @@ export type GuiIntent = {
 };
 export declare function assertGuiIntent(value: unknown): asserts value is GuiIntent;
 export declare function applyGuiIntent(input: FFMVUState, intent: GuiIntent): FFMVUState;
+/** Generic deterministic deep diff used by both GUI intents and migration preflight. */
+export declare function buildStatePatch(before: unknown, after: unknown): JsonPatchOperation[];
 export declare function buildGuiIntentPatch(before: FFMVUState, after: FFMVUState): JsonPatchOperation[];

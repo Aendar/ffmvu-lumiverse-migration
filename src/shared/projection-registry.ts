@@ -1,6 +1,6 @@
 import type { FFMVUState, PromptView } from './state-schema.js';
-import { LEGACY_PROJECTION_VERSION } from './state-schema.js';
-import { buildPromptView } from './projection.js';
+import { CURRENT_PROJECTION_VERSION, LEGACY_PROJECTION_VERSION } from './state-schema.js';
+import { buildPromptView, buildPromptViewV158 } from './projection.js';
 
 export interface ProjectionImplementation {
   readonly version: string;
@@ -24,11 +24,17 @@ export class ProjectionRegistry {
 
 export const legacyProjectionV158: ProjectionImplementation = {
   version: LEGACY_PROJECTION_VERSION,
+  build: state => buildPromptViewV158(state, { consumeAudit: false }).view,
+};
+
+export const currentProjectionV160: ProjectionImplementation = {
+  version: CURRENT_PROJECTION_VERSION,
   build: state => buildPromptView(state, { consumeAudit: false }).view,
 };
 
 export function createProjectionRegistry(): ProjectionRegistry {
   const registry = new ProjectionRegistry();
   registry.register(legacyProjectionV158);
+  registry.register(currentProjectionV160);
   return registry;
 }
