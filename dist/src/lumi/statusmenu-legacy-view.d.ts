@@ -1,4 +1,5 @@
 import type { FFMVUState } from '../shared/state-schema.js';
+import type { StateMigrationPreflight } from '../persistence/types.js';
 import type { GuiIntent } from '../shared/domain/gui-intents.js';
 export type LegacyStatusTab = 'overview' | 'attributes' | 'familiars' | 'wardrobe' | 'equipment' | 'items' | 'others' | 'ffstate' | 'variables';
 export interface LegacyStatusViewOptions {
@@ -14,6 +15,18 @@ export interface LegacyStatusViewOptions {
     snapshotExportBusy: boolean;
     snapshotExportNotice: string;
     onSnapshotExport(action: 'copy' | 'download'): void;
+    stateMigrationDisabled: boolean;
+    stateMigrationBusy: boolean;
+    stateMigrationAction: 'template' | 'preflight' | 'apply' | null;
+    stateMigrationOpen: boolean;
+    stateMigrationText: string;
+    stateMigrationPreflight: StateMigrationPreflight | null;
+    stateMigrationNotice: string;
+    onStateMigrationOpen(open: boolean): void;
+    onStateMigrationText(value: string): void;
+    onStateMigrationTemplate(): void;
+    onStateMigrationPreflight(): void;
+    onStateMigrationApply(): void;
     onIntent(intent: GuiIntent): void;
     onUnsupported(action: string): void;
 }

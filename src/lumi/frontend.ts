@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord } from '../shared/state-schema.js';
-import type { PortableSnapshot } from '../persistence/types.js';
+import type { PortableSnapshot, StateMigrationDraft, StateMigrationPreflight } from '../persistence/types.js';
 import type { GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import type { SpindleFrontendContextLite } from './spindle-lite.js';
@@ -398,6 +398,13 @@ export function setup(ctx: SpindleFrontendContextLite) {
   let snapshotExportRequestId: string | null = null;
   let snapshotExportAction: 'copy' | 'download' | null = null;
   let snapshotExportNotice = '';
+  let stateMigrationBusy = false;
+  let stateMigrationRequestId: string | null = null;
+  let stateMigrationAction: 'template' | 'preflight' | 'apply' | null = null;
+  let stateMigrationOpen = false;
+  let stateMigrationText = '';
+  let stateMigrationPreflight: StateMigrationPreflight | null = null;
+  let stateMigrationNotice = '';
 
   const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
   const DEFAULT_PANEL_HEIGHT = 520;
@@ -528,7 +535,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
   }
 
-  async function copyPortableSnapshot(value: PortableSnapshot): Promise<boolean> {
+  async function copyJson(value: unknown): Promise<boolean> {
     const text = JSON.stringify(value, null, 2);
     try {
       await navigator.clipboard.writeText(text);
@@ -588,6 +595,82 @@ export function setup(ctx: SpindleFrontendContextLite) {
       expectedHeadNodeId: snapshot.headNodeId,
       expectedHeadStateHash: snapshot.headStateHash,
       requestId: id,
+    });
+  }
+
+  function stateMigrationDisabled(): boolean {
+    return mutationDisabled() || stateMigrationBusy;
+  }
+
+  function parseStateMigrationDraft(): StateMigrationDraft | null {
+    try {
+      return JSON.parse(stateMigrationText) as StateMigrationDraft;
+    } catch (error) {
+      stateMigrationNotice = 'Migration JSON parse failed: ' + String(error);
+      render();
+      return null;
+    }
+  }
+
+  function requestStateMigrationTemplate(): void {
+    if (!activeChatId || !snapshot?.headNodeId || !snapshot.headStateHash || stateMigrationDisabled()) return;
+    const id = requestId('migration_template');
+    stateMigrationBusy = true;
+    stateMigrationRequestId = id;
+    stateMigrationAction = 'template';
+    stateMigrationNotice = 'Preparing a chat-bound migration template…';
+    render();
+    ctx.sendToBackend({
+      type: 'ffmvu_export_state_migration_template',
+      chatId: activeChatId,
+      expectedHeadNodeId: snapshot.headNodeId,
+      expectedHeadStateHash: snapshot.headStateHash,
+      requestId: id,
+    });
+  }
+
+  function requestStateMigrationPreflight(): void {
+    if (!activeChatId || !snapshot?.headNodeId || !snapshot.headStateHash || stateMigrationDisabled()) return;
+    const draft = parseStateMigrationDraft();
+    if (!draft) return;
+    const id = requestId('migration_preflight');
+    stateMigrationBusy = true;
+    stateMigrationRequestId = id;
+    stateMigrationAction = 'preflight';
+    stateMigrationNotice = 'Checking migration diff against the current head…';
+    render();
+    ctx.sendToBackend({
+      type: 'ffmvu_preflight_state_migration',
+      chatId: activeChatId,
+      expectedHeadNodeId: snapshot.headNodeId,
+      expectedHeadStateHash: snapshot.headStateHash,
+      requestId: id,
+      draft,
+    });
+  }
+
+  function requestStateMigrationApply(): void {
+    if (!stateMigrationPreflight) {
+      stateMigrationNotice = 'Run preflight before applying the migration.';
+      render();
+      return;
+    }
+    if (!activeChatId || !snapshot?.headNodeId || !snapshot.headStateHash || stateMigrationDisabled()) return;
+    const draft = parseStateMigrationDraft();
+    if (!draft) return;
+    const id = requestId('migration_apply');
+    stateMigrationBusy = true;
+    stateMigrationRequestId = id;
+    stateMigrationAction = 'apply';
+    stateMigrationNotice = 'Applying migration as one durable state commit…';
+    render();
+    ctx.sendToBackend({
+      type: 'ffmvu_apply_state_migration',
+      chatId: activeChatId,
+      expectedHeadNodeId: snapshot.headNodeId,
+      expectedHeadStateHash: snapshot.headStateHash,
+      requestId: id,
+      draft,
     });
   }
 
@@ -711,8 +794,9 @@ export function setup(ctx: SpindleFrontendContextLite) {
     const character = card('Character Status');
     for (const [key, label] of [
       ['Name', 'Name'], ['Age', 'Age'], ['Gender', 'Gender'], ['Occupation', 'Occupation'],
-      ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Mental_state', 'Mental State'], ['Core-points', 'Core Point'],
+      ['Race', 'Race'], ['Level', 'Level'], ['Exp', 'Exp'], ['Core-points', 'Core Point'],
     ] as Array<[keyof typeof state.Mainchar, string]>) addRow(character, label, state.Mainchar[key]);
+    addRow(character, 'Conditions', Object.values(valueRecord(state.Mainchar.Conditions)).map(item => statusText(valueRecord(item).State, '')).filter(Boolean).join(' · ') || '—');
 
     const avatar = card('Avatar');
     const image = statusText(state.Mainchar.Image, '');
@@ -1469,6 +1553,18 @@ export function setup(ctx: SpindleFrontendContextLite) {
         snapshotExportBusy,
         snapshotExportNotice,
         onSnapshotExport: requestPortableSnapshot,
+        stateMigrationDisabled: stateMigrationDisabled(),
+        stateMigrationBusy,
+        stateMigrationAction,
+        stateMigrationOpen,
+        stateMigrationText,
+        stateMigrationPreflight,
+        stateMigrationNotice,
+        onStateMigrationOpen: open => { stateMigrationOpen = open; render(); },
+        onStateMigrationText: value => { stateMigrationText = value; stateMigrationPreflight = null; },
+        onStateMigrationTemplate: requestStateMigrationTemplate,
+        onStateMigrationPreflight: requestStateMigrationPreflight,
+        onStateMigrationApply: requestStateMigrationApply,
         onIntent: sendIntent,
         onUnsupported: message => {
           notice = message;
@@ -1496,7 +1592,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
       const phase = String(payload.status?.phase ?? '');
       if (payload.status?.chatId === activeChatId && [
         'commit_complete', 'swipe_navigated', 'gui_commit_complete', 'new_game_complete', 'legacy_import_complete',
-        'continue_commit_complete', 'no_patch', 'stopped_durable',
+        'state_migration_complete', 'continue_commit_complete', 'no_patch', 'stopped_durable',
       ].includes(phase)) requestState();
       render();
       return;
@@ -1550,12 +1646,84 @@ export function setup(ctx: SpindleFrontendContextLite) {
         render();
         return;
       }
-      void copyPortableSnapshot(portable).then(ok => {
+      void copyJson(portable).then(ok => {
         snapshotExportNotice = ok
           ? 'Portable snapshot copied · turn ' + String(portable.source?.turn ?? '—') + '.'
           : 'Clipboard failed. Use Download JSON instead.';
         render();
       });
+      return;
+    }
+    if (payload?.type === 'ffmvu_state_migration_template_result') {
+      if (payload.chatId && payload.chatId !== activeChatId) return;
+      if (stateMigrationRequestId && payload.requestId !== stateMigrationRequestId) return;
+      stateMigrationBusy = false;
+      stateMigrationRequestId = null;
+      stateMigrationAction = null;
+      if (!payload.ok || !payload.draft) {
+        stateMigrationNotice = 'Migration template failed: ' + String(payload.reason ?? 'unknown error');
+        render();
+        requestState();
+        return;
+      }
+      stateMigrationText = JSON.stringify(payload.draft as StateMigrationDraft, null, 2);
+      stateMigrationPreflight = null;
+      stateMigrationOpen = true;
+      void copyJson(payload.draft).then(copied => {
+        stateMigrationNotice = copied
+          ? 'Migration template copied. Edit targetState with ChatGPT, then paste it here.'
+          : 'Migration template ready below. Copy it manually, edit targetState, then paste it here.';
+        render();
+      });
+      return;
+    }
+    if (payload?.type === 'ffmvu_state_migration_preflight_result') {
+      if (payload.chatId && payload.chatId !== activeChatId) return;
+      if (stateMigrationRequestId && payload.requestId !== stateMigrationRequestId) return;
+      stateMigrationBusy = false;
+      stateMigrationRequestId = null;
+      stateMigrationAction = null;
+      if (!payload.ok || !payload.preflight) {
+        stateMigrationPreflight = null;
+        stateMigrationNotice = 'Migration preflight failed: ' + String(payload.reason ?? 'unknown error');
+        render();
+        requestState();
+        return;
+      }
+      stateMigrationPreflight = payload.preflight as StateMigrationPreflight;
+      stateMigrationNotice = 'Preflight passed: ' + String(stateMigrationPreflight.patchCount) + ' patch operation(s); history remains intact.';
+      render();
+      return;
+    }
+    if (payload?.type === 'ffmvu_state_migration_apply_result') {
+      if (payload.chatId && payload.chatId !== activeChatId) return;
+      if (stateMigrationRequestId && payload.requestId !== stateMigrationRequestId) return;
+      stateMigrationBusy = false;
+      stateMigrationRequestId = null;
+      stateMigrationAction = null;
+      if (!payload.ok || !payload.state) {
+        stateMigrationNotice = 'Migration apply failed: ' + String(payload.reason ?? 'unknown error');
+        stateMigrationPreflight = null;
+        render();
+        requestState();
+        return;
+      }
+      snapshot = {
+        ok: true,
+        initialized: true,
+        chatId: payload.chatId,
+        headNodeId: payload.headNodeId,
+        headStateHash: payload.headStateHash,
+        variantId: payload.variantId ?? null,
+        generationPending: false,
+        state: payload.state,
+      };
+      stateMigrationOpen = false;
+      stateMigrationText = '';
+      stateMigrationPreflight = null;
+      stateMigrationNotice = 'Migration applied as one state commit; transcript and branch history were preserved.';
+      notice = '';
+      render();
       return;
     }
         if (payload?.type === 'ffmvu_gui_state') {
@@ -1684,6 +1852,13 @@ export function setup(ctx: SpindleFrontendContextLite) {
     snapshotExportRequestId = null;
     snapshotExportAction = null;
     snapshotExportNotice = '';
+    stateMigrationBusy = false;
+    stateMigrationRequestId = null;
+    stateMigrationAction = null;
+    stateMigrationOpen = false;
+    stateMigrationText = '';
+    stateMigrationPreflight = null;
+    stateMigrationNotice = '';
     portableImportOpen = false;
     portableImportText = '';
     legacyImportOpen = false;

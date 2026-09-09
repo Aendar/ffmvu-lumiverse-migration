@@ -182,6 +182,12 @@ function shadowCss() {
         + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:2px 0 0;}'
         + '.ve-snapshot-note{flex:1;min-width:0;color:var(--text-secondary);font-size:.76em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
         + '.ve-snapshot-layout>.ve-shell{flex:1 1 auto;height:auto;min-height:0;}'
+        + '.ve-migration{display:grid;gap:6px;border:1px solid rgba(0,229,255,.28);border-radius:6px;padding:8px;background:rgba(0,30,54,.52);flex:0 0 auto;}'
+        + '.ve-migration-title{font-weight:700;color:var(--accent-primary,#00e5ff);font-size:.86em;}'
+        + '.ve-migration-hint,.ve-migration-status{color:var(--text-secondary,#9fb6c4);font-size:.76em;line-height:1.35;}'
+        + '.ve-migration-text{min-height:122px;max-height:240px;resize:vertical;width:100%;box-sizing:border-box;background:rgba(0,0,0,.23);color:var(--text-primary,#e0f7fa);border:1px solid rgba(0,229,255,.24);border-radius:4px;padding:7px;font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;}'
+        + '.ve-migration-actions{display:flex;gap:6px;justify-content:flex-end;}'
+        + '.ve-migration-apply{border-color:rgba(105,240,174,.5)!important;color:#9fffc4!important;}'
         + VARIABLES_EDITOR_CSS;
 }
 function bindValues(root, data) {
@@ -236,6 +242,18 @@ function bindValues(root, data) {
     });
 }
 function bindOverview(root, state) {
+    const retiredMental = root.querySelector('[data-bind-val="Mainchar.Mental_state"]');
+    const retiredMentalRow = retiredMental?.closest('.ff25-row');
+    const conditions = Object.values(record(state.Mainchar.Conditions));
+    if (retiredMental) {
+        retiredMental.removeAttribute('data-bind-val');
+        retiredMental.textContent = conditions.length
+            ? conditions.map(value => statusText(record(value).State, '')).filter(Boolean).join(' · ')
+            : '—';
+    }
+    const retiredLabel = retiredMentalRow?.querySelector('.ff25-label');
+    if (retiredLabel)
+        retiredLabel.textContent = 'Conditions';
     root.querySelectorAll('[data-ff25-cur]').forEach(row => {
         const current = numberAt(state, row.getAttribute('data-ff25-cur') || '');
         const maximum = numberAt(state, row.getAttribute('data-ff25-max') || '');
@@ -900,6 +918,111 @@ function familiarIdentity(state, id, member) {
     }
     return '—';
 }
+function renderFamiliarInterior(member, familiarId, options) {
+    const panel = document.createElement('div');
+    panel.className = 'ffmvu-familiar-interior';
+    panel.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,229,255,.2);display:grid;gap:6px;';
+    const heading = document.createElement('div');
+    heading.textContent = 'Familiar interior';
+    heading.style.cssText = 'font-size:.88em;font-weight:bold;color:#81d4fa;';
+    panel.appendChild(heading);
+    const collection = (title, domain) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'display:grid;gap:3px;';
+        const label = document.createElement('div');
+        label.textContent = title;
+        label.style.cssText = 'font-size:.78em;color:rgba(129,212,250,.82);';
+        box.appendChild(label);
+        const entries = Object.entries(record(member[domain]));
+        if (!entries.length) {
+            const empty = document.createElement('div');
+            empty.textContent = '—';
+            empty.style.cssText = 'font-size:.78em;color:rgba(224,247,250,.48);';
+            box.appendChild(empty);
+            panel.appendChild(box);
+            return;
+        }
+        for (const [key, raw] of entries) {
+            const entry = record(raw);
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+            const text = document.createElement('div');
+            text.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+            if (domain === 'InnerThreads') {
+                text.textContent = [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key;
+            }
+            else {
+                text.textContent = [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
+            }
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.textContent = 'Edit';
+            edit.disabled = options.mutationDisabled;
+            edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+            edit.addEventListener('click', () => {
+                const next = window.prompt('Edit ' + title + ' entry as JSON:', JSON.stringify(entry, null, 2));
+                if (next === null)
+                    return;
+                try {
+                    const value = JSON.parse(next);
+                    options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value });
+                }
+                catch {
+                    window.alert('Expected valid JSON.');
+                }
+            });
+            const resolve = document.createElement('button');
+            resolve.type = 'button';
+            resolve.textContent = 'Resolve';
+            resolve.disabled = options.mutationDisabled;
+            resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+            resolve.addEventListener('click', () => {
+                if (window.confirm('Resolve ' + key + '?'))
+                    options.onIntent({ type: 'variable.delete', path: ['Familiar', familiarId, domain, key] });
+            });
+            row.append(text, edit, resolve);
+            box.appendChild(row);
+        }
+        panel.appendChild(box);
+    };
+    collection('Conditions', 'Conditions');
+    collection('Mental states', 'MentalStates');
+    collection('Inner threads', 'InnerThreads');
+    const agenda = record(member.Agenda);
+    const agendaRow = document.createElement('div');
+    agendaRow.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+    const agendaText = document.createElement('div');
+    agendaText.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
+    agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, 'Agenda —');
+    agendaRow.appendChild(agendaText);
+    if (Object.keys(agenda).length) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.textContent = 'Edit';
+        edit.disabled = options.mutationDisabled;
+        edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+        edit.addEventListener('click', () => {
+            const next = window.prompt('Edit Agenda as JSON:', JSON.stringify(agenda, null, 2));
+            if (next === null)
+                return;
+            try {
+                options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: JSON.parse(next) });
+            }
+            catch {
+                window.alert('Expected valid JSON.');
+            }
+        });
+        const resolve = document.createElement('button');
+        resolve.type = 'button';
+        resolve.textContent = 'Resolve';
+        resolve.disabled = options.mutationDisabled;
+        resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+        resolve.addEventListener('click', () => options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: { Status: 'resolved' } }));
+        agendaRow.append(edit, resolve);
+    }
+    panel.appendChild(agendaRow);
+    return panel;
+}
 function renderFamiliars(shadow, options) {
     const container = shadow.getElementById('blk-blk-1770140160072');
     const template = shadow.getElementById('tpl-blk-blk-1770140160072');
@@ -984,6 +1107,9 @@ function renderFamiliars(shadow, options) {
                 corePoints.style.fontWeight = 'bold';
             }
             renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
+            const groups = wrapper.querySelectorAll('.grid-group-card');
+            const interiorHost = groups[1]?.querySelector('.grid-group-content') ?? wrapper;
+            interiorHost.appendChild(renderFamiliarInterior(member, id, options));
             wrapper.querySelectorAll('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
             wrapper.querySelectorAll('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
             wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
@@ -1101,7 +1227,7 @@ function renderWardrobe(shadow, options) {
     };
     draw();
 }
-function renderFfState(shadow, narrative) {
+function renderFfState(shadow, state) {
     const root = shadow.getElementById('ffsm-root');
     const search = shadow.getElementById('ffsm-search');
     if (!root || !search)
@@ -1197,6 +1323,7 @@ function renderFfState(shadow, narrative) {
         details.append(summary, body);
         root.appendChild(details);
     };
+    const narrative = state.Narrative;
     if (!isRecord(narrative)) {
         const empty = document.createElement('div');
         empty.className = 'ffsm-empty';
@@ -1207,8 +1334,8 @@ function renderFfState(shadow, narrative) {
         section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
         section('NPC Registry', narrative.NPCs || {}, true);
         section('Relationships', narrative.Relationships || {}, true);
+        section('Player Conditions', state.Mainchar.Conditions || {}, false);
         section('GM Notes', narrative.GM_Notes || {}, false);
-        section('Chekhov', narrative.Chekhov || {}, false);
         section('WorldSim', narrative.WorldSim || {}, false);
     }
     const filter = () => {
@@ -1260,8 +1387,60 @@ function installVariablesTab(shadow, options) {
     download.disabled = options.snapshotExportDisabled;
     download.title = 'Download the same portable snapshot as JSON.';
     download.addEventListener('click', () => options.onSnapshotExport('download'));
-    tools.append(note, copy, download);
+    const migrationTemplate = document.createElement('button');
+    migrationTemplate.type = 'button';
+    migrationTemplate.className = 've-btn';
+    migrationTemplate.textContent = options.stateMigrationBusy && options.stateMigrationAction === 'template' ? 'Working…' : 'Copy Migration Template';
+    migrationTemplate.disabled = options.stateMigrationDisabled;
+    migrationTemplate.title = 'Copies a chat-bound draft. Edit only targetState, then preflight and apply it in this chat.';
+    migrationTemplate.addEventListener('click', () => options.onStateMigrationTemplate());
+    const migrationToggle = document.createElement('button');
+    migrationToggle.type = 'button';
+    migrationToggle.className = 've-btn';
+    migrationToggle.textContent = options.stateMigrationOpen ? 'Hide Migration' : 'Paste Migration';
+    migrationToggle.disabled = options.stateMigrationDisabled && !options.stateMigrationOpen;
+    migrationToggle.addEventListener('click', () => options.onStateMigrationOpen(!options.stateMigrationOpen));
+    tools.append(note, copy, download, migrationTemplate, migrationToggle);
     layout.appendChild(tools);
+    if (options.stateMigrationOpen) {
+        const migration = document.createElement('div');
+        migration.className = 've-migration';
+        const title = document.createElement('div');
+        title.className = 've-migration-title';
+        title.textContent = 'Current-chat migration · preserves transcript and branch history';
+        const hint = document.createElement('div');
+        hint.className = 've-migration-hint';
+        hint.textContent = 'Paste the edited FFMVU-State-Migration-v1 JSON. source is bound to this exact semantic head; only targetState is applied.';
+        const textarea = document.createElement('textarea');
+        textarea.className = 've-migration-text';
+        textarea.value = options.stateMigrationText;
+        textarea.placeholder = '{ "format": "FFMVU-State-Migration-v1", "source": { ... }, "targetState": { ... } }';
+        textarea.disabled = options.stateMigrationBusy;
+        textarea.addEventListener('input', () => options.onStateMigrationText(textarea.value));
+        const actions = document.createElement('div');
+        actions.className = 've-migration-actions';
+        const preflight = document.createElement('button');
+        preflight.type = 'button';
+        preflight.className = 've-btn';
+        preflight.textContent = options.stateMigrationBusy && options.stateMigrationAction === 'preflight' ? 'Checking…' : 'Preflight Diff';
+        preflight.disabled = options.stateMigrationDisabled || !options.stateMigrationText.trim();
+        preflight.addEventListener('click', () => options.onStateMigrationPreflight());
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 've-btn ve-migration-apply';
+        apply.textContent = options.stateMigrationBusy && options.stateMigrationAction === 'apply' ? 'Applying…' : 'Apply Migration';
+        apply.disabled = options.stateMigrationDisabled || !options.stateMigrationPreflight;
+        apply.addEventListener('click', () => options.onStateMigrationApply());
+        actions.append(preflight, apply);
+        const status = document.createElement('div');
+        status.className = 've-migration-status';
+        const preflightInfo = options.stateMigrationPreflight
+            ? 'Preflight: ' + String(options.stateMigrationPreflight.patchCount) + ' change(s), schema → ' + options.stateMigrationPreflight.targetSchemaVersion + '.'
+            : '';
+        status.textContent = options.stateMigrationNotice || preflightInfo || 'No migration draft loaded.';
+        migration.append(title, hint, textarea, actions, status);
+        layout.appendChild(migration);
+    }
     layout.appendChild(renderVariablesEditor(shadow, {
         state: options.state,
         mutationDisabled: options.mutationDisabled,
@@ -1320,7 +1499,7 @@ export function renderLegacyStatusMenu(options) {
     instantiateRecordBlock(shadow, 'blk-blk-1776467005665', options.state.World_Calc, null, options);
     renderFamiliars(shadow, options);
     renderWardrobe(shadow, options);
-    renderFfState(shadow, options.state.Narrative);
+    renderFfState(shadow, options.state);
     bindOverview(shadow, options.state);
     wireImages(shadow, options.state, options.onIntent, options.mutationDisabled, options.onUnsupported);
     wireCollapsibles(shadow);

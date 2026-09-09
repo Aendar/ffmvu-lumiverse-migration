@@ -1,6 +1,7 @@
 import { REQUIRED_MAINCHAR_TUPLES, REQUIRED_WORLD_TUPLES } from './state-schema.js';
-import { asArray, asRecord, isLabeledTuple, isRecord, text } from './domain/value-utils.js';
-export function validateState(state) {
+import { asArray, asRecord, isLabeledTuple, isRecord, lower, text } from './domain/value-utils.js';
+const SEVERITIES = new Set(['low', 'moderate', 'high']);
+function validateCommonState(state) {
     const errors = [];
     if (!isRecord(state))
         return ['stat_data is not an object'];
@@ -47,10 +48,110 @@ export function validateState(state) {
                 errors.push('Relationship ' + id + ' has an empty ' + side);
         }
     }
+    return errors;
+}
+function validateConditionCollection(value, path, limit, errors) {
+    if (!isRecord(value)) {
+        errors.push(path + ' is not an object');
+        return;
+    }
+    const entries = Object.entries(value);
+    if (entries.length > limit)
+        errors.push(path + ' exceeds its active-entry limit of ' + limit);
+    for (const [id, raw] of entries) {
+        if (!isRecord(raw)) {
+            errors.push(path + '.' + id + ' is not an object');
+            continue;
+        }
+        if (!text(raw.State).trim())
+            errors.push(path + '.' + id + '.State is empty');
+        if (!SEVERITIES.has(lower(raw.Severity)))
+            errors.push(path + '.' + id + '.Severity is invalid');
+        if (lower(raw.Status) !== 'active')
+            errors.push(path + '.' + id + '.Status must be active');
+    }
+}
+function validateInnerThreadCollection(value, path, limit, errors) {
+    if (!isRecord(value)) {
+        errors.push(path + ' is not an object');
+        return;
+    }
+    const entries = Object.entries(value);
+    if (entries.length > limit)
+        errors.push(path + ' exceeds its active-entry limit of ' + limit);
+    for (const [id, raw] of entries) {
+        if (!isRecord(raw)) {
+            errors.push(path + '.' + id + ' is not an object');
+            continue;
+        }
+        if (!text(raw.Subject).trim() && !text(raw.Tension).trim())
+            errors.push(path + '.' + id + ' has no subject or tension');
+        if (lower(raw.Status) !== 'active')
+            errors.push(path + '.' + id + '.Status must be active');
+    }
+}
+function validateAgenda(value, path, errors) {
+    if (value === undefined)
+        return;
+    if (!isRecord(value)) {
+        errors.push(path + ' is not an object');
+        return;
+    }
+    if (lower(value.Status) !== 'active')
+        errors.push(path + '.Status must be active');
+    if (!['CurrentGoal', 'NextAction', 'Deadline', 'Location', 'Pressure'].some(key => text(value[key]).trim())) {
+        errors.push(path + ' has no actionable field');
+    }
+}
+/** Exact legacy structural validation used when replaying 1.5.8 commits. */
+export function validateStateV158(state) {
+    return [...new Set(validateCommonState(state))];
+}
+/** Current state validation. Normalization removes resolved and empty entries first. */
+export function validateState(state) {
+    const errors = validateCommonState(state);
+    if (!isRecord(state))
+        return [...new Set(errors)];
+    const mainchar = asRecord(state.Mainchar);
+    if (mainchar.Mental_state !== undefined)
+        errors.push('Mainchar.Mental_state is deprecated; use Mainchar.Conditions');
+    validateConditionCollection(mainchar.Conditions, 'Mainchar.Conditions', 8, errors);
+    const narrative = asRecord(state.Narrative);
+    if (narrative.Chekhov !== undefined)
+        errors.push('Narrative.Chekhov is retired');
+    const npcs = asRecord(narrative.NPCs);
+    for (const [id, raw] of Object.entries(npcs)) {
+        if (!isRecord(raw))
+            continue;
+        for (const field of ['CurrentThought', 'Mental_state', 'InternalThoughts', 'Thoughts']) {
+            if (raw[field] !== undefined)
+                errors.push('Narrative.NPCs.' + id + '.' + field + ' is not a supported persistent field');
+        }
+        validateAgenda(raw.Agenda, 'Narrative.NPCs.' + id + '.Agenda', errors);
+    }
+    for (const [id, raw] of Object.entries(asRecord(state.Familiar))) {
+        if (!isRecord(raw)) {
+            errors.push('Familiar.' + id + ' is not an object');
+            continue;
+        }
+        for (const field of ['CurrentThought', 'Mental_state', 'InternalThoughts', 'Thoughts']) {
+            if (raw[field] !== undefined)
+                errors.push('Familiar.' + id + '.' + field + ' is not a supported persistent field');
+        }
+        validateConditionCollection(raw.Conditions, 'Familiar.' + id + '.Conditions', 8, errors);
+        validateConditionCollection(raw.MentalStates, 'Familiar.' + id + '.MentalStates', 2, errors);
+        validateInnerThreadCollection(raw.InnerThreads, 'Familiar.' + id + '.InnerThreads', 2, errors);
+        validateAgenda(raw.Agenda, 'Familiar.' + id + '.Agenda', errors);
+    }
     return [...new Set(errors)];
 }
 export function assertValidState(state) {
     const errors = validateState(state);
+    if (errors.length)
+        throw new Error(errors.join('; '));
+}
+export function assertValidStateV158(state) {
+    const errors = validateStateV158(state);
     if (errors.length)
         throw new Error(errors.join('; '));
 }

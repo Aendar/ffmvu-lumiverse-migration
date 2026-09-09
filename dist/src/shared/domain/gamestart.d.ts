@@ -16,7 +16,8 @@ export interface GameStartPayload {
     gender: string;
     race: string;
     occupation: string;
-    mental: string;
+    /** Accepted from older start forms, but no longer persisted as player intent. */
+    mental?: string;
     charisma: number;
     level: number;
     exp: number;

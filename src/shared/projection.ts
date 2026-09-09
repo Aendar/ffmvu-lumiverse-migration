@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord, PromptView } from './state-schema.js';
-import { normalizeState } from './state-normalize.js';
+import { normalizeState, normalizeStateV158 } from './state-normalize.js';
 import { asArray, asRecord, clone, isRecord, lower, text, tupleValue } from './domain/value-utils.js';
 
 function recordTurn(record: unknown): number {
@@ -79,11 +79,11 @@ function pickWorldCalc(state: FFMVUState, relevantKeys: unknown): MutableRecord 
   return result;
 }
 
-export interface BuildPromptViewOptions { consumeAudit?: boolean }
-export interface PreparedProjection { state: FFMVUState; view: PromptView }
-
-export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
-  const state = normalizeState(input);
+function selectActors(state: FFMVUState): {
+  narrative: FFMVUState['Narrative']; scene: FFMVUState['Narrative']['Scene']; turn: number;
+  familiarHot: MutableRecord; familiarCold: MutableRecord[]; hot: MutableRecord; warm: MutableRecord;
+  context: CandidateContext; relationships: MutableRecord;
+} {
   const narrative = state.Narrative;
   const scene = narrative.Scene;
   const turn = narrative.Turn;
@@ -117,16 +117,12 @@ export function buildPromptView(input: unknown, options: BuildPromptViewOptions 
     const value = asRecord(valueRaw);
     return relevantIds.has(text(value.A)) || relevantIds.has(text(value.B));
   }).map(([key, value]) => [key, clone(value)]));
+  return { narrative, scene, turn, familiarHot, familiarCold, hot, warm, context, relationships };
+}
 
-  const auditEvery = narrative.Chekhov.AuditEvery;
-  const auditDue = turn - narrative.Chekhov.LastAuditTurn >= auditEvery;
-  const sceneChanged = Boolean(scene.Changed);
-  const chekhovCandidates = pickCandidates(narrative.Chekhov.Active, context, 8, 2);
-  const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
-  const threadCandidates = pickCandidates(narrative.WorldSim.Threads, context, 6, 1);
-  const pressureCandidates = pickCandidates(narrative.WorldSim.Pressures, context, 6, 1);
-
-  const view: PromptView = {
+function makeBaseView(state: FFMVUState, selected: ReturnType<typeof selectActors>, gmNotes: MutableRecord, threads: MutableRecord, pressures: MutableRecord): PromptView {
+  const { narrative, scene, turn, familiarHot, familiarCold, hot, warm, relationships } = selected;
+  return {
     Version: state.MVUStatMenu_DB_Ver,
     World: clone(state.World),
     World_Calc: pickWorldCalc(state, scene.RelevantWorldKeys),
@@ -138,9 +134,8 @@ export function buildPromptView(input: unknown, options: BuildPromptViewOptions 
       Scene: clone(scene),
       NPCs: { ...hot, ...warm },
       Relationships: relationships,
-      GM_Notes: { Active: noteCandidates },
-      Chekhov: { Active: chekhovCandidates, AuditEvery: narrative.Chekhov.AuditEvery, LastAuditTurn: narrative.Chekhov.LastAuditTurn },
-      WorldSim: { Threads: threadCandidates, Pressures: pressureCandidates, LastShift: narrative.WorldSim.LastShift || '' },
+      GM_Notes: { Active: gmNotes },
+      WorldSim: { Threads: threads, Pressures: pressures, LastShift: narrative.WorldSim.LastShift || '' },
     },
     ProjectionMeta: {
       ReadOnly: true,
@@ -151,31 +146,70 @@ export function buildPromptView(input: unknown, options: BuildPromptViewOptions 
       GMNotesActiveCount: Object.keys(narrative.GM_Notes.Active).length,
       RelationshipCount: Object.keys(narrative.Relationships).length,
       RelationshipProjectedCount: Object.keys(relationships).length,
-      WorldSimThreadProjectedCount: Object.keys(threadCandidates).length,
-      WorldSimPressureProjectedCount: Object.keys(pressureCandidates).length,
-      ChekhovAuditDue: auditDue,
-      ChekhovActiveCount: Object.keys(narrative.Chekhov.Active).length,
-      ChekhovArchiveCount: Object.keys(narrative.Chekhov.Archive).length,
-      WorldSimColdCount: Math.max(0, Object.keys(narrative.WorldSim.Threads).length + Object.keys(narrative.WorldSim.Pressures).length - Object.keys(threadCandidates).length - Object.keys(pressureCandidates).length),
+      WorldSimThreadProjectedCount: Object.keys(threads).length,
+      WorldSimPressureProjectedCount: Object.keys(pressures).length,
+      WorldSimColdCount: Math.max(0, Object.keys(narrative.WorldSim.Threads).length + Object.keys(narrative.WorldSim.Pressures).length - Object.keys(threads).length - Object.keys(pressures).length),
     },
   };
+}
 
-  if (auditDue || sceneChanged) {
-    const meta = asRecord(view.ProjectionMeta);
-    meta.NPCIndex = compactNpcIndex(narrative.NPCs, 24);
-    meta.FamiliarIndex = familiarCold.slice(0, 16);
-    meta.ChekhovIndex = Object.entries(asRecord(narrative.Chekhov.Active)).slice(0, 30).map(([id, valueRaw]) => {
+function addIndexes(view: PromptView, state: FFMVUState, selected: ReturnType<typeof selectActors>, includeChekhov: boolean, chekhovActive?: unknown): void {
+  const { narrative, familiarCold } = selected;
+  const meta = asRecord(view.ProjectionMeta);
+  meta.NPCIndex = compactNpcIndex(narrative.NPCs, 24);
+  meta.FamiliarIndex = familiarCold.slice(0, 16);
+  meta.GMNotesIndex = Object.entries(asRecord(narrative.GM_Notes.Active)).slice(0, 20).map(([id, valueRaw]) => {
+    const value = asRecord(valueRaw);
+    return { ID: id, Subject: value.Subject || value.Title || '', Status: value.Status || '', Priority: value.Priority || '' };
+  });
+  if (includeChekhov) {
+    meta.ChekhovIndex = Object.entries(asRecord(chekhovActive)).slice(0, 30).map(([id, valueRaw]) => {
       const value = asRecord(valueRaw);
       return { ID: id, Hint: value.IndexHint || value.Setup || '', Status: value.Status || '', Priority: value.Priority || '' };
     });
-    meta.GMNotesIndex = Object.entries(asRecord(narrative.GM_Notes.Active)).slice(0, 20).map(([id, valueRaw]) => {
-      const value = asRecord(valueRaw);
-      return { ID: id, Subject: value.Subject || value.Title || '', Status: value.Status || '', Priority: value.Priority || '' };
-    });
   }
+}
 
+export interface BuildPromptViewOptions { consumeAudit?: boolean }
+export interface PreparedProjection { state: FFMVUState; view: PromptView }
+
+/** Current v1.6 projection: no Chekhov or generic NPC thought store. */
+export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  const state = normalizeState(input);
+  const selected = selectActors(state);
+  const { narrative, scene, context } = selected;
+  const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
+  const threadCandidates = pickCandidates(narrative.WorldSim.Threads, context, 6, 1);
+  const pressureCandidates = pickCandidates(narrative.WorldSim.Pressures, context, 6, 1);
+  const view = makeBaseView(state, selected, noteCandidates, threadCandidates, pressureCandidates);
+  if (scene.Changed) addIndexes(view, state, selected, false);
+  if (options.consumeAudit) narrative.Scene.Changed = false;
+  return { state, view };
+}
+
+/** Frozen v1.5.8 projection, retained so historic commits replay byte-for-byte. */
+export function buildPromptViewV158(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  const state = normalizeStateV158(input) as unknown as FFMVUState;
+  const selected = selectActors(state);
+  const { narrative, scene, turn, context } = selected;
+  const legacyNarrative = narrative as unknown as MutableRecord;
+  const chekhov = asRecord(legacyNarrative.Chekhov);
+  const auditEvery = Number(chekhov.AuditEvery) || 8;
+  const auditDue = turn - (Number(chekhov.LastAuditTurn) || 0) >= auditEvery;
+  const chekhovCandidates = pickCandidates(chekhov.Active, context, 8, 2);
+  const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
+  const threadCandidates = pickCandidates(narrative.WorldSim.Threads, context, 6, 1);
+  const pressureCandidates = pickCandidates(narrative.WorldSim.Pressures, context, 6, 1);
+  const view = makeBaseView(state, selected, noteCandidates, threadCandidates, pressureCandidates);
+  const viewNarrative = asRecord(view.Narrative);
+  viewNarrative.Chekhov = { Active: chekhovCandidates, AuditEvery: auditEvery, LastAuditTurn: Number(chekhov.LastAuditTurn) || 0 };
+  const meta = asRecord(view.ProjectionMeta);
+  meta.ChekhovAuditDue = auditDue;
+  meta.ChekhovActiveCount = Object.keys(asRecord(chekhov.Active)).length;
+  meta.ChekhovArchiveCount = Object.keys(asRecord(chekhov.Archive)).length;
+  if (auditDue || scene.Changed) addIndexes(view, state, selected, true, chekhov.Active);
   if (options.consumeAudit) {
-    if (auditDue) narrative.Chekhov.LastAuditTurn = turn;
+    if (auditDue) chekhov.LastAuditTurn = turn;
     narrative.Scene.Changed = false;
   }
   return { state, view };

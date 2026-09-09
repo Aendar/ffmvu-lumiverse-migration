@@ -30,6 +30,31 @@ export interface ProjectionSeed {
 
 export const PORTABLE_SNAPSHOT_FORMAT = 'FFMVU-Portable-Snapshot-v1';
 
+/** A chat-bound draft used by the Variables-tab migration flow. */
+export const STATE_MIGRATION_DRAFT_FORMAT = 'FFMVU-State-Migration-v1';
+
+export interface StateMigrationDraft {
+  format: typeof STATE_MIGRATION_DRAFT_FORMAT;
+  source: {
+    chatId: string;
+    nodeId: string;
+    stateHash: string;
+    schemaVersion: string;
+  };
+  /** Edited by the user/ChatGPT; validated and normalized only on preflight/apply. */
+  targetState: unknown;
+  note?: string;
+}
+
+export interface StateMigrationPreflight {
+  source: StateMigrationDraft['source'];
+  targetSchemaVersion: string;
+  targetReducerVersion: string;
+  changedPaths: string[];
+  patchCount: number;
+  historyPreserved: true;
+}
+
 export interface PortableSnapshot {
   format: typeof PORTABLE_SNAPSHOT_FORMAT;
   createdAt: string;

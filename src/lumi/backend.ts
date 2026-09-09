@@ -1,6 +1,6 @@
 import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from '../persistence/anchor-store.js';
 import { createId, isoNow } from '../persistence/ids.js';
-import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type AnchorRecord, type PortableSnapshot, type StateScope, type TranscriptAttempt } from '../persistence/types.js';
+import { ACTIVE_PREFIX_FINGERPRINT_VERSION, STATE_MIGRATION_DRAFT_FORMAT, type AnchorRecord, type PortableSnapshot, type StateMigrationDraft, type StateScope, type TranscriptAttempt } from '../persistence/types.js';
 import { HeadResolver } from '../head-resolver.js';
 import { ModelPatchRejectedError, StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
@@ -23,8 +23,8 @@ import { DiagnosticTraceStore } from './diagnostic-trace.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.20';
-const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.7.3 · Loom 69 Parity';
+const BRIDGE_VERSION = '0.13.21';
+const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
 interface UserRuntime {
@@ -474,6 +474,22 @@ async function bindGuiCommit(
   root.tipNodeId = committedNodeId;
   root.updatedAt = isoNow();
   await rt.anchors.putRoot(root);
+}
+
+function migrationDraftMatchesHead(
+  draft: unknown,
+  scope: StateScope,
+  head: import('../head-resolver.js').HeadResolution,
+): draft is StateMigrationDraft {
+  if (!draft || typeof draft !== 'object') return false;
+  const value = draft as Partial<StateMigrationDraft>;
+  return value.format === STATE_MIGRATION_DRAFT_FORMAT
+    && Boolean(value.source)
+    && value.source!.chatId === scope.chatId
+    && value.source!.nodeId === head.nodeId
+    && value.source!.stateHash === head.stateHash
+    && typeof value.source!.schemaVersion === 'string'
+    && Object.prototype.hasOwnProperty.call(value, 'targetState');
 }
 
 async function buildNarrativeHistoryContext(
@@ -2134,6 +2150,159 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     }
     return;
   }
+  if (payload?.type === 'ffmvu_export_state_migration_template') {
+    const chatId = String(payload.chatId ?? '');
+    const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+    const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+    const requestId = String(payload.requestId ?? createId('migration_template'));
+    if (!chatId || !expectedHeadNodeId || !expectedHeadStateHash) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_template_result', ok: false, requestId, reason: 'STATE_MIGRATION_EXPECTED_HEAD_REQUIRED' }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    if (contexts.getForScope(scope)) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_template_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BLOCKED_DURING_GENERATION' }, userId);
+      return;
+    }
+    try {
+      const rt = runtime(userId);
+      const before = await resolveGuiHead(rt, scope);
+      if (before.head.health !== 'ok' || before.head.nodeId !== expectedHeadNodeId || before.head.stateHash !== expectedHeadStateHash) {
+        spindle.sendToFrontend({
+          type: 'ffmvu_state_migration_template_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_STALE_HEAD',
+          currentHeadHealth: before.head.health, currentHeadNodeId: before.head.nodeId, currentHeadStateHash: before.head.stateHash,
+        }, userId);
+        return;
+      }
+      const draft = await rt.state.exportStateMigrationTemplate(scope, before.head.nodeId);
+      const after = await resolveGuiHead(rt, scope);
+      if (!sameGuiHead(before.head, after.head)) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_template_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_STALE_HEAD' }, userId);
+        return;
+      }
+      spindle.sendToFrontend({
+        type: 'ffmvu_state_migration_template_result', ok: true, requestId, chatId,
+        headNodeId: before.head.nodeId, headStateHash: before.head.stateHash, draft,
+      }, userId);
+    } catch (error) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_template_result', ok: false, requestId, chatId, reason: String(error) }, userId);
+    }
+    return;
+  }
+  if (payload?.type === 'ffmvu_preflight_state_migration') {
+    const chatId = String(payload.chatId ?? '');
+    const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+    const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+    const requestId = String(payload.requestId ?? createId('migration_preflight'));
+    if (!chatId || !expectedHeadNodeId || !expectedHeadStateHash) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, reason: 'STATE_MIGRATION_EXPECTED_HEAD_REQUIRED' }, userId);
+      return;
+    }
+    const cfg = await config(userId);
+    if (!cfg.enabled) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BRIDGE_DISABLED' }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    if (contexts.getForScope(scope)) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BLOCKED_DURING_GENERATION' }, userId);
+      return;
+    }
+    try {
+      const rt = runtime(userId);
+      const before = await resolveGuiHead(rt, scope);
+      if (before.head.health !== 'ok' || before.head.nodeId !== expectedHeadNodeId || before.head.stateHash !== expectedHeadStateHash) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_STALE_HEAD' }, userId);
+        return;
+      }
+      if (!migrationDraftMatchesHead(payload.draft, scope, before.head)) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_FOREIGN_OR_STALE_DRAFT' }, userId);
+        return;
+      }
+      const preflight = await rt.state.preflightStateMigration(scope, payload.draft);
+      const after = await resolveGuiHead(rt, scope);
+      if (!sameGuiHead(before.head, after.head)) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_STALE_HEAD' }, userId);
+        return;
+      }
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: true, requestId, chatId, preflight }, userId);
+    } catch (error) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_preflight_result', ok: false, requestId, chatId, reason: String(error) }, userId);
+    }
+    return;
+  }
+  if (payload?.type === 'ffmvu_apply_state_migration') {
+    const chatId = String(payload.chatId ?? '');
+    const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+    const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+    const requestId = String(payload.requestId ?? createId('migration_apply'));
+    if (!chatId || !expectedHeadNodeId || !expectedHeadStateHash) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, reason: 'STATE_MIGRATION_EXPECTED_HEAD_REQUIRED' }, userId);
+      return;
+    }
+    const cfg = await config(userId);
+    if (!cfg.enabled) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BRIDGE_DISABLED' }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    if (contexts.getForScope(scope)) {
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BLOCKED_DURING_GENERATION' }, userId);
+      return;
+    }
+    try {
+      const rt = runtime(userId);
+      const before = await resolveGuiHead(rt, scope);
+      if (before.head.health !== 'ok' || before.head.nodeId !== expectedHeadNodeId || before.head.stateHash !== expectedHeadStateHash) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_STALE_HEAD' }, userId);
+        return;
+      }
+      if (!migrationDraftMatchesHead(payload.draft, scope, before.head)) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_FOREIGN_OR_STALE_DRAFT' }, userId);
+        return;
+      }
+      const lineageAnchorId = before.head.variantId ?? 'root';
+      const lineageAnchor = before.head.variantId ? await rt.anchors.read(scope, before.head.variantId) : null;
+      if (before.head.variantId && !lineageAnchor) throw new Error('STATE_MIGRATION_LINEAGE_ANCHOR_MISSING');
+      const committed = await rt.state.applyStateMigration(scope, {
+        draft: payload.draft,
+        anchor: {
+          lineageAnchorId,
+          ...(before.head.variantId ? { variantId: before.head.variantId } : {}),
+          ...(lineageAnchor?.messageId ? { messageId: lineageAnchor.messageId, messageRole: 'assistant' as const } : {}),
+        },
+        requestId,
+      });
+      const afterPhysical = await resolveGuiHead(rt, scope);
+      if (!sameGuiHead(before.head, afterPhysical.head)) {
+        publish(userId, { phase: 'state_migration_committed_unbound', chatId, requestId, committedNodeId: committed.nodeId, committedStateHash: committed.stateHash });
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_COMMITTED_UNBOUND_BRANCH_CHANGED', committedNodeId: committed.nodeId }, userId);
+        return;
+      }
+      await bindGuiCommit(rt, scope, before.head, committed.nodeId);
+      const verified = await resolveGuiHead(rt, scope);
+      if (verified.head.health !== 'ok' || verified.head.nodeId !== committed.nodeId || verified.head.stateHash !== committed.stateHash) {
+        spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: 'STATE_MIGRATION_BINDING_VERIFICATION_FAILED', committedNodeId: committed.nodeId }, userId);
+        return;
+      }
+      publish(userId, {
+        phase: 'state_migration_complete', chatId, requestId, lineageAnchorId, variantId: before.head.variantId ?? null,
+        previousNodeId: before.head.nodeId, finalNodeId: committed.nodeId, finalStateHash: committed.stateHash,
+      });
+      spindle.sendToFrontend({
+        type: 'ffmvu_state_migration_apply_result', ok: true, requestId, chatId,
+        headNodeId: committed.nodeId, headStateHash: committed.stateHash,
+        variantId: before.head.variantId ?? null, state: committed.state,
+      }, userId);
+    } catch (error) {
+      publish(userId, { phase: 'state_migration_error', chatId, requestId, error: String(error) });
+      spindle.sendToFrontend({ type: 'ffmvu_state_migration_apply_result', ok: false, requestId, chatId, reason: String(error) }, userId);
+    }
+    return;
+  }
   if (payload?.type === 'ffmvu_gui_get_state') {
     const chatId = String(payload.chatId ?? '');
     if (!chatId) {
@@ -2295,7 +2464,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       continueProbeUsers.delete(userId);
     }
     ensureRegistrations();
-    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.8 bridge armed. Read-only lifecycle trace and Diagnostic Snapshot are active; Scene.HPH structural canonicalization and existing GUI safety remain unchanged.' : 'Bridge will not touch generations.' });
+    publish(userId, { phase: enabled ? 'armed' : 'disabled', enabled, noPatchProbeArmed: noPatchProbeUsers.has(userId), continueProbeArmed: continueProbeUsers.has(userId), note: enabled ? 'v0.13.21 bridge armed. State ownership, current-chat migration, familiar interior state, and existing GUI safety are active.' : 'Bridge will not touch generations.' });
     return;
   }
   if (payload?.type === 'ffmvu_arm_no_patch_probe') {
@@ -2335,4 +2504,4 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 });
 
 spindle.permissions.onDenied?.(({ permission, operation }) => spindle.log.warn(`[FFMVU] permission denied: ${permission} for ${operation}`));
-spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (v0.13.8 read-only lifecycle diagnostics + Scene.HPH structural canonicalization + existing state/GUI safety).`);
+spindle.log.info(`[FFMVU] Lumiverse migration bridge v${BRIDGE_VERSION} loaded (state ownership, current-chat migration, familiar interior state, and branch-safe GUI intents).`);

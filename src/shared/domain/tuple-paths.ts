@@ -3,7 +3,7 @@ const WORLD_LABELED_FIELDS = new Set([
 ]);
 
 const CHARACTER_LABELED_FIELDS = new Set([
-  'Name', 'Image', 'Race', 'Age', 'Gender', 'Occupation', 'Level', 'Exp', 'Core-points', 'Mental_state',
+  'Name', 'Image', 'Race', 'Age', 'Gender', 'Occupation', 'Level', 'Exp', 'Core-points',
   'Strength', 'Agility', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
   'Hp_curr', 'Hp_max', 'Mp_curr', 'Mp_max', 'Sta_curr', 'Sta_max',
   'Physical_attack', 'Physical_defense', 'Magic_attack', 'Magic_defense', 'Magic_assist',

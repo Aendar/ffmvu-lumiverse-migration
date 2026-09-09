@@ -1,11 +1,11 @@
 {
-  "version": "0.13.20",
+  "version": "0.13.21",
   "name": "FFMVU Migration Bridge (Dev)",
   "identifier": "ffmvu_migration_bridge",
   "author": "FFMVU migration project",
   "github": "https://github.com/Aendar/ffmvu-lumiverse-migration",
   "homepage": "https://github.com/Aendar/ffmvu-lumiverse-migration",
-  "description": "FF+MVU Lumiverse migration bridge with fail-open rejected model patch telemetry, read-only lifecycle trace and Diagnostic Snapshot, Scene.HPH structural parent canonicalization, typed legacy StatusMenu writes, post-commit message edit safety, safe Variables editor, legacy import, portable snapshots, narrative history context, and branch-safe GUI intents.",
+  "description": "FF+MVU Lumiverse migration bridge with durable state ownership, familiar interior state, safe current-chat migrations, portable snapshots, legacy import, and branch-safe GUI intents.",
   "permissions": [
     "context_handler",
     "interceptor",

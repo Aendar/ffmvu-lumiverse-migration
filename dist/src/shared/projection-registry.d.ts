@@ -9,4 +9,5 @@ export declare class ProjectionRegistry {
     get(version: string): ProjectionImplementation;
 }
 export declare const legacyProjectionV158: ProjectionImplementation;
+export declare const currentProjectionV160: ProjectionImplementation;
 export declare function createProjectionRegistry(): ProjectionRegistry;

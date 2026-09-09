@@ -110,4 +110,7 @@ export class HeadResolver {
   private async bad(health: HeadHealth, base: BaseSnapshot, reason: string): Promise<HeadResolution> { const state = await this.materializer.materialize(base.scope, base.id); return { health, nodeId: state.nodeId, stateHash: state.stateHash, reason }; }
 }
 
-function isAllowedLineageCommit(commit: StateCommit, lineage: 'root' | VariantId): boolean { return (commit.kind === 'gui' || commit.kind === 'system' || commit.kind === 'repair') && commit.anchor.lineageAnchorId === lineage; }
+function isAllowedLineageCommit(commit: StateCommit, lineage: 'root' | VariantId): boolean {
+  return (commit.kind === 'gui' || commit.kind === 'system' || commit.kind === 'migration' || commit.kind === 'repair')
+    && commit.anchor.lineageAnchorId === lineage;
+}

@@ -32,6 +32,21 @@ async function main() {
   const importedProjection = await service.getProjectionForNode(source, imported.nodeId);
   assert(importedProjection.sourceKind === 'base-seed' && importedProjection.view.Marker === 'legacy-exact-projection', 'legacy ff_mvu_prompt_view is used only as exact first-turn projection seed');
 
+  const migrationDraft = await service.exportStateMigrationTemplate(source, imported.nodeId);
+  const migrationPreflight = await service.preflightStateMigration(source, migrationDraft);
+  assert(migrationPreflight.targetReducerVersion === 'FFMVU-1.6.0' && migrationPreflight.patchCount > 0, 'legacy state preflights as a v1.6 migration with a real diff');
+  const migrated = await service.applyStateMigration(source, {
+    draft: migrationDraft,
+    anchor: { lineageAnchorId: 'root' },
+    requestId: 'migrate-legacy-source',
+  });
+  const migrationNode = await service.store.readNode(source, migrated.nodeId);
+  assert(
+    migrationNode.type === 'commit' && migrationNode.value.kind === 'migration' && migrationNode.value.reducerVersion === 'FFMVU-1.6.0'
+      && migrated.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0' && !('Mental_state' in migrated.state.Mainchar) && !('Chekhov' in migrated.state.Narrative),
+    'migration is one v1.6 commit over the legacy node without creating a new base',
+  );
+
   const source2: StateScope = { userId: 'u', chatId: 'source2' };
   const service2 = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
   const state = createDefaultState();

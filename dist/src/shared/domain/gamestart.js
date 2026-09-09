@@ -53,7 +53,6 @@ export function applyGameStartPayload(inputState, payloadInput) {
     tupleSet(mc, 'Gender', payload.gender, 'Gender');
     tupleSet(mc, 'Race', payload.race, 'Race');
     tupleSet(mc, 'Occupation', payload.occupation, 'Occupation');
-    tupleSet(mc, 'Mental_state', payload.mental, 'Mental State');
     const level = Math.max(1, Math.min(140, Number(payload.level) || 1));
     const str = Math.max(5, Number(payload.stats.str) || 5);
     const agi = Math.max(5, Number(payload.stats.agi) || 5);
