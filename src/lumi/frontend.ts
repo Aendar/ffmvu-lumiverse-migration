@@ -591,6 +591,55 @@ export function setup(ctx: SpindleFrontendContextLite) {
     });
   }
 
+  function requestSnapshotRestoreText(text: string): void {
+    if (
+      !activeChatId ||
+      busy ||
+      !snapshot?.ok ||
+      !snapshot.initialized ||
+      !snapshot.headNodeId ||
+      !snapshot.headStateHash ||
+      snapshot.generationPending
+    ) return;
+
+    let portable: PortableSnapshot;
+    try {
+      portable = JSON.parse(text) as PortableSnapshot;
+    } catch (error) {
+      snapshotExportNotice = 'Snapshot JSON parse failed: ' + String(error);
+      render();
+      return;
+    }
+    if (!portable || portable.format !== PORTABLE_SNAPSHOT_FORMAT_UI) {
+      snapshotExportNotice = 'Unsupported snapshot format. Expected ' + PORTABLE_SNAPSHOT_FORMAT_UI + '.';
+      render();
+      return;
+    }
+
+    const sourceTurn = Number(portable.source?.turn) || 0;
+    const sourceVersion = String(portable.reducerVersion || portable.stateSchemaVersion || 'unknown');
+    const confirmed = window.confirm(
+      'Restore this portable snapshot at the current chat position?\n\n' +
+      'Chat messages, message IDs, swipes, and their text are not edited.\n' +
+      'Current FFMVU state authority from this point forward will be replaced.\n' +
+      'Snapshot: turn ' + sourceTurn + ' · ' + sourceVersion,
+    );
+    if (!confirmed) return;
+
+    busy = true;
+    snapshotExportNotice = 'Verifying snapshot and creating transcript checkpoint…';
+    render();
+    ctx.sendToBackend({
+      type: 'ffmvu_import_snapshot',
+      mode: 'replace-current',
+      chatId: activeChatId,
+      expectedHeadNodeId: snapshot.headNodeId,
+      expectedHeadStateHash: snapshot.headStateHash,
+      requestId: requestId('snapshot_restore'),
+      snapshot: portable,
+    });
+  }
+
   function sendIntent(intent: GuiIntent): void {
     if (!activeChatId || !snapshot?.headNodeId || !snapshot.headStateHash || mutationDisabled()) return;
     busy = true;
@@ -1466,10 +1515,13 @@ export function setup(ctx: SpindleFrontendContextLite) {
         onOwner: ownerId => { selectedOwnerId = ownerId; },
         variablesSearch,
         onVariablesSearch: value => { variablesSearch = value; },
-        snapshotExportDisabled: snapshotExportBusy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
+        snapshotExportDisabled: busy || snapshotExportBusy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
         snapshotExportBusy,
         snapshotExportNotice,
         onSnapshotExport: requestPortableSnapshot,
+        snapshotRestoreDisabled: busy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
+        snapshotRestoreBusy: busy && snapshotExportNotice.startsWith('Verifying snapshot'),
+        onSnapshotRestoreText: requestSnapshotRestoreText,
         onIntent: sendIntent,
         onUnsupported: message => {
           notice = message;
@@ -1632,12 +1684,28 @@ export function setup(ctx: SpindleFrontendContextLite) {
         portableImportText = '';
         legacyImportOpen = false;
         legacyImportText = '';
-        notice = 'Portable snapshot imported · turn ' + String(payload.state?.Narrative?.Turn ?? '—') + '.';
-        activeTab = 'overview';
+
+        if (payload.mode === 'replace-current') {
+          const sourceVersion = String(payload.sourceReducerVersion ?? 'unknown');
+          const finalVersion = String(payload.finalReducerVersion ?? 'unknown');
+          snapshotExportNotice =
+            'Snapshot restored here · turn ' + String(payload.state?.Narrative?.Turn ?? '—') +
+            (sourceVersion !== finalVersion ? ' · ' + sourceVersion + ' → ' + finalVersion : ' · ' + finalVersion) +
+            ' · transcript unchanged.';
+          notice = '';
+          activeTab = 'variables';
+        } else {
+          notice = 'Portable snapshot imported · turn ' + String(payload.state?.Narrative?.Turn ?? '—') + '.';
+          snapshotExportNotice = '';
+          activeTab = 'overview';
+        }
         render();
       } else {
-        notice = String(payload.reason ?? 'Portable snapshot import failed');
+        const reason = String(payload.reason ?? 'Portable snapshot import failed');
+        if (snapshot?.initialized) snapshotExportNotice = reason;
+        else notice = reason;
         render();
+        if (snapshot?.initialized) requestState();
       }
       return;
     }
