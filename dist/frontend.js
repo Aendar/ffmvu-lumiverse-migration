@@ -285,6 +285,45 @@ const VE_PROTECTED_ROOT = new Set([
     'World_Calc', 'World', 'Mainchar', 'Familiar', 'Narrative',
     'MVUStatMenu_DB_Ver', 'GameStarted',
 ]);
+const RETIRED_NPC_FIELDS = new Set(['CurrentThought', 'Mental_state', 'InternalThoughts', 'Thoughts']);
+/**
+ * Returns true for state paths that are kept only for legacy replay/migration
+ * compatibility and must not be presented as editable current variables.
+ * This is a display rule only; it never mutates the authoritative state.
+ */
+export function isStatePathHiddenFromUi(path) {
+    if (path.length === 1 && (path[0] === 'ProjectionMeta' || path[0] === 'ColdIndex'))
+        return true;
+    if (path.length >= 2 && path[0] === 'Mainchar' && path[1] === 'Mental_state')
+        return true;
+    if (path.length >= 2 && path[0] === 'Narrative' && path[1] === 'Chekhov')
+        return true;
+    if (path.length >= 4 && path[0] === 'Narrative' && path[1] === 'NPCs' && RETIRED_NPC_FIELDS.has(path[3]))
+        return true;
+    if (path.length >= 3 && path[0] === 'Familiar' && RETIRED_NPC_FIELDS.has(path[2]))
+        return true;
+    return false;
+}
+/** Whether a state contains any retired paths that are currently hidden. */
+export function hasRetiredStateFields(state) {
+    let found = false;
+    const visit = (value, path) => {
+        if (found || isStatePathHiddenFromUi(path)) {
+            found = true;
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach((child, index) => visit(child, [...path, String(index)]));
+            return;
+        }
+        if (isRecord(value)) {
+            for (const [key, child] of Object.entries(value))
+                visit(child, [...path, key]);
+        }
+    };
+    visit(state, []);
+    return found;
+}
 function veIsTuple(path, value) {
     return isLabeledTupleAtPath(path, value);
 }
@@ -554,6 +593,8 @@ function veActionButtons(root, path, key, value, parentIsArray, options) {
     return actions;
 }
 function veRenderEntry(root, key, value, path, parentIsArray, depth, query, options) {
+    if (isStatePathHiddenFromUi(path))
+        return null;
     if (!veMatches(key, value, query, path))
         return null;
     const tuple = veIsTuple(path, value);
@@ -586,25 +627,28 @@ function veRenderEntry(root, key, value, path, parentIsArray, depth, query, opti
     const keyElement = document.createElement('span');
     keyElement.className = 've-key';
     keyElement.textContent = key;
+    const childEntries = Array.isArray(effectiveValue)
+        ? effectiveValue.map((child, index) => [String(index), child])
+        : Object.entries(effectiveValue);
+    const visibleEntries = childEntries.filter(([childKey]) => !isStatePathHiddenFromUi([...path, childKey]));
     const count = document.createElement('span');
     count.className = 've-count';
-    const childCount = Array.isArray(effectiveValue) ? effectiveValue.length : Object.keys(effectiveValue).length;
-    count.textContent = String(childCount);
+    count.textContent = String(visibleEntries.length);
     const spacer = document.createElement('span');
     spacer.className = 've-spacer';
     summary.append(keyElement, count, spacer, veActionButtons(root, path, key, value, parentIsArray, options));
     const children = document.createElement('div');
     children.className = 've-children';
     if (Array.isArray(effectiveValue)) {
-        effectiveValue.forEach((child, index) => {
-            const rendered = veRenderEntry(root, String(index), child, [...path, String(index)], true, depth + 1, query, options);
+        visibleEntries.forEach(([childKey, child]) => {
+            const rendered = veRenderEntry(root, childKey, child, [...path, childKey], true, depth + 1, query, options);
             if (rendered)
                 children.appendChild(rendered);
         });
     }
     else {
         const object = effectiveValue;
-        for (const [childKey, child] of Object.entries(object)) {
+        for (const [childKey, child] of visibleEntries) {
             const rendered = veRenderEntry(root, childKey, child, [...path, childKey], false, depth + 1, query, options);
             if (rendered)
                 children.appendChild(rendered);
@@ -641,7 +685,13 @@ export function renderVariablesEditor(root, options) {
     search.value = options.search;
     const hint = document.createElement('span');
     hint.className = 've-hint';
-    hint.textContent = 'Edit values · manage user entries';
+    const legacyFieldsHidden = hasRetiredStateFields(options.state);
+    hint.textContent = legacyFieldsHidden
+        ? 'Legacy fields hidden · migrate state to v1.6'
+        : 'Edit values · manage user entries';
+    if (legacyFieldsHidden) {
+        hint.title = 'Retired legacy fields are hidden from this view. Use the migration controls above to convert the chat state to FFMVU-1.6.0.';
+    }
     toolbar.append(search, hint);
     const tree = document.createElement('div');
     tree.className = 've-tree';
@@ -1917,8 +1967,14 @@ function renderFfState(shadow, state) {
             return '{' + Object.keys(value).length + '}';
         return String(value);
     };
-    const count = (value) => Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0;
-    const rows = (container, value, depth) => {
+    const visibleEntries = (value, path) => {
+        const entries = Array.isArray(value)
+            ? value.map((child, index) => [String(index), child])
+            : Object.entries(record(value));
+        return entries.filter(([key]) => !isStatePathHiddenFromUi([...path, key]));
+    };
+    const count = (value, path = []) => visibleEntries(value, path).length;
+    const rows = (container, value, depth, path) => {
         if (primitive(value)) {
             const element = document.createElement('div');
             element.className = 'ffsm-val';
@@ -1926,7 +1982,7 @@ function renderFfState(shadow, state) {
             container.appendChild(element);
             return;
         }
-        const entries = Array.isArray(value) ? value.map((child, index) => [String(index), child]) : Object.entries(record(value));
+        const entries = visibleEntries(value, path);
         if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'ffsm-empty';
@@ -1935,6 +1991,7 @@ function renderFfState(shadow, state) {
             return;
         }
         for (const [key, item] of entries) {
+            const itemPath = [...path, key];
             if (primitive(item) || (Array.isArray(item) && item.every(primitive))) {
                 const row = document.createElement('div');
                 row.className = 'ffsm-row';
@@ -1966,16 +2023,16 @@ function renderFfState(shadow, state) {
             summary.textContent = key;
             const counter = document.createElement('span');
             counter.className = 'ffsm-count';
-            counter.textContent = String(count(item));
+            counter.textContent = String(count(item, itemPath));
             summary.appendChild(counter);
             const body = document.createElement('div');
             body.className = 'ffsm-body';
-            rows(body, item, depth + 1);
+            rows(body, item, depth + 1, itemPath);
             details.append(summary, body);
             container.appendChild(details);
         }
     };
-    const section = (title, value, open) => {
+    const section = (title, value, open, path = []) => {
         const details = document.createElement('details');
         details.className = 'ffsm-top';
         details.open = open;
@@ -1983,11 +2040,11 @@ function renderFfState(shadow, state) {
         summary.textContent = title;
         const counter = document.createElement('span');
         counter.className = 'ffsm-count';
-        counter.textContent = String(count(value));
+        counter.textContent = String(count(value, path));
         summary.appendChild(counter);
         const body = document.createElement('div');
         body.className = 'ffsm-body';
-        rows(body, value, 0);
+        rows(body, value, 0, path);
         details.append(summary, body);
         root.appendChild(details);
     };
@@ -2000,11 +2057,11 @@ function renderFfState(shadow, state) {
     }
     else {
         section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
-        section('NPC Registry', narrative.NPCs || {}, true);
-        section('Relationships', narrative.Relationships || {}, true);
-        section('Player Conditions', state.Mainchar.Conditions || {}, false);
-        section('GM Notes', narrative.GM_Notes || {}, false);
-        section('WorldSim', narrative.WorldSim || {}, false);
+        section('NPC Registry', narrative.NPCs || {}, true, ['Narrative', 'NPCs']);
+        section('Relationships', narrative.Relationships || {}, true, ['Narrative', 'Relationships']);
+        section('Player Conditions', state.Mainchar.Conditions || {}, false, ['Mainchar', 'Conditions']);
+        section('GM Notes', narrative.GM_Notes || {}, false, ['Narrative', 'GM_Notes']);
+        section('WorldSim', narrative.WorldSim || {}, false, ['Narrative', 'WorldSim']);
     }
     const filter = () => {
         const query = search.value.trim().toLocaleLowerCase('ru');

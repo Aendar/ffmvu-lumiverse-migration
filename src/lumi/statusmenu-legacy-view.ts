@@ -4,7 +4,7 @@ import type { GuiImageRef, GuiIntent, GuiOwnerRef } from '../shared/domain/gui-i
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import { statusItems, statusLegacyDeletePath, statusNumber, statusOwnerById, statusOwners, statusText } from './statusmenu-model.js';
 import { LEGACY_STATUS_BODY_HTML, LEGACY_STATUS_CSS } from './statusmenu-legacy-template.js';
-import { renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
+import { isStatePathHiddenFromUi, renderVariablesEditor, VARIABLES_EDITOR_CSS } from './variables-editor.js';
 
 export type LegacyStatusTab =
   | 'overview'
@@ -271,17 +271,16 @@ function bindValues(root: ParentNode, data: unknown): void {
 }
 
 function bindOverview(root: ShadowRoot, state: FFMVUState): void {
-  const retiredMental = root.querySelector<HTMLElement>('[data-bind-val="Mainchar.Mental_state"]');
-  const retiredMentalRow = retiredMental?.closest<HTMLElement>('.ff25-row');
+  const conditionsValue = root.querySelector<HTMLElement>('[data-ff25-conditions]');
+  const conditionsRow = conditionsValue?.closest<HTMLElement>('.ff25-row');
   const conditions = Object.values(record(state.Mainchar.Conditions));
-  if (retiredMental) {
-    retiredMental.removeAttribute('data-bind-val');
-    retiredMental.textContent = conditions.length
+  if (conditionsValue) {
+    conditionsValue.textContent = conditions.length
       ? conditions.map(value => statusText(record(value).State, '')).filter(Boolean).join(' · ')
       : '—';
   }
-  const retiredLabel = retiredMentalRow?.querySelector<HTMLElement>('.ff25-label');
-  if (retiredLabel) retiredLabel.textContent = 'Conditions';
+  const conditionsLabel = conditionsRow?.querySelector<HTMLElement>('.ff25-label');
+  if (conditionsLabel) conditionsLabel.textContent = 'Conditions';
   root.querySelectorAll<HTMLElement>('[data-ff25-cur]').forEach(row => {
     const current = numberAt(state, row.getAttribute('data-ff25-cur') || '');
     const maximum = numberAt(state, row.getAttribute('data-ff25-max') || '');
@@ -1245,17 +1244,25 @@ function renderFfState(shadow: ShadowRoot, state: FFMVUState): void {
     if (isRecord(value)) return '{' + Object.keys(value).length + '}';
     return String(value);
   };
-  const count = (value: unknown) => Array.isArray(value) ? value.length : isRecord(value) ? Object.keys(value).length : 0;
+  const visibleEntries = (value: unknown, path: readonly string[]): Array<readonly [string, unknown]> => {
+    const entries = Array.isArray(value)
+      ? value.map((child, index) => [String(index), child] as const)
+      : Object.entries(record(value));
+    return entries.filter(([key]) => !isStatePathHiddenFromUi([...path, key]));
+  };
 
-  const rows = (container: HTMLElement, value: unknown, depth: number) => {
+  const count = (value: unknown, path: readonly string[] = []) => visibleEntries(value, path).length;
+
+  const rows = (container: HTMLElement, value: unknown, depth: number, path: readonly string[]): void => {
     if (primitive(value)) {
       const element = document.createElement('div'); element.className = 'ffsm-val'; element.textContent = label(value); container.appendChild(element); return;
     }
-    const entries = Array.isArray(value) ? value.map((child, index) => [String(index), child] as const) : Object.entries(record(value));
+    const entries = visibleEntries(value, path);
     if (!entries.length) {
       const empty = document.createElement('div'); empty.className = 'ffsm-empty'; empty.textContent = 'No data'; container.appendChild(empty); return;
     }
     for (const [key, item] of entries) {
+      const itemPath = [...path, key];
       if (primitive(item) || (Array.isArray(item) && item.every(primitive))) {
         const row = document.createElement('div'); row.className = 'ffsm-row';
         const keyElement = document.createElement('div'); keyElement.className = 'ffsm-key'; keyElement.textContent = key;
@@ -1271,17 +1278,17 @@ function renderFfState(shadow: ShadowRoot, state: FFMVUState): void {
       }
       const details = document.createElement('details'); details.className = 'ffsm-node'; details.open = depth < 1;
       const summary = document.createElement('summary'); summary.textContent = key;
-      const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(item)); summary.appendChild(counter);
-      const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, item, depth + 1);
+      const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(item, itemPath)); summary.appendChild(counter);
+      const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, item, depth + 1, itemPath);
       details.append(summary, body); container.appendChild(details);
     }
   };
 
-  const section = (title: string, value: unknown, open: boolean) => {
+  const section = (title: string, value: unknown, open: boolean, path: readonly string[] = []) => {
     const details = document.createElement('details'); details.className = 'ffsm-top'; details.open = open;
     const summary = document.createElement('summary'); summary.textContent = title;
-    const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(value)); summary.appendChild(counter);
-    const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, value, 0);
+    const counter = document.createElement('span'); counter.className = 'ffsm-count'; counter.textContent = String(count(value, path)); summary.appendChild(counter);
+    const body = document.createElement('div'); body.className = 'ffsm-body'; rows(body, value, 0, path);
     details.append(summary, body); root.appendChild(details);
   };
 
@@ -1290,11 +1297,11 @@ function renderFfState(shadow: ShadowRoot, state: FFMVUState): void {
     const empty = document.createElement('div'); empty.className = 'ffsm-empty'; empty.textContent = 'Narrative state is not initialized yet.'; root.appendChild(empty);
   } else {
     section('Scene / Turn', { Version: narrative.Version, Turn: narrative.Turn, NextNpcId: narrative.NextNpcId, Scene: narrative.Scene || {} }, true);
-    section('NPC Registry', narrative.NPCs || {}, true);
-    section('Relationships', narrative.Relationships || {}, true);
-    section('Player Conditions', state.Mainchar.Conditions || {}, false);
-    section('GM Notes', narrative.GM_Notes || {}, false);
-    section('WorldSim', narrative.WorldSim || {}, false);
+    section('NPC Registry', narrative.NPCs || {}, true, ['Narrative', 'NPCs']);
+    section('Relationships', narrative.Relationships || {}, true, ['Narrative', 'Relationships']);
+    section('Player Conditions', state.Mainchar.Conditions || {}, false, ['Mainchar', 'Conditions']);
+    section('GM Notes', narrative.GM_Notes || {}, false, ['Narrative', 'GM_Notes']);
+    section('WorldSim', narrative.WorldSim || {}, false, ['Narrative', 'WorldSim']);
   }
 
   const filter = () => {
@@ -1443,7 +1450,10 @@ export function renderLegacyStatusMenu(options: LegacyStatusViewOptions): HTMLEl
   style.textContent = shadowCss();
   const body = document.createElement('div');
   body.className = 'status-body';
-  body.innerHTML = LEGACY_STATUS_BODY_HTML;
+  body.innerHTML = LEGACY_STATUS_BODY_HTML.replace(
+    'Mental State</span><span class="ff25-value" data-bind-val="Mainchar.Mental_state">',
+    'Conditions</span><span class="ff25-value" data-ff25-conditions>',
+  );
   shadow.append(style, body);
   installVariablesTab(shadow, options);
 
