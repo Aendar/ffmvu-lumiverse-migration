@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord } from '../shared/state-schema.js';
-import { PORTABLE_SNAPSHOT_FORMAT, type PortableSnapshot } from '../persistence/types.js';
+import type { PortableSnapshot } from '../persistence/types.js';
 import type { GuiIntent, GuiOwnerRef } from '../shared/domain/gui-intents.js';
 import { asRecord, isRecord } from '../shared/domain/value-utils.js';
 import type { SpindleFrontendContextLite } from './spindle-lite.js';
@@ -31,6 +31,7 @@ interface GuiSnapshot {
 }
 
 type TabId = LegacyStatusTab;
+const PORTABLE_SNAPSHOT_FORMAT_UI_UI = 'FFMVU-Portable-Snapshot-v1';
 
 const TAB_DEFS: Array<[TabId, string]> = [
   ['overview', 'Overview'],
@@ -1152,8 +1153,8 @@ export function setup(ctx: SpindleFrontendContextLite) {
           render();
           return;
         }
-        if (!portable || portable.format !== PORTABLE_SNAPSHOT_FORMAT) {
-          notice = 'Unsupported snapshot format. Expected ' + PORTABLE_SNAPSHOT_FORMAT + '.';
+        if (!portable || portable.format !== PORTABLE_SNAPSHOT_FORMAT_UI) {
+          notice = 'Unsupported snapshot format. Expected ' + PORTABLE_SNAPSHOT_FORMAT_UI + '.';
           render();
           return;
         }
