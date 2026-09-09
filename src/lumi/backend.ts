@@ -1864,6 +1864,84 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     }
     return;
   }
+  if (payload?.type === 'ffmvu_export_snapshot') {
+    const chatId = String(payload.chatId ?? '');
+    const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+    const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+    const requestId = String(payload.requestId ?? createId('snapshot'));
+    if (!chatId || !expectedHeadNodeId || !expectedHeadStateHash) {
+      spindle.sendToFrontend({
+        type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId: chatId || null,
+        reason: 'SNAPSHOT_EXPECTED_HEAD_REQUIRED',
+      }, userId);
+      return;
+    }
+    const scope: StateScope = { userId, chatId };
+    knownScopeByChat.set(chatId, scope);
+    if (contexts.getForScope(scope)) {
+      spindle.sendToFrontend({
+        type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId,
+        reason: 'SNAPSHOT_BLOCKED_DURING_GENERATION',
+      }, userId);
+      return;
+    }
+    try {
+      const rt = runtime(userId);
+      const before = await resolveGuiHead(rt, scope);
+      if (
+        before.head.health !== 'ok' ||
+        before.head.nodeId !== expectedHeadNodeId ||
+        before.head.stateHash !== expectedHeadStateHash
+      ) {
+        spindle.sendToFrontend({
+          type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId,
+          reason: 'SNAPSHOT_STALE_HEAD',
+          currentHeadHealth: before.head.health,
+          currentHeadNodeId: before.head.nodeId,
+          currentHeadStateHash: before.head.stateHash,
+          currentVariantId: before.head.variantId ?? null,
+        }, userId);
+        return;
+      }
+
+      const snapshot = await rt.state.exportPortableSnapshot(scope, before.head.nodeId);
+      const after = await resolveGuiHead(rt, scope);
+      if (!sameGuiHead(before.head, after.head)) {
+        spindle.sendToFrontend({
+          type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId,
+          reason: 'SNAPSHOT_STALE_HEAD',
+          currentHeadHealth: after.head.health,
+          currentHeadNodeId: after.head.nodeId,
+          currentHeadStateHash: after.head.stateHash,
+          currentVariantId: after.head.variantId ?? null,
+        }, userId);
+        return;
+      }
+
+      publish(userId, {
+        phase: 'snapshot_export_complete', chatId, requestId,
+        headNodeId: before.head.nodeId,
+        headStateHash: before.head.stateHash,
+        snapshotHash: snapshot.snapshotHash,
+        turn: snapshot.source.turn,
+      });
+      spindle.sendToFrontend({
+        type: 'ffmvu_snapshot_export_result', ok: true, requestId, chatId,
+        headNodeId: before.head.nodeId,
+        headStateHash: before.head.stateHash,
+        variantId: before.head.variantId ?? null,
+        snapshot,
+      }, userId);
+    } catch (error) {
+      publish(userId, { phase: 'snapshot_export_error', chatId, requestId, error: String(error) });
+      spindle.sendToFrontend({
+        type: 'ffmvu_snapshot_export_result', ok: false, requestId, chatId,
+        reason: String(error),
+      }, userId);
+    }
+    return;
+  }
+
     if (payload?.type === 'ffmvu_import_legacy') {
     const chatId = String(payload.chatId ?? '');
     const requestId = String(payload.requestId ?? createId('legacy'));
