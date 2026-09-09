@@ -14,6 +14,9 @@ export interface LegacyStatusViewOptions {
     snapshotExportBusy: boolean;
     snapshotExportNotice: string;
     onSnapshotExport(action: 'copy' | 'download'): void;
+    snapshotRestoreDisabled: boolean;
+    snapshotRestoreBusy: boolean;
+    onSnapshotRestoreText(text: string): void;
     onIntent(intent: GuiIntent): void;
     onUnsupported(action: string): void;
 }

@@ -56,6 +56,12 @@ export interface AutoMigrateLegacyStateInput {
     anchor: CommitAnchor;
     requestId: string;
 }
+export interface StageLegacyMigrationCheckpointInput {
+    parentNodeId: string;
+    expectedParentStateHash: string;
+    transcriptBoundary?: TranscriptBaseBoundary;
+    requestId: string;
+}
 export interface FinalizeModelAttemptInput {
     expectedParentNodeId: string;
     expectedParentStateHash: string;
@@ -89,11 +95,34 @@ export declare class StateService {
     private readonly mutex;
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
     private updateMaterializedTipCache;
+    private verifyPortableSnapshot;
+    /**
+     * Append a new semantic base to an existing physical journal without binding
+     * it to the transcript yet. The backend performs the transcript/head race
+     * checks and only then atomically replaces the RootAnchor.
+     *
+     * The previous physical tip is journal ancestry only; it is never selected
+     * as semantic state authority for the new base.
+     */
+    private stageCheckpointBase;
     createGenesis(scope: StateScope, input?: CreateGenesisInput): Promise<MaterializedState>;
     startNewGame(scope: StateScope, payload: GameStartPayload, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     importLegacyState(scope: StateScope, input: unknown, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     exportPortableSnapshot(scope: StateScope, nodeId: string): Promise<PortableSnapshot>;
     importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
+    /**
+     * Verify a portable snapshot exactly as exported, then stage it as a new
+     * current-chat checkpoint. Legacy snapshots are upgraded deterministically
+     * to the current schema before staging; their original hashes remain
+     * provenance and are never rewritten.
+     */
+    stagePortableSnapshotCheckpoint(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary, requestId?: string): Promise<MaterializedState>;
+    /**
+     * Stage the active legacy semantic state as a current-schema checkpoint.
+     * The source node is semantic authority; the latest physical journal tip is
+     * used only as the previous StoreRevision link.
+     */
+    stageLegacyMigrationCheckpoint(scope: StateScope, input: StageLegacyMigrationCheckpointInput): Promise<MaterializedState>;
     /**
      * Upgrade one legacy head to the current schema without involving the UI,
      * a copied snapshot, or an LLM. The resulting migration commit preserves

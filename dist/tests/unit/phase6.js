@@ -45,6 +45,67 @@ async function main() {
         && automaticNode.value.reducerVersion === 'FFMVU-1.6.0'
         && automatic.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0'
         && !('Mental_state' in automatic.state.Mainchar) && !('Chekhov' in automatic.state.Narrative), 'legacy schema upgrade is deterministic and requires no user-supplied migration draft');
+    const checkpointScope = { userId: 'u', chatId: 'legacy-checkpoint-existing' };
+    const checkpointLegacy = await service.importLegacyState(checkpointScope, {
+        stat_data: { ...createDefaultState(), MVUStatMenu_DB_Ver: 'FFMVU-1.5.8', GameStarted: true },
+    });
+    const checkpointOldRoot = await service.anchors.readRoot(checkpointScope);
+    const checkpointBoundary = {
+        throughMessageId: 'existing-chat-last-message',
+        activePrefixHash: 'existing-chat-prefix-hash',
+        fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+    };
+    const stagedMigration = await service.stageLegacyMigrationCheckpoint(checkpointScope, {
+        parentNodeId: checkpointLegacy.nodeId,
+        expectedParentStateHash: checkpointLegacy.stateHash,
+        transcriptBoundary: checkpointBoundary,
+        requestId: 'checkpoint-migration-test',
+    });
+    const checkpointRootBeforeBind = await service.anchors.readRoot(checkpointScope);
+    const stagedMigrationNode = await service.store.readNode(checkpointScope, stagedMigration.nodeId);
+    const stagedMigrationPhysical = await service.store.resolveStoreHead(checkpointScope);
+    assert(checkpointOldRoot?.baseNodeId === checkpointLegacy.nodeId &&
+        checkpointRootBeforeBind?.baseNodeId === checkpointLegacy.nodeId, 'staged schema checkpoint does not replace semantic RootAnchor before backend race checks');
+    assert(stagedMigrationNode.type === 'base' &&
+        stagedMigrationNode.value.kind === 'fork' &&
+        stagedMigrationNode.value.reducerVersion === 'FFMVU-1.6.0' &&
+        stagedMigrationNode.value.transcriptBoundary?.throughMessageId === checkpointBoundary.throughMessageId &&
+        stagedMigrationNode.value.provenance?.source === 'schema-migration-checkpoint' &&
+        stagedMigration.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0' &&
+        !('Mental_state' in stagedMigration.state.Mainchar) &&
+        !('Chekhov' in stagedMigration.state.Narrative), 'legacy checkpoint stages deterministic current-schema authority without preserving retired fields');
+    assert(stagedMigrationPhysical.status === 'ok' &&
+        stagedMigrationPhysical.head?.semanticTipNodeId === stagedMigration.nodeId, 'staged checkpoint appends to the existing physical StoreRevision chain without ambiguity');
+    await service.anchors.putRoot({
+        anchorId: 'root',
+        scope: checkpointScope,
+        baseNodeId: stagedMigration.nodeId,
+        tipNodeId: stagedMigration.nodeId,
+        updatedAt: 'checkpoint-test',
+    });
+    const checkpointRootAfterBind = await service.anchors.readRoot(checkpointScope);
+    assert(checkpointRootAfterBind?.baseNodeId === stagedMigration.nodeId &&
+        checkpointRootAfterBind.tipNodeId === stagedMigration.nodeId, 'checkpoint becomes semantic root only after explicit binding');
+    const legacyPortable = await service.exportPortableSnapshot(automaticScope, automaticLegacy.nodeId);
+    assert(legacyPortable.reducerVersion === 'FFMVU-1.5.8', 'legacy portable fixture preserves source reducer version');
+    const restoreScope = { userId: 'u', chatId: 'portable-restore-existing' };
+    const restoreBefore = await service.createGenesis(restoreScope, {
+        state: { ...createDefaultState(), Narrative: { ...createDefaultState().Narrative, Turn: 999 } },
+    });
+    const restoreOldRoot = await service.anchors.readRoot(restoreScope);
+    const stagedRestore = await service.stagePortableSnapshotCheckpoint(restoreScope, legacyPortable, checkpointBoundary, 'portable-restore-test');
+    const restoreRootBeforeBind = await service.anchors.readRoot(restoreScope);
+    const stagedRestoreNode = await service.store.readNode(restoreScope, stagedRestore.nodeId);
+    assert(restoreOldRoot?.baseNodeId === restoreBefore.nodeId &&
+        restoreRootBeforeBind?.baseNodeId === restoreBefore.nodeId, 'in-place portable restore leaves existing semantic root untouched until binding');
+    assert(stagedRestoreNode.type === 'base' &&
+        stagedRestoreNode.value.reducerVersion === 'FFMVU-1.6.0' &&
+        stagedRestoreNode.value.provenance?.source === 'portable-snapshot-checkpoint' &&
+        stagedRestoreNode.value.provenance?.sourceSnapshotHash === legacyPortable.snapshotHash &&
+        stagedRestoreNode.value.provenance?.sourceStateHash === legacyPortable.stateHash &&
+        stagedRestore.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0' &&
+        !('Mental_state' in stagedRestore.state.Mainchar) &&
+        !('Chekhov' in stagedRestore.state.Narrative), 'legacy portable restore verifies original snapshot then stages migrated v1.6 state with original hashes in provenance');
     const source2 = { userId: 'u', chatId: 'source2' };
     const service2 = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
     const state = createDefaultState();
