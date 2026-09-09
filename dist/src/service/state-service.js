@@ -56,6 +56,109 @@ export class StateService {
         }
         catch { /* cache is acceleration only; committed StoreRevision remains authoritative */ }
     }
+    async verifyPortableSnapshot(snapshot) {
+        if (!snapshot || snapshot.format !== PORTABLE_SNAPSHOT_FORMAT)
+            throw new Error('UNSUPPORTED_PORTABLE_SNAPSHOT_FORMAT');
+        const { snapshotHash, ...payload } = snapshot;
+        if (await canonicalHash(payload) !== snapshotHash)
+            throw new Error('PORTABLE_SNAPSHOT_HASH_MISMATCH');
+        const reducer = this.reducers.get(snapshot.reducerVersion);
+        this.projections.get(snapshot.projectionSeed.projectionVersion);
+        const normalized = reducer.normalize(snapshot.state);
+        const errors = reducer.validate(normalized);
+        if (errors.length)
+            throw new Error('PORTABLE_SNAPSHOT_INVALID_STATE: ' + errors.join('; '));
+        if (await canonicalHash(normalized) !== snapshot.stateHash)
+            throw new Error('PORTABLE_SNAPSHOT_STATE_HASH_MISMATCH');
+        if (await canonicalHash(snapshot.projectionSeed.projection) !== snapshot.projectionSeed.promptViewHash) {
+            throw new Error('PORTABLE_SNAPSHOT_PROJECTION_HASH_MISMATCH');
+        }
+        return normalized;
+    }
+    /**
+     * Append a new semantic base to an existing physical journal without binding
+     * it to the transcript yet. The backend performs the transcript/head race
+     * checks and only then atomically replaces the RootAnchor.
+     *
+     * The previous physical tip is journal ancestry only; it is never selected
+     * as semantic state authority for the new base.
+     */
+    async stageCheckpointBase(scope, input) {
+        return this.mutex.run(scope, async () => {
+            const physical = await this.store.resolveStoreHead(scope);
+            if (physical.status !== 'ok' || !physical.head || !physical.headHash) {
+                throw new Error('CHECKPOINT_STORE_NOT_WRITABLE: ' + physical.status);
+            }
+            const reducer = this.reducers.get(input.reducerVersion);
+            const state = reducer.normalize(input.state);
+            const errors = reducer.validate(state);
+            if (errors.length)
+                throw new Error('Invalid checkpoint state: ' + errors.join('; '));
+            const stateHash = await canonicalHash(state);
+            const baseId = createId('base');
+            const transactionId = createId('tx');
+            const defaultView = this.projections.get(input.projectionVersion).build(state);
+            const defaultPromptViewHash = await canonicalHash(defaultView);
+            let projectionBinding;
+            let projectionSeed;
+            if (input.projectionSeed) {
+                const seed = structuredClone(input.projectionSeed);
+                this.projections.get(seed.projectionVersion);
+                const seedHash = await canonicalHash(seed.projection);
+                if (seedHash !== seed.promptViewHash)
+                    throw new Error('CHECKPOINT_PROJECTION_SEED_HASH_MISMATCH');
+                projectionSeed = seed;
+                projectionBinding = {
+                    sourceKind: 'base-seed',
+                    sourceBaseId: baseId,
+                    projectionVersion: seed.projectionVersion,
+                    promptProtocolVersion: seed.promptProtocolVersion,
+                    promptViewHash: seed.promptViewHash,
+                };
+            }
+            else {
+                projectionBinding = {
+                    sourceKind: 'node',
+                    sourceNodeId: baseId,
+                    sourceStateHash: stateHash,
+                    projectionVersion: input.projectionVersion,
+                    promptProtocolVersion: input.promptProtocolVersion,
+                    promptViewHash: defaultPromptViewHash,
+                };
+            }
+            const base = {
+                eventFormatVersion: EVENT_FORMAT_VERSION,
+                id: baseId,
+                scope,
+                kind: 'fork',
+                stateSchemaVersion: input.stateSchemaVersion,
+                reducerVersion: input.reducerVersion,
+                state,
+                stateHash,
+                projectionBinding,
+                ...(projectionSeed ? { projectionSeed } : {}),
+                ...(input.transcriptBoundary ? { transcriptBoundary: structuredClone(input.transcriptBoundary) } : {}),
+                provenance: structuredClone(input.provenance),
+                createdAt: isoNow(),
+            };
+            const baseArtifactHash = await this.store.writeBase(base);
+            await this.store.writeRevision({
+                eventFormatVersion: EVENT_FORMAT_VERSION,
+                revisionId: createId('rev'),
+                scope,
+                previousStoreRevisionId: physical.head.revisionId,
+                previousStoreRevisionHash: physical.headHash,
+                transactionId,
+                committedArtifacts: [{ type: 'base', id: baseId, hash: baseArtifactHash }],
+                semanticTipNodeId: baseId,
+                semanticTipStateHash: stateHash,
+                createdAt: isoNow(),
+            });
+            const result = { nodeId: baseId, stateHash, state };
+            await this.updateMaterializedTipCache(scope, result);
+            return result;
+        });
+    }
     async createGenesis(scope, input = {}) {
         return this.mutex.run(scope, async () => {
             const head = await this.store.resolveStoreHead(scope);
@@ -172,22 +275,7 @@ export class StateService {
         return { ...portableWithoutHash, snapshotHash };
     }
     async importPortableSnapshot(scope, snapshot, transcriptBoundary) {
-        if (!snapshot || snapshot.format !== PORTABLE_SNAPSHOT_FORMAT)
-            throw new Error('UNSUPPORTED_PORTABLE_SNAPSHOT_FORMAT');
-        const { snapshotHash, ...payload } = snapshot;
-        if (await canonicalHash(payload) !== snapshotHash)
-            throw new Error('PORTABLE_SNAPSHOT_HASH_MISMATCH');
-        const reducer = this.reducers.get(snapshot.reducerVersion);
-        this.projections.get(snapshot.projectionSeed.projectionVersion);
-        const normalized = reducer.normalize(snapshot.state);
-        const errors = reducer.validate(normalized);
-        if (errors.length)
-            throw new Error('PORTABLE_SNAPSHOT_INVALID_STATE: ' + errors.join('; '));
-        if (await canonicalHash(normalized) !== snapshot.stateHash)
-            throw new Error('PORTABLE_SNAPSHOT_STATE_HASH_MISMATCH');
-        if (await canonicalHash(snapshot.projectionSeed.projection) !== snapshot.projectionSeed.promptViewHash) {
-            throw new Error('PORTABLE_SNAPSHOT_PROJECTION_HASH_MISMATCH');
-        }
+        const normalized = await this.verifyPortableSnapshot(snapshot);
         return this.createGenesis(scope, {
             state: normalized,
             kind: 'fork',
@@ -207,6 +295,98 @@ export class StateService {
                 sourceStateHash: snapshot.source.stateHash,
                 sourceSnapshotHash: snapshot.snapshotHash,
                 sourceCreatedAt: snapshot.createdAt,
+            },
+        });
+    }
+    /**
+     * Verify a portable snapshot exactly as exported, then stage it as a new
+     * current-chat checkpoint. Legacy snapshots are upgraded deterministically
+     * to the current schema before staging; their original hashes remain
+     * provenance and are never rewritten.
+     */
+    async stagePortableSnapshotCheckpoint(scope, snapshot, transcriptBoundary, requestId) {
+        const normalized = await this.verifyPortableSnapshot(snapshot);
+        if (snapshot.reducerVersion === LEGACY_REDUCER_VERSION) {
+            const reducer = this.reducers.get(CURRENT_REDUCER_VERSION);
+            const migrated = reducer.normalize(normalized);
+            const errors = reducer.validate(migrated);
+            if (errors.length)
+                throw new Error('PORTABLE_SNAPSHOT_MIGRATION_INVALID: ' + errors.join('; '));
+            return this.stageCheckpointBase(scope, {
+                state: migrated,
+                ...(transcriptBoundary ? { transcriptBoundary } : {}),
+                reducerVersion: CURRENT_REDUCER_VERSION,
+                projectionVersion: CURRENT_PROJECTION_VERSION,
+                promptProtocolVersion: 'ffmvu-model-state-v1',
+                stateSchemaVersion: STATE_SCHEMA_VERSION,
+                provenance: {
+                    source: 'portable-snapshot-checkpoint',
+                    sourceChatId: snapshot.source.chatId,
+                    sourceNodeId: snapshot.source.nodeId,
+                    sourceStateHash: snapshot.source.stateHash,
+                    sourceSnapshotHash: snapshot.snapshotHash,
+                    sourceCreatedAt: snapshot.createdAt,
+                    sourceReducerVersion: snapshot.reducerVersion,
+                    migratedToReducerVersion: CURRENT_REDUCER_VERSION,
+                    ...(requestId ? { requestId } : {}),
+                },
+            });
+        }
+        return this.stageCheckpointBase(scope, {
+            state: normalized,
+            ...(transcriptBoundary ? { transcriptBoundary } : {}),
+            reducerVersion: snapshot.reducerVersion,
+            projectionVersion: snapshot.projectionSeed.projectionVersion,
+            promptProtocolVersion: snapshot.projectionSeed.promptProtocolVersion,
+            stateSchemaVersion: snapshot.stateSchemaVersion,
+            projectionSeed: {
+                ...structuredClone(snapshot.projectionSeed),
+                provenance: 'fork-exact',
+            },
+            provenance: {
+                source: 'portable-snapshot-checkpoint',
+                sourceChatId: snapshot.source.chatId,
+                sourceNodeId: snapshot.source.nodeId,
+                sourceStateHash: snapshot.source.stateHash,
+                sourceSnapshotHash: snapshot.snapshotHash,
+                sourceCreatedAt: snapshot.createdAt,
+                ...(requestId ? { requestId } : {}),
+            },
+        });
+    }
+    /**
+     * Stage the active legacy semantic state as a current-schema checkpoint.
+     * The source node is semantic authority; the latest physical journal tip is
+     * used only as the previous StoreRevision link.
+     */
+    async stageLegacyMigrationCheckpoint(scope, input) {
+        if (!await this.store.isNodeCommitted(scope, input.parentNodeId))
+            throw new Error('CHECKPOINT_MIGRATION_SOURCE_NOT_COMMITTED');
+        const parent = await this.materializer.materialize(scope, input.parentNodeId);
+        if (parent.stateHash !== input.expectedParentStateHash)
+            throw new Error('CHECKPOINT_MIGRATION_STALE_HEAD');
+        const artifact = await this.store.readNode(scope, input.parentNodeId);
+        if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
+            throw new Error('CHECKPOINT_MIGRATION_NOT_REQUIRED');
+        const reducer = this.reducers.get(CURRENT_REDUCER_VERSION);
+        const migrated = reducer.normalize(parent.state);
+        const errors = reducer.validate(migrated);
+        if (errors.length)
+            throw new Error('CHECKPOINT_MIGRATION_TARGET_INVALID: ' + errors.join('; '));
+        return this.stageCheckpointBase(scope, {
+            state: migrated,
+            ...(input.transcriptBoundary ? { transcriptBoundary: input.transcriptBoundary } : {}),
+            reducerVersion: CURRENT_REDUCER_VERSION,
+            projectionVersion: CURRENT_PROJECTION_VERSION,
+            promptProtocolVersion: 'ffmvu-model-state-v1',
+            stateSchemaVersion: STATE_SCHEMA_VERSION,
+            provenance: {
+                source: 'schema-migration-checkpoint',
+                sourceNodeId: parent.nodeId,
+                sourceStateHash: parent.stateHash,
+                sourceReducerVersion: artifact.value.reducerVersion,
+                migratedToReducerVersion: CURRENT_REDUCER_VERSION,
+                requestId: input.requestId,
             },
         });
     }

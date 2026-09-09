@@ -891,7 +891,7 @@ function shadowCss() {
         + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
         + 'button,input,textarea,select{font-family:inherit;}'
         + '.ve-snapshot-layout{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;}'
-        + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:2px 0 0;}'
+        + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:0 0 auto;padding:2px 0 0;}'
         + '.ve-snapshot-note{flex:1;min-width:0;color:var(--text-secondary);font-size:.76em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
         + '.ve-snapshot-layout>.ve-shell{flex:1 1 auto;height:auto;min-height:0;}'
         + VARIABLES_EDITOR_CSS;
@@ -2099,7 +2099,49 @@ function installVariablesTab(shadow, options) {
     download.disabled = options.snapshotExportDisabled;
     download.title = 'Download the same portable snapshot as JSON.';
     download.addEventListener('click', () => options.onSnapshotExport('download'));
-    tools.append(note, copy, download);
+    const paste = document.createElement('button');
+    paste.type = 'button';
+    paste.className = 've-btn';
+    paste.textContent = options.snapshotRestoreBusy ? 'Restoring…' : 'Paste Snapshot';
+    paste.disabled = options.snapshotRestoreDisabled;
+    paste.title = 'Restore a portable snapshot at the current chat position without editing transcript messages.';
+    paste.addEventListener('click', async () => {
+        if (options.snapshotRestoreDisabled)
+            return;
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text.trim())
+                throw new Error('clipboard is empty');
+            options.onSnapshotRestoreText(text);
+        }
+        catch (error) {
+            options.onUnsupported('Could not read snapshot from clipboard: ' + String(error));
+        }
+    });
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = '.json,application/json';
+    file.style.display = 'none';
+    file.addEventListener('change', () => {
+        const selected = file.files?.[0];
+        file.value = '';
+        if (!selected || options.snapshotRestoreDisabled)
+            return;
+        selected.text()
+            .then(text => options.onSnapshotRestoreText(text))
+            .catch(error => options.onUnsupported('Snapshot file read failed: ' + String(error)));
+    });
+    const importJson = document.createElement('button');
+    importJson.type = 'button';
+    importJson.className = 've-btn';
+    importJson.textContent = 'Import JSON';
+    importJson.disabled = options.snapshotRestoreDisabled;
+    importJson.title = 'Choose a portable snapshot JSON and restore it at the current chat position.';
+    importJson.addEventListener('click', () => {
+        if (!options.snapshotRestoreDisabled)
+            file.click();
+    });
+    tools.append(note, copy, download, paste, importJson, file);
     layout.appendChild(tools);
     layout.appendChild(renderVariablesEditor(shadow, {
         state: options.state,
@@ -2710,6 +2752,50 @@ export function setup(ctx) {
             expectedHeadNodeId: snapshot.headNodeId,
             expectedHeadStateHash: snapshot.headStateHash,
             requestId: id,
+        });
+    }
+    function requestSnapshotRestoreText(text) {
+        if (!activeChatId ||
+            busy ||
+            !snapshot?.ok ||
+            !snapshot.initialized ||
+            !snapshot.headNodeId ||
+            !snapshot.headStateHash ||
+            snapshot.generationPending)
+            return;
+        let portable;
+        try {
+            portable = JSON.parse(text);
+        }
+        catch (error) {
+            snapshotExportNotice = 'Snapshot JSON parse failed: ' + String(error);
+            render();
+            return;
+        }
+        if (!portable || portable.format !== PORTABLE_SNAPSHOT_FORMAT_UI) {
+            snapshotExportNotice = 'Unsupported snapshot format. Expected ' + PORTABLE_SNAPSHOT_FORMAT_UI + '.';
+            render();
+            return;
+        }
+        const sourceTurn = Number(portable.source?.turn) || 0;
+        const sourceVersion = String(portable.reducerVersion || portable.stateSchemaVersion || 'unknown');
+        const confirmed = window.confirm('Restore this portable snapshot at the current chat position?\n\n' +
+            'Chat messages, message IDs, swipes, and their text are not edited.\n' +
+            'Current FFMVU state authority from this point forward will be replaced.\n' +
+            'Snapshot: turn ' + sourceTurn + ' · ' + sourceVersion);
+        if (!confirmed)
+            return;
+        busy = true;
+        snapshotExportNotice = 'Verifying snapshot and creating transcript checkpoint…';
+        render();
+        ctx.sendToBackend({
+            type: 'ffmvu_import_snapshot',
+            mode: 'replace-current',
+            chatId: activeChatId,
+            expectedHeadNodeId: snapshot.headNodeId,
+            expectedHeadStateHash: snapshot.headStateHash,
+            requestId: requestId('snapshot_restore'),
+            snapshot: portable,
         });
     }
     function sendIntent(intent) {
@@ -3549,10 +3635,13 @@ export function setup(ctx) {
                 onOwner: ownerId => { selectedOwnerId = ownerId; },
                 variablesSearch,
                 onVariablesSearch: value => { variablesSearch = value; },
-                snapshotExportDisabled: snapshotExportBusy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
+                snapshotExportDisabled: busy || snapshotExportBusy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
                 snapshotExportBusy,
                 snapshotExportNotice,
                 onSnapshotExport: requestPortableSnapshot,
+                snapshotRestoreDisabled: busy || snapshot.generationPending === true || !snapshot.headNodeId || !snapshot.headStateHash,
+                snapshotRestoreBusy: busy && snapshotExportNotice.startsWith('Verifying snapshot'),
+                onSnapshotRestoreText: requestSnapshotRestoreText,
                 onIntent: sendIntent,
                 onUnsupported: message => {
                     notice = message;
@@ -3729,13 +3818,32 @@ export function setup(ctx) {
                 portableImportText = '';
                 legacyImportOpen = false;
                 legacyImportText = '';
-                notice = 'Portable snapshot imported · turn ' + String(payload.state?.Narrative?.Turn ?? '—') + '.';
-                activeTab = 'overview';
+                if (payload.mode === 'replace-current') {
+                    const sourceVersion = String(payload.sourceReducerVersion ?? 'unknown');
+                    const finalVersion = String(payload.finalReducerVersion ?? 'unknown');
+                    snapshotExportNotice =
+                        'Snapshot restored here · turn ' + String(payload.state?.Narrative?.Turn ?? '—') +
+                            (sourceVersion !== finalVersion ? ' · ' + sourceVersion + ' → ' + finalVersion : ' · ' + finalVersion) +
+                            ' · transcript unchanged.';
+                    notice = '';
+                    activeTab = 'variables';
+                }
+                else {
+                    notice = 'Portable snapshot imported · turn ' + String(payload.state?.Narrative?.Turn ?? '—') + '.';
+                    snapshotExportNotice = '';
+                    activeTab = 'overview';
+                }
                 render();
             }
             else {
-                notice = String(payload.reason ?? 'Portable snapshot import failed');
+                const reason = String(payload.reason ?? 'Portable snapshot import failed');
+                if (snapshot?.initialized)
+                    snapshotExportNotice = reason;
+                else
+                    notice = reason;
                 render();
+                if (snapshot?.initialized)
+                    requestState();
             }
             return;
         }

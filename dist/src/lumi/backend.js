@@ -20,7 +20,7 @@ import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.24';
+const BRIDGE_VERSION = '0.13.25';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -457,51 +457,78 @@ async function bindGuiCommit(rt, scope, prior, committedNodeId) {
  * intentionally backend-owned: the user never has to manufacture a migration
  * draft merely to move to the schema shipped by this extension.
  */
-async function autoMigrateLegacyHead(rt, scope, head) {
+async function bindStagedCheckpointRoot(rt, scope, prior, staged, boundary) {
+    const currentMessages = await spindle.chat.getMessages(scope.chatId);
+    let verificationMessages = currentMessages;
+    if (boundary) {
+        const boundaryIndex = currentMessages.findIndex(message => String(message.id) === boundary.throughMessageId);
+        if (boundaryIndex < 0)
+            throw new Error('CHECKPOINT_BOUNDARY_MESSAGE_MISSING');
+        const actualHash = await activePrefixHash(toHostTranscript(currentMessages), boundary.throughMessageId);
+        if (actualHash !== boundary.activePrefixHash)
+            throw new Error('CHECKPOINT_TRANSCRIPT_CHANGED');
+        verificationMessages = currentMessages.slice(0, boundaryIndex + 1);
+    }
+    else if (currentMessages.length) {
+        throw new Error('CHECKPOINT_EMPTY_BOUNDARY_CHANGED');
+    }
+    const root = await rt.anchors.readRoot(scope);
+    if (!root)
+        throw new Error('CHECKPOINT_ROOT_ANCHOR_MISSING');
+    const stillCurrent = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(verificationMessages));
+    if (!sameGuiHead(prior, stillCurrent))
+        throw new Error('CHECKPOINT_STALE_SEMANTIC_HEAD');
+    await rt.anchors.putRoot({
+        anchorId: 'root',
+        scope,
+        baseNodeId: staged.nodeId,
+        tipNodeId: staged.nodeId,
+        updatedAt: isoNow(),
+    });
+    const verified = await rt.resolver.resolve(scope, staged.nodeId, toHostTranscript(verificationMessages));
+    if (verified.health !== 'ok' ||
+        verified.nodeId !== staged.nodeId ||
+        verified.stateHash !== staged.stateHash)
+        throw new Error('CHECKPOINT_BINDING_VERIFICATION_FAILED');
+    return verified;
+}
+/**
+ * Legacy schema upgrades are checkpoint rebases at the exact current transcript
+ * prefix. This preserves every message/swipe byte while avoiding dependence on
+ * a possibly detached physical tip or stale VariantId anchor.
+ */
+async function autoMigrateLegacyHead(rt, scope, head, messages) {
     if (head.health !== 'ok')
         return head;
     const artifact = await rt.state.store.readNode(scope, head.nodeId);
     if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
         return head;
-    const lineageAnchorId = head.variantId ?? 'root';
-    const lineageAnchor = head.variantId ? await rt.anchors.read(scope, head.variantId) : null;
-    if (head.variantId && !lineageAnchor)
-        throw new Error('AUTO_MIGRATION_LINEAGE_ANCHOR_MISSING');
-    try {
-        const committed = await rt.state.autoMigrateLegacyState(scope, {
-            parentNodeId: head.nodeId,
-            expectedParentStateHash: head.stateHash,
-            anchor: {
-                lineageAnchorId,
-                ...(head.variantId ? { variantId: head.variantId } : {}),
-                ...(lineageAnchor?.messageId ? { messageId: lineageAnchor.messageId, messageRole: 'assistant' } : {}),
-            },
-            requestId: createId('auto_schema_migration'),
-        });
-        await bindGuiCommit(rt, scope, head, committed.nodeId);
-        const verified = await resolveGuiHead(rt, scope);
-        if (verified.head.health !== 'ok' ||
-            verified.head.nodeId !== committed.nodeId ||
-            verified.head.stateHash !== committed.stateHash)
-            throw new Error('AUTO_MIGRATION_BINDING_VERIFICATION_FAILED');
-        publish(scope.userId, {
-            phase: 'schema_auto_migrated',
-            chatId: scope.chatId,
-            previousNodeId: head.nodeId,
-            finalNodeId: committed.nodeId,
-            finalStateHash: committed.stateHash,
-            reducerVersion: artifact.value.reducerVersion + '→' + CURRENT_REDUCER_VERSION,
-        });
-        return verified.head;
-    }
-    catch (error) {
-        // Two simultaneous state reads may race to migrate the same legacy head.
-        // The winner commits; the loser simply resolves the new durable head.
-        if (String(error).includes('AUTO_MIGRATION_STALE_HEAD') || String(error).includes('COMMIT_STALE_HEAD')) {
-            return (await resolveGuiHead(rt, scope)).head;
-        }
-        throw error;
-    }
+    const transcript = toHostTranscript(messages);
+    const last = transcript.at(-1);
+    const boundary = last ? {
+        throughMessageId: last.id,
+        activePrefixHash: await activePrefixHash(transcript, last.id),
+        fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+    } : undefined;
+    const staged = await rt.state.stageLegacyMigrationCheckpoint(scope, {
+        parentNodeId: head.nodeId,
+        expectedParentStateHash: head.stateHash,
+        ...(boundary ? { transcriptBoundary: boundary } : {}),
+        requestId: createId('auto_schema_checkpoint'),
+    });
+    const verified = await bindStagedCheckpointRoot(rt, scope, head, staged, boundary);
+    publish(scope.userId, {
+        phase: 'schema_auto_migrated',
+        migrationMode: 'transcript-checkpoint',
+        chatId: scope.chatId,
+        previousNodeId: head.nodeId,
+        previousStateHash: head.stateHash,
+        finalNodeId: staged.nodeId,
+        finalStateHash: staged.stateHash,
+        reducerVersion: artifact.value.reducerVersion + '→' + CURRENT_REDUCER_VERSION,
+        transcriptMessagesPreserved: true,
+    });
+    return verified;
 }
 async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId) {
     const timestamps = {};
@@ -633,9 +660,31 @@ async function prepareGeneration(context, targetMessageId) {
         if (continueSnapshot.sourceIndex !== rawAll.length - 1)
             return { ok: false, reason: 'continue_target_must_be_last_transcript_message' };
     }
-    const raw = isContinue && continueSnapshot
+    let raw = isContinue && continueSnapshot
         ? rawAll.slice(0, continueSnapshot.sourceIndex + 1)
         : filterTranscriptForGeneration(rawAll, context.generationType, targetMessageId);
+    // Lumiverse may transiently append an empty assistant target before the
+    // Context Handler. If target correlation is absent or late, never treat that
+    // uncommitted placeholder as historical assistant lineage.
+    if (!isContinue && ['normal', 'regenerate', 'swipe'].includes(context.generationType)) {
+        const tail = raw.at(-1);
+        if (tail?.role === 'assistant') {
+            const tailIndex = await rt.variants.read(scope, String(tail.id));
+            const tailSwipe = Number.isInteger(tail.swipe_id) ? tail.swipe_id : 0;
+            const tailText = Array.isArray(tail.swipes) && tail.swipes[tailSwipe] !== undefined
+                ? String(tail.swipes[tailSwipe] ?? '')
+                : String(tail.content ?? '');
+            if (!tailIndex && tailText.length === 0) {
+                traceInternal(context.userId, 'generation_placeholder_filtered', {
+                    chatId: context.chatId,
+                    generationType: context.generationType,
+                    messageId: String(tail.id),
+                    correlatedTargetMessageId: targetMessageId ?? null,
+                });
+                raw = raw.slice(0, -1);
+            }
+        }
+    }
     const baseId = await ensureBootstrap(scope, raw);
     let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
     let continueResolvesAttemptId;
@@ -663,24 +712,33 @@ async function prepareGeneration(context, targetMessageId) {
         continueResolvesAttemptId = lastAttempt.id;
         head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
     }
-    head = await autoMigrateLegacyHead(rt, scope, head);
+    head = await autoMigrateLegacyHead(rt, scope, head, raw);
     if (head.health !== 'ok')
         return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
     let suppressedHistoryMessageIds = [];
-    const baseArtifact = await rt.state.store.readNode(scope, baseId);
-    if (baseArtifact.type === 'base' &&
-        baseArtifact.value.kind === 'fork' &&
-        baseArtifact.value.provenance?.source === 'portable-snapshot' &&
-        baseArtifact.value.transcriptBoundary) {
-        const boundaryMessageId = baseArtifact.value.transcriptBoundary.throughMessageId;
-        const boundaryIndex = rawAll.findIndex(message => String(message.id) === boundaryMessageId);
-        if (boundaryIndex >= 0) {
-            suppressedHistoryMessageIds = rawAll.slice(0, boundaryIndex + 1).map(message => String(message.id));
+    let lineageMessages = raw;
+    const activeRoot = await rt.anchors.readRoot(scope);
+    if (!activeRoot)
+        return { ok: false, reason: 'root anchor missing after state resolution' };
+    const activeBaseArtifact = await rt.state.store.readNode(scope, activeRoot.baseNodeId);
+    if (activeBaseArtifact.type !== 'base')
+        return { ok: false, reason: 'active root base is not a BaseSnapshot' };
+    if (activeBaseArtifact.value.transcriptBoundary) {
+        const boundaryMessageId = activeBaseArtifact.value.transcriptBoundary.throughMessageId;
+        const rawBoundaryIndex = raw.findIndex(message => String(message.id) === boundaryMessageId);
+        if (rawBoundaryIndex >= 0)
+            lineageMessages = raw.slice(rawBoundaryIndex + 1);
+        if (activeBaseArtifact.value.kind === 'fork' &&
+            activeBaseArtifact.value.provenance?.source === 'portable-snapshot') {
+            const allBoundaryIndex = rawAll.findIndex(message => String(message.id) === boundaryMessageId);
+            if (allBoundaryIndex >= 0) {
+                suppressedHistoryMessageIds = rawAll.slice(0, allBoundaryIndex + 1).map(message => String(message.id));
+            }
         }
     }
     const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-    const historyContext = await buildNarrativeHistoryContext(rt, scope, raw, head.nodeId);
+    const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId);
     const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
     contexts.create({
         scope,
@@ -1938,11 +1996,6 @@ spindle.onFrontendMessage(async (payload, userId) => {
             spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, reason: 'SNAPSHOT_IMPORT_CHAT_ID_REQUIRED' }, userId);
             return;
         }
-        const cfg = await config(userId);
-        if (!cfg.enabled) {
-            spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_BRIDGE_DISABLED' }, userId);
-            return;
-        }
         const scope = { userId, chatId };
         knownScopeByChat.set(chatId, scope);
         if (contexts.getForScope(scope)) {
@@ -1952,8 +2005,78 @@ spindle.onFrontendMessage(async (payload, userId) => {
         try {
             const rt = runtime(userId);
             const existingRoot = await rt.anchors.readRoot(scope);
+            const portable = payload.snapshot;
             if (existingRoot) {
-                spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_ALREADY_INITIALIZED' }, userId);
+                if (payload.mode !== 'replace-current') {
+                    spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_ALREADY_INITIALIZED' }, userId);
+                    return;
+                }
+                const expectedHeadNodeId = String(payload.expectedHeadNodeId ?? '');
+                const expectedHeadStateHash = String(payload.expectedHeadStateHash ?? '');
+                if (!expectedHeadNodeId || !expectedHeadStateHash) {
+                    spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_EXPECTED_HEAD_REQUIRED' }, userId);
+                    return;
+                }
+                const before = await resolveGuiHead(rt, scope);
+                if (before.head.health !== 'ok' ||
+                    before.head.nodeId !== expectedHeadNodeId ||
+                    before.head.stateHash !== expectedHeadStateHash) {
+                    spindle.sendToFrontend({
+                        type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId,
+                        reason: 'SNAPSHOT_IMPORT_STALE_HEAD',
+                        currentHeadHealth: before.head.health,
+                        currentHeadNodeId: before.head.nodeId,
+                        currentHeadStateHash: before.head.stateHash,
+                        currentVariantId: before.head.variantId ?? null,
+                    }, userId);
+                    return;
+                }
+                const transcript = toHostTranscript(before.messages);
+                const last = transcript.at(-1);
+                const boundary = last ? {
+                    throughMessageId: last.id,
+                    activePrefixHash: await activePrefixHash(transcript, last.id),
+                    fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
+                } : undefined;
+                const staged = await rt.state.stagePortableSnapshotCheckpoint(scope, portable, boundary, requestId);
+                await bindStagedCheckpointRoot(rt, scope, before.head, staged, boundary);
+                const projection = await rt.state.getProjectionForNode(scope, staged.nodeId);
+                publish(userId, {
+                    phase: 'snapshot_restore_complete',
+                    chatId,
+                    requestId,
+                    previousNodeId: before.head.nodeId,
+                    previousStateHash: before.head.stateHash,
+                    finalNodeId: staged.nodeId,
+                    finalStateHash: staged.stateHash,
+                    promptViewHash: projection.viewHash,
+                    sourceSnapshotHash: portable?.snapshotHash ?? null,
+                    sourceReducerVersion: portable?.reducerVersion ?? null,
+                    finalReducerVersion: projection.reducerVersion,
+                    turn: Number(staged.state.Narrative.Turn) || 0,
+                    transcriptMessagesPreserved: true,
+                });
+                spindle.sendToFrontend({
+                    type: 'ffmvu_snapshot_import_result',
+                    ok: true,
+                    mode: 'replace-current',
+                    requestId,
+                    chatId,
+                    headNodeId: staged.nodeId,
+                    headStateHash: staged.stateHash,
+                    promptViewHash: projection.viewHash,
+                    variantId: null,
+                    generationPending: false,
+                    state: staged.state,
+                    sourceSnapshotHash: portable?.snapshotHash ?? null,
+                    sourceReducerVersion: portable?.reducerVersion ?? null,
+                    finalReducerVersion: projection.reducerVersion,
+                }, userId);
+                return;
+            }
+            const cfg = await config(userId);
+            if (!cfg.enabled) {
+                spindle.sendToFrontend({ type: 'ffmvu_snapshot_import_result', ok: false, requestId, chatId, reason: 'SNAPSHOT_IMPORT_BRIDGE_DISABLED' }, userId);
                 return;
             }
             const messages = await spindle.chat.getMessages(chatId);
@@ -1964,13 +2087,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
                 activePrefixHash: await activePrefixHash(transcript, last.id),
                 fingerprintVersion: ACTIVE_PREFIX_FINGERPRINT_VERSION,
             } : undefined;
-            const portable = payload.snapshot;
             const created = await rt.state.importPortableSnapshot(scope, portable, boundary);
             const projection = await rt.state.getProjectionForNode(scope, created.nodeId);
             publish(userId, {
                 phase: 'snapshot_import_complete', chatId, requestId,
-                finalNodeId: created.nodeId,
-                finalStateHash: created.stateHash,
+                finalNodeId: created.nodeId, finalStateHash: created.stateHash,
                 promptViewHash: projection.viewHash,
                 sourceSnapshotHash: portable?.snapshotHash ?? null,
                 turn: Number(created.state.Narrative.Turn) || 0,
@@ -2127,7 +2248,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
                 }, userId);
                 return;
             }
-            const migratedHead = await autoMigrateLegacyHead(rt, scope, resolved.head);
+            const migratedHead = await autoMigrateLegacyHead(rt, scope, resolved.head, resolved.messages);
             if (migratedHead.health !== 'ok') {
                 spindle.sendToFrontend({
                     type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
