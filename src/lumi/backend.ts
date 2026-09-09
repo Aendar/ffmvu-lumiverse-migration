@@ -24,7 +24,7 @@ import { DiagnosticTraceStore } from './diagnostic-trace.js';
 
 declare const spindle: SpindleApiLite;
 
-const BRIDGE_VERSION = '0.13.23';
+const BRIDGE_VERSION = '0.13.24';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
@@ -2217,19 +2217,16 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
         }, userId);
         return;
       }
-      const cfg = await config(userId);
-      if (cfg.enabled) {
-        const migratedHead = await autoMigrateLegacyHead(rt, scope, resolved.head);
-        if (migratedHead.health !== 'ok') {
-          spindle.sendToFrontend({
-            type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
-            headHealth: migratedHead.health, headNodeId: migratedHead.nodeId,
-            headStateHash: migratedHead.stateHash, reason: migratedHead.reason ?? 'head unresolved after automatic schema migration',
-          }, userId);
-          return;
-        }
-        if (!sameGuiHead(resolved.head, migratedHead)) resolved = await resolveGuiHead(rt, scope);
+      const migratedHead = await autoMigrateLegacyHead(rt, scope, resolved.head);
+      if (migratedHead.health !== 'ok') {
+        spindle.sendToFrontend({
+          type: 'ffmvu_gui_state', ok: false, initialized: true, chatId,
+          headHealth: migratedHead.health, headNodeId: migratedHead.nodeId,
+          headStateHash: migratedHead.stateHash, reason: migratedHead.reason ?? 'head unresolved after automatic schema migration',
+        }, userId);
+        return;
       }
+      if (!sameGuiHead(resolved.head, migratedHead)) resolved = await resolveGuiHead(rt, scope);
       const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
       spindle.sendToFrontend({
         type: 'ffmvu_gui_state', ok: true, initialized: true, chatId,
