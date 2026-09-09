@@ -10,6 +10,10 @@ export interface LegacyStatusViewOptions {
     onOwner(ownerId: string): void;
     variablesSearch: string;
     onVariablesSearch(value: string): void;
+    snapshotExportDisabled: boolean;
+    snapshotExportBusy: boolean;
+    snapshotExportNotice: string;
+    onSnapshotExport(action: 'copy' | 'download'): void;
     onIntent(intent: GuiIntent): void;
     onUnsupported(action: string): void;
 }
