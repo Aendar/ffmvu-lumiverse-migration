@@ -2,6 +2,7 @@ import { activePrefixHash, type HostTranscriptMessage } from './transcript-finge
 import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from './persistence/anchor-store.js';
 import type { EventStore } from './persistence/event-store.js';
 import type { Materializer } from './persistence/materializer.js';
+import { ResolutionSession } from './persistence/resolution-session.js';
 import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type BaseSnapshot, type StateCommit, type StateScope, type VariantId } from './persistence/types.js';
 
 export type HeadHealth = 'ok' | 'unreconciled' | 'diverged_history' | 'base_boundary_dirty' | 'stopped_uncommitted' | 'failed_patch' | 'store_error';
@@ -10,26 +11,39 @@ export interface HeadResolution { health: HeadHealth; nodeId: string; stateHash:
 export class HeadResolver {
   constructor(private readonly eventStore: EventStore, private readonly materializer: Materializer, private readonly anchors: AnchorStore, private readonly attempts: TranscriptAttemptStore, private readonly variants: VariantIndexStore) {}
 
-  async resolve(scope: StateScope, baseId: string, messages: HostTranscriptMessage[]): Promise<HeadResolution> {
+  createResolutionSession(scope: StateScope): ResolutionSession {
+    return new ResolutionSession(scope, this.eventStore, this.materializer, this.attempts);
+  }
+
+  async resolve(
+    scope: StateScope,
+    baseId: string,
+    messages: HostTranscriptMessage[],
+    providedSession?: ResolutionSession,
+  ): Promise<HeadResolution> {
+    const session = providedSession ?? this.createResolutionSession(scope);
+    if (session.scope.userId !== scope.userId || session.scope.chatId !== scope.chatId) {
+      throw new Error('RESOLUTION_SESSION_SCOPE_MISMATCH');
+    }
     try {
-      const baseNode = await this.eventStore.readNode(scope, baseId); if (baseNode.type !== 'base') throw new Error('LINEAGE_BASE_NOT_BASESNAPSHOT');
+      const baseNode = await session.readNode(baseId); if (baseNode.type !== 'base') throw new Error('LINEAGE_BASE_NOT_BASESNAPSHOT');
       const base = baseNode.value;
       let startIndex = 0;
       if (base.transcriptBoundary) {
-        if (base.transcriptBoundary.fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION) return this.bad('base_boundary_dirty', base, 'unsupported boundary fingerprint version');
+        if (base.transcriptBoundary.fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION) return this.bad('base_boundary_dirty', base, 'unsupported boundary fingerprint version', session);
         let actual: string;
-        try { actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId); } catch (error) { return this.bad('base_boundary_dirty', base, String(error)); }
-        if (actual !== base.transcriptBoundary.activePrefixHash) return this.bad('base_boundary_dirty', base, 'active prefix hash mismatch');
-        const boundaryIndex = messages.findIndex(item => item.id === base.transcriptBoundary!.throughMessageId); if (boundaryIndex < 0) return this.bad('base_boundary_dirty', base, 'boundary message missing'); startIndex = boundaryIndex + 1;
+        try { actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId); } catch (error) { return this.bad('base_boundary_dirty', base, String(error), session); }
+        if (actual !== base.transcriptBoundary.activePrefixHash) return this.bad('base_boundary_dirty', base, 'active prefix hash mismatch', session);
+        const boundaryIndex = messages.findIndex(item => item.id === base.transcriptBoundary!.throughMessageId); if (boundaryIndex < 0) return this.bad('base_boundary_dirty', base, 'boundary message missing', session); startIndex = boundaryIndex + 1;
       }
 
-      const root = await this.anchors.readRoot(scope); if (!root || root.baseNodeId !== base.id) return this.bad('unreconciled', base, 'root anchor missing or mismatched');
-      let current = await this.materializer.materialize(scope, base.id);
+      const root = await this.anchors.readRoot(scope); if (!root || root.baseNodeId !== base.id) return this.bad('unreconciled', base, 'root anchor missing or mismatched', session);
+      let current = await session.materialize(base.id);
       if (root.tipNodeId !== base.id) {
-        const path = await this.eventStore.traceDescendantPath(scope, base.id, root.tipNodeId); if (!path || !path.every(c => isAllowedLineageCommit(c, 'root'))) return this.bad('diverged_history', base, 'invalid root non-message lineage');
-        current = await this.materializer.materialize(scope, root.tipNodeId);
+        const path = await session.traceDescendantPath(base.id, root.tipNodeId); if (!path || !path.every(c => isAllowedLineageCommit(c, 'root'))) return this.bad('diverged_history', base, 'invalid root non-message lineage', session);
+        current = await session.materialize(root.tipNodeId);
       }
-      const committedAttemptTip = await this.eventStore.resolveCommittedAttemptTip(scope);
+      const committedAttemptTip = await session.resolveCommittedAttemptTip();
       let terminalVariant: VariantId | undefined;
 
       for (const message of messages.slice(startIndex)) {
@@ -40,7 +54,7 @@ export class HeadResolver {
         const anchor = await this.anchors.read(scope, variantId); if (!anchor) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: `AnchorRecord missing for ${variantId}` };
         if (anchor.messageId !== message.id) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'anchor message mismatch' };
         if (anchor.initialBaseNodeId !== current.nodeId || anchor.initialBaseStateHash !== current.stateHash) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: `assistant ${message.id} was generated from another lineage` };
-        const listed = await this.attempts.listForVariant(scope, variantId); const byId = new Map(listed.map(item => [item.id, item]));
+        const listed = await session.listAttemptsForVariant(variantId); const byId = new Map(listed.map(item => [item.id, item]));
         const ordered = anchor.attemptIds.map(id => byId.get(id)).filter(Boolean);
         if (!ordered.length || ordered.length !== anchor.attemptIds.length) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'attempt evidence missing' };
 
@@ -48,16 +62,16 @@ export class HeadResolver {
           const attempt = ordered[n]!;
           if (attempt.ordinal !== n + 1) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'attempt ordinal mismatch' };
           if (current.nodeId !== attempt.baseNodeId) {
-            const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, attempt.baseNodeId);
+            const path = await session.traceDescendantPath(current.nodeId, attempt.baseNodeId);
             if (!path || !path.every(c => isAllowedLineageCommit(c, variantId))) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'illegal inter-attempt descendant path' };
-            current = await this.materializer.materialize(scope, attempt.baseNodeId);
+            current = await session.materialize(attempt.baseNodeId);
           }
           if (current.stateHash !== attempt.baseStateHash) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'attempt base state hash mismatch' };
           if (attempt.status === 'committed') {
             if (!attempt.modelCommitId) return { health: 'unreconciled', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'committed attempt missing modelCommitId' };
-            const model = await this.eventStore.readCommit(scope, attempt.modelCommitId);
+            const model = await session.readCommit(attempt.modelCommitId);
             if (model.kind !== 'model' || model.parentNodeId !== attempt.baseNodeId || model.anchor.variantId !== variantId || model.anchor.attemptId !== attempt.id) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'model commit provenance mismatch' };
-            current = await this.materializer.materialize(scope, model.id);
+            current = await session.materialize(model.id);
           } else if (attempt.status === 'no_patch') {
             // state remains on frozen attempt base
           } else if (attempt.status === 'stopped') {
@@ -74,9 +88,9 @@ export class HeadResolver {
         }
 
         if (anchor.tipNodeId !== current.nodeId) {
-          const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, anchor.tipNodeId);
+          const path = await session.traceDescendantPath(current.nodeId, anchor.tipNodeId);
           if (!path || !path.every(c => isAllowedLineageCommit(c, variantId))) return { health: 'diverged_history', nodeId: current.nodeId, stateHash: current.stateHash, variantId, reason: 'invalid post-attempt lineage' };
-          current = await this.materializer.materialize(scope, anchor.tipNodeId);
+          current = await session.materialize(anchor.tipNodeId);
         }
 
         const boundAttemptIds = new Set(anchor.attemptIds);
@@ -85,7 +99,7 @@ export class HeadResolver {
           committedAttemptTip.variantId === variantId &&
           !boundAttemptIds.has(committedAttemptTip.attemptId)
         ) {
-          const path = await this.eventStore.traceDescendantPath(scope, current.nodeId, committedAttemptTip.nodeId);
+          const path = await session.traceDescendantPath(current.nodeId, committedAttemptTip.nodeId);
           if (path !== null) {
             return {
               health: 'unreconciled',
@@ -102,12 +116,12 @@ export class HeadResolver {
       }
       return { health: 'ok', nodeId: current.nodeId, stateHash: current.stateHash, ...(terminalVariant ? { variantId: terminalVariant } : {}) };
     } catch (error) {
-      const fallback = await this.materializer.materialize(scope, baseId);
+      const fallback = await session.materialize(baseId);
       return { health: 'store_error', nodeId: fallback.nodeId, stateHash: fallback.stateHash, reason: String(error) };
     }
   }
 
-  private async bad(health: HeadHealth, base: BaseSnapshot, reason: string): Promise<HeadResolution> { const state = await this.materializer.materialize(base.scope, base.id); return { health, nodeId: state.nodeId, stateHash: state.stateHash, reason }; }
+  private async bad(health: HeadHealth, base: BaseSnapshot, reason: string, session: ResolutionSession): Promise<HeadResolution> { const state = await session.materialize(base.id); return { health, nodeId: state.nodeId, stateHash: state.stateHash, reason }; }
 }
 
 function isAllowedLineageCommit(commit: StateCommit, lineage: 'root' | VariantId): boolean {
