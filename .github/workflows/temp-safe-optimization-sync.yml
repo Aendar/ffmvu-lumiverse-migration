@@ -21,12 +21,15 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Apply guarded source edits
-        run: node scripts/apply-safe-optimization-slices.mjs
+      - name: Repair and apply guarded source edits
+        run: |
+          node scripts/repair-safe-optimization-script.mjs
+          node scripts/apply-safe-optimization-slices.mjs
       - name: Validate source, build and tests
         run: npm test
       - name: Remove temporary migration machinery
         run: |
+          rm scripts/repair-safe-optimization-script.mjs
           rm scripts/apply-safe-optimization-slices.mjs
           rm .github/workflows/temp-safe-optimization-sync.yml
       - name: Commit source and tracked dist
