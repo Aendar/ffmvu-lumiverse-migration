@@ -126,7 +126,8 @@ async function main() {
   const resolved = await resolver.resolve(scope, genesis.nodeId, messages);
   assert(resolved.health === 'ok', 'cached resolver preserves healthy semantic lineage');
   assert(resolved.nodeId === current.nodeId && resolved.stateHash === current.stateHash, 'cached resolver returns exact semantic tip');
-  assert(storage.listCalls === 2, 'one attempt-scope scan plus one physical revision scan serve the entire head resolution');
+  const resolverListCalls = storage.listCalls;
+  assert(resolverListCalls === 2, 'one attempt-scope scan plus one physical revision scan serve the entire head resolution');
 
   const session = new ResolutionSession(scope, state.store, state.materializer, attempts);
   storage.resetCounts();
@@ -139,12 +140,14 @@ async function main() {
   storage.resetCounts();
   assert(await session.isNodeCommitted(genesis.nodeId), 'session sees committed genesis');
   assert(await session.isNodeCommitted(current.nodeId), 'session sees committed tip');
-  assert(storage.listCalls === 1, 'committed-node membership is indexed once per request session');
+  const committedMembershipListCalls = storage.listCalls;
+  assert(committedMembershipListCalls === 1, 'committed-node membership is indexed once per request session');
 
   storage.resetCounts();
   assert((await session.listAttemptsForVariant('v1')).length === 1, 'attempt index returns first variant');
   assert((await session.listAttemptsForVariant('v8')).length === 1, 'attempt index returns later variant');
-  assert(storage.listCalls === 1, 'attempt artifacts are scanned once for multiple variants');
+  const attemptIndexListCalls = storage.listCalls;
+  assert(attemptIndexListCalls === 1, 'attempt artifacts are scanned once for multiple variants');
 
   console.log(`FFMVU Phase 10 resolution-cache checks passed: ${passed}`);
 }
