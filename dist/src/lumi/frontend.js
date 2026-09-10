@@ -343,6 +343,7 @@ export function setup(ctx) {
     let variablesSearch = '';
     let notice = '';
     let panelOpen = false;
+    let stateRequestInFlight = false;
     let portableImportOpen = false;
     let portableImportText = '';
     let legacyImportOpen = false;
@@ -455,6 +456,7 @@ export function setup(ctx) {
         if (diagnosticsOpen) {
             panelOpen = true;
             syncPanelVisibility();
+            requestState();
             requestDiagnostics();
         }
         else {
@@ -471,9 +473,13 @@ export function setup(ctx) {
     function requestState() {
         if (!activeChatId) {
             snapshot = null;
+            stateRequestInFlight = false;
             render();
             return;
         }
+        if (!panelOpen || stateRequestInFlight)
+            return;
+        stateRequestInFlight = true;
         ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
     }
     async function copyJson(value) {
@@ -1204,7 +1210,6 @@ export function setup(ctx) {
         const gender = textInput('Male');
         const race = textInput('Human');
         const occupation = textInput('Adventurer');
-        const mental = textInput('Calm');
         const level = textInput('1', 'number');
         level.min = '1';
         level.max = '140';
@@ -1215,7 +1220,7 @@ export function setup(ctx) {
         const charisma = textInput('85', 'number');
         charisma.min = '80';
         charisma.max = '100';
-        grid.append(field('Date', date), field('Time', time), field('Weather', weather), field('Location', location), field('Name', name), field('Age', age), field('Gender', gender), field('Race', race), field('Occupation', occupation), field('Mental state', mental), field('Level', level), field('EXP', exp), field('Core points', core), field('Charisma (80–100)', charisma));
+        grid.append(field('Date', date), field('Time', time), field('Weather', weather), field('Location', location), field('Name', name), field('Age', age), field('Gender', gender), field('Race', race), field('Occupation', occupation), field('Level', level), field('EXP', exp), field('Core points', core), field('Charisma (80–100)', charisma));
         form.appendChild(grid);
         const statsCard = make('div', 'ffsm-card');
         statsCard.style.marginTop = '9px';
@@ -1286,7 +1291,6 @@ export function setup(ctx) {
                     gender: gender.value.trim() || 'Male',
                     race: race.value.trim() || 'Human',
                     occupation: occupation.value.trim() || 'Adventurer',
-                    mental: mental.value.trim() || 'Calm',
                     charisma: Number(charisma.value),
                     level: Number(level.value),
                     exp: Number(exp.value),
@@ -1410,6 +1414,8 @@ export function setup(ctx) {
         frame.append(resizeGrip(), content);
         const state = activeState();
         if (state && snapshot?.ok && snapshot.initialized) {
+            if (notice)
+                content.appendChild(make('div', 'ffsm-notice', notice));
             content.appendChild(renderLegacyStatusMenu({
                 state,
                 activeTab,
@@ -1525,10 +1531,9 @@ export function setup(ctx) {
         if (payload?.type === 'ffmvu_gui_state') {
             if (payload.chatId !== activeChatId)
                 return;
+            stateRequestInFlight = false;
             snapshot = payload;
             busy = false;
-            if (snapshot.ok && snapshot.initialized)
-                notice = '';
             render();
             return;
         }
@@ -1663,6 +1668,7 @@ export function setup(ctx) {
             return;
         activeChatId = next;
         snapshot = null;
+        stateRequestInFlight = false;
         busy = false;
         notice = '';
         activeTab = 'overview';

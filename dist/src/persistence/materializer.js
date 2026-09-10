@@ -7,12 +7,14 @@ export class Materializer {
         this.store = store;
         this.reducers = reducers;
     }
-    async materialize(scope, nodeId) {
+    async materialize(scope, nodeId, cache) {
         const visiting = new Set();
-        const result = await this.materializeInner(scope, nodeId, visiting);
-        return result;
+        return this.materializeInner(scope, nodeId, visiting, cache);
     }
-    async materializeInner(scope, nodeId, visiting) {
+    async materializeInner(scope, nodeId, visiting, cache) {
+        const cached = cache?.get(nodeId);
+        if (cached)
+            return cached;
         if (visiting.has(nodeId))
             throw new Error('Semantic DAG cycle detected at ' + nodeId);
         visiting.add(nodeId);
@@ -27,9 +29,11 @@ export class Materializer {
                 const hash = await canonicalHash(state);
                 if (hash !== node.value.stateHash)
                     throw new Error('BaseSnapshot state hash mismatch: ' + nodeId);
-                return { nodeId, stateHash: hash, state };
+                const result = { nodeId, stateHash: hash, state };
+                cache?.set(nodeId, result);
+                return result;
             }
-            const parent = await this.materializeInner(scope, node.value.parentNodeId, visiting);
+            const parent = await this.materializeInner(scope, node.value.parentNodeId, visiting, cache);
             if (parent.stateHash !== node.value.parentStateHash)
                 throw new Error('Commit parent hash mismatch: ' + nodeId);
             const reducer = this.reducers.get(node.value.reducerVersion);
@@ -40,7 +44,9 @@ export class Materializer {
             const hash = await canonicalHash(state);
             if (hash !== node.value.resultStateHash)
                 throw new Error('Commit result hash mismatch: ' + nodeId);
-            return { nodeId, stateHash: hash, state };
+            const result = { nodeId, stateHash: hash, state };
+            cache?.set(nodeId, result);
+            return result;
         }
         finally {
             visiting.delete(nodeId);

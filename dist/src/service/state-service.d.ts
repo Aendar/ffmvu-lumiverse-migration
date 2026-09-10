@@ -5,6 +5,7 @@ import type { ReducerRegistry } from '../shared/reducer-registry.js';
 import { AnchorStore } from '../persistence/anchor-store.js';
 import { EventStore } from '../persistence/event-store.js';
 import { Materializer } from '../persistence/materializer.js';
+import type { ResolutionSession } from '../persistence/resolution-session.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
 import { type BaseSnapshotKind, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { type GameStartPayload } from '../shared/domain/gamestart.js';
@@ -94,7 +95,6 @@ export declare class StateService {
     readonly anchors: AnchorStore;
     private readonly mutex;
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
-    private updateMaterializedTipCache;
     private verifyPortableSnapshot;
     /**
      * Append a new semantic base to an existing physical journal without binding
@@ -134,7 +134,7 @@ export declare class StateService {
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;
     readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null>;
-    getProjectionForNode(scope: StateScope, nodeId: string): Promise<{
+    getProjectionForNode(scope: StateScope, nodeId: string, session?: ResolutionSession): Promise<{
         nodeId: string;
         stateHash: string;
         reducerVersion: string;

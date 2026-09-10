@@ -422,8 +422,9 @@ async function resolveGuiHead(rt, scope) {
     if (!root)
         throw new Error('GUI_STATE_NOT_INITIALIZED');
     const messages = await spindle.chat.getMessages(scope.chatId);
-    const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
-    return { root, messages, head };
+    const session = rt.resolver.createResolutionSession(scope);
+    const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages), session);
+    return { root, messages, head, session };
 }
 function sameGuiHead(a, b) {
     return a.health === 'ok' && b.health === 'ok' &&
@@ -530,7 +531,7 @@ async function autoMigrateLegacyHead(rt, scope, head, messages) {
     });
     return verified;
 }
-async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId) {
+async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId, session) {
     const timestamps = {};
     let baselineNodeId = null;
     const historyNodeIds = [];
@@ -547,7 +548,7 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
         const anchor = await rt.anchors.read(scope, variantId);
         if (!anchor?.lastAttemptId)
             continue;
-        const attempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+        const attempt = await session.readAttempt(anchor.lastAttemptId);
         if (!attempt)
             continue;
         if (attempt.narrativeTimestamp)
@@ -562,9 +563,9 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
     let recentChanges = null;
     if (baselineNodeId && baselineNodeId !== currentHeadNodeId) {
         try {
-            if (await rt.state.store.isNodeCommitted(scope, baselineNodeId)) {
-                const before = await rt.state.materializer.materialize(scope, baselineNodeId);
-                const after = await rt.state.materializer.materialize(scope, currentHeadNodeId);
+            if (await session.isNodeCommitted(baselineNodeId)) {
+                const before = await session.materialize(baselineNodeId);
+                const after = await session.materialize(currentHeadNodeId);
                 recentChanges = computeRecentChanges(before.state, after.state);
             }
         }
@@ -581,9 +582,9 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
         try {
             const materialized = [];
             for (const nodeId of boundedHistoryNodes) {
-                if (!await rt.state.store.isNodeCommitted(scope, nodeId))
+                if (!await session.isNodeCommitted(nodeId))
                     continue;
-                materialized.push(await rt.state.materializer.materialize(scope, nodeId));
+                materialized.push(await session.materialize(nodeId));
             }
             stateHistory = computeRecentStateHistory(materialized.map(item => item.state), { maxTracks: 12, maxChangesPerPath: 3 });
         }
@@ -686,7 +687,8 @@ async function prepareGeneration(context, targetMessageId) {
         }
     }
     const baseId = await ensureBootstrap(scope, raw);
-    let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
+    const resolutionSession = rt.resolver.createResolutionSession(scope);
+    let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw), resolutionSession);
     let continueResolvesAttemptId;
     if (head.health !== 'ok') {
         const recoverableHealth = head.health === 'stopped_uncommitted' || head.health === 'failed_patch';
@@ -712,9 +714,13 @@ async function prepareGeneration(context, targetMessageId) {
         continueResolvesAttemptId = lastAttempt.id;
         head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
     }
+    const preMigrationNodeId = head.nodeId;
     head = await autoMigrateLegacyHead(rt, scope, head, raw);
     if (head.health !== 'ok')
         return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
+    const readSession = head.nodeId === preMigrationNodeId
+        ? resolutionSession
+        : rt.resolver.createResolutionSession(scope);
     let suppressedHistoryMessageIds = [];
     let lineageMessages = raw;
     const activeRoot = await rt.anchors.readRoot(scope);
@@ -736,9 +742,9 @@ async function prepareGeneration(context, targetMessageId) {
             }
         }
     }
-    const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
+    const projection = await rt.state.getProjectionForNode(scope, head.nodeId, readSession);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-    const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId);
+    const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId, readSession);
     const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
     contexts.create({
         scope,
@@ -2259,7 +2265,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             }
             if (!sameGuiHead(resolved.head, migratedHead))
                 resolved = await resolveGuiHead(rt, scope);
-            const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
+            const materialized = await resolved.session.materialize(resolved.head.nodeId);
             spindle.sendToFrontend({
                 type: 'ffmvu_gui_state', ok: true, initialized: true, chatId,
                 headNodeId: materialized.nodeId, headStateHash: materialized.stateHash,
