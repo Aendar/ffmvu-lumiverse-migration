@@ -1,22 +1,5 @@
-import { asRecord, clone, isRecord, text, tupleValue } from '../value-utils.js';
-const EQUIP_STAT_MAP = {
-    StrBonus: 'Strength',
-    AgiBonus: 'Agility',
-    IntBonus: 'Intelligence',
-    ConBonus: 'Constitution',
-    WisBonus: 'Wisdom',
-    ChaBonus: 'Charisma',
-};
-const SLOT_LIMITS = {
-    Hand: 2,
-    Body: 1,
-    Finger: 2,
-    Wrist: 2,
-    Ankle: 2,
-    Neck: 1,
-    Misc: 10,
-};
-const ACCESSORY_SLOTS = new Set(['Finger', 'Wrist', 'Ankle', 'Neck']);
+import { asRecord, clone, isRecord, text } from '../value-utils.js';
+import { ACCESSORY_SLOTS, SLOT_LIMITS, applyEquipmentItemStatDelta, recalculateEquipmentDerivedStats, } from '../equipment-rules.js';
 function ownerRecord(state, owner) {
     if (owner.kind === 'player')
         return state.Mainchar;
@@ -32,88 +15,6 @@ function requireCollection(owner, key, create = false) {
         throw new Error('GUI_COLLECTION_NOT_FOUND: ' + key);
     owner[key] = {};
     return owner[key];
-}
-function numericValue(owner, key, fallback = 0) {
-    const n = Number(tupleValue(owner[key]));
-    return Number.isFinite(n) ? n : fallback;
-}
-function setNumeric(owner, key, value) {
-    const current = owner[key];
-    if (Array.isArray(current) && current.length >= 2 && typeof current[1] === 'string') {
-        current[0] = value;
-    }
-    else {
-        owner[key] = value;
-    }
-}
-function applyEquipStats(owner, item, direction) {
-    for (const [itemKey, statKey] of Object.entries(EQUIP_STAT_MAP)) {
-        if (item[itemKey] === undefined)
-            continue;
-        const bonus = Number(item[itemKey]) || 0;
-        if (!bonus)
-            continue;
-        setNumeric(owner, statKey, numericValue(owner, statKey, 0) + direction * bonus);
-    }
-}
-/**
- * Existing v0.13.25 GUI parity rule. Keep private until the stamina formula and
- * derived-stat ownership are explicitly versioned for model/system reconciliation.
- */
-function recalculateDerivedStats(owner) {
-    const level = numericValue(owner, 'Level', 1);
-    const con = numericValue(owner, 'Constitution', 0);
-    const str = numericValue(owner, 'Strength', 0);
-    const agi = numericValue(owner, 'Agility', 0);
-    const intel = numericValue(owner, 'Intelligence', 0);
-    const wis = numericValue(owner, 'Wisdom', 0);
-    let eqHP = 0;
-    let eqMP = 0;
-    let eqPAtk = 0;
-    let eqMAtk = 0;
-    let eqPDef = 0;
-    let eqMDef = 0;
-    for (const raw of Object.values(asRecord(owner.Equipment))) {
-        if (!isRecord(raw))
-            continue;
-        eqHP += Number(raw.MaxHPBonus || 0);
-        eqMP += Number(raw.MaxMPBonus || 0);
-        eqPAtk += Number(raw.WeaponDamage || 0);
-        eqMAtk += Number(raw.WeaponMagDamage || 0);
-        eqPDef += Number(raw.ArmorPDefBonus || 0);
-        eqMDef += Number(raw.ArmorMDefBonus || 0);
-    }
-    const oldMaxHp = numericValue(owner, 'Hp_max', 0);
-    const oldMaxMp = numericValue(owner, 'Mp_max', 0);
-    const oldMaxSta = numericValue(owner, 'Sta_max', 0);
-    const hpMax = Math.floor(20 + con * 3 + level * 6) + eqHP;
-    const staMax = Math.floor(50 + con * 3 + agi * 2 + Math.floor(level * 5 / 3));
-    const mpMax = Math.floor((50 + intel * 4 + wis * 2 + level * 5) / 3) + eqMP;
-    const pAtk = Math.floor(str * 2 + level * 2) + eqPAtk;
-    const mAtk = Math.floor(intel * 2 + level * 2) + eqMAtk;
-    const pDef = Math.floor(con / 2 + level * 3) + eqPDef;
-    const mDef = Math.floor(wis / 2 + level * 3) + eqMDef;
-    const mAssist = Math.floor(wis * 1.5 + intel * 0.5 + level * 1.5);
-    setNumeric(owner, 'Hp_max', hpMax);
-    setNumeric(owner, 'Mp_max', mpMax);
-    setNumeric(owner, 'Sta_max', staMax);
-    setNumeric(owner, 'Physical_attack', pAtk);
-    setNumeric(owner, 'Magic_attack', mAtk);
-    setNumeric(owner, 'Physical_defense', pDef);
-    setNumeric(owner, 'Magic_defense', mDef);
-    setNumeric(owner, 'Magic_assist', mAssist);
-    if (oldMaxHp > 0)
-        setNumeric(owner, 'Hp_curr', Math.max(0, numericValue(owner, 'Hp_curr', 0) + (hpMax - oldMaxHp)));
-    if (oldMaxMp > 0)
-        setNumeric(owner, 'Mp_curr', Math.max(0, numericValue(owner, 'Mp_curr', 0) + (mpMax - oldMaxMp)));
-    if (oldMaxSta > 0)
-        setNumeric(owner, 'Sta_curr', Math.max(0, numericValue(owner, 'Sta_curr', 0) + (staMax - oldMaxSta)));
-    if (numericValue(owner, 'Hp_curr', 0) > hpMax)
-        setNumeric(owner, 'Hp_curr', hpMax);
-    if (numericValue(owner, 'Mp_curr', 0) > mpMax)
-        setNumeric(owner, 'Mp_curr', mpMax);
-    if (numericValue(owner, 'Sta_curr', 0) > staMax)
-        setNumeric(owner, 'Sta_curr', staMax);
 }
 function uniqueKey(record, preferred, separator) {
     if (!Object.prototype.hasOwnProperty.call(record, preferred))
@@ -140,9 +41,9 @@ function accessoryCount(equipment) {
     return count;
 }
 function reverseEquipAndReturn(owner, equipment, equipKey, equipData, inventory) {
-    applyEquipStats(owner, equipData, -1);
+    applyEquipmentItemStatDelta(owner, equipData, -1);
     delete equipment[equipKey];
-    recalculateDerivedStats(owner);
+    recalculateEquipmentDerivedStats(owner);
     const invItem = clone(equipData);
     invItem.Qty = 1;
     if (isRecord(inventory[equipKey])) {
@@ -173,9 +74,8 @@ function equipmentEquip(state, intent) {
     else if (SLOT_LIMITS[slot] !== undefined) {
         const current = equippedInSlot(equipment, slot);
         const limit = SLOT_LIMITS[slot];
-        if (current.length >= limit) {
+        if (current.length >= limit)
             autoUnequip.push(...current.slice(0, current.length - limit + 1));
-        }
     }
     else {
         throw new Error('GUI_EQUIP_INVALID_SLOT: ' + slot);
@@ -185,7 +85,7 @@ function equipmentEquip(state, intent) {
         // that supplied the newly equipped item, even when targetOwner differs.
         reverseEquipAndReturn(targetOwner, equipment, old.key, old.item, sourceInventory);
     }
-    applyEquipStats(targetOwner, item, 1);
+    applyEquipmentItemStatDelta(targetOwner, item, 1);
     const finalEquipData = clone(item);
     delete finalEquipData.Qty;
     delete finalEquipData.$key;
@@ -203,7 +103,7 @@ function equipmentEquip(state, intent) {
     else {
         delete sourceInventory[intent.itemKey];
     }
-    recalculateDerivedStats(targetOwner);
+    recalculateEquipmentDerivedStats(targetOwner);
 }
 function equipmentUnequip(state, intent) {
     const owner = ownerRecord(state, intent.owner);

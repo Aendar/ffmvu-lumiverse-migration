@@ -17,6 +17,8 @@ import { ScopeMutex } from './scope-mutex.js';
 import { applyGameStartPayload, type GameStartPayload } from '../shared/domain/gamestart.js';
 import { extractLegacyImport } from '../shared/domain/snapshot.js';
 import { applyGuiIntent, buildGuiIntentPatch, buildStatePatch, type GuiIntent } from '../shared/domain/gui-intents.js';
+import { reconcileModelEquipmentState } from '../shared/domain/equipment-reconciliation.js';
+import { EQUIPMENT_RECONCILIATION_VERSION } from '../shared/domain/equipment-rules.js';
 
 const HPH_SCENE_ROOT = '/Narrative/Scene/HPH';
 
@@ -612,12 +614,39 @@ export class StateService {
       } catch (error) {
         throw new ModelPatchRejectedError(String(error));
       }
+
       const r1StateHash = hasModelPatch ? await canonicalHash(r1State) : parent.stateHash;
       const modelCommitId = hasModelPatch ? createId('node') : null;
       const r1NodeId = modelCommitId ?? parent.nodeId;
-
       const projectionImplementation = this.projections.get(input.projectionVersion);
-      const nextProjection = projectionImplementation.build(r1State);
+      const r1Projection = projectionImplementation.build(r1State);
+      const r1PromptViewHash = await canonicalHash(r1Projection);
+
+      let reconciledState = r1State;
+      let reconciledStateHash = r1StateHash;
+      let reconciliationPatch: JsonPatchOperation[] = [];
+      let reconciliationCommitId: string | null = null;
+      if (hasModelPatch && parentArtifact.value.reducerVersion === CURRENT_REDUCER_VERSION) {
+        try {
+          const candidate = reducer.normalize(reconcileModelEquipmentState(parent.state, r1State, canonicalPatch));
+          const errors = reducer.validate(candidate);
+          if (errors.length) throw new Error('Invalid equipment reconciliation result: ' + errors.join('; '));
+          reconciliationPatch = buildStatePatch(r1State, candidate);
+          assertPatchResourceLimits(reconciliationPatch);
+          if (reconciliationPatch.length) {
+            reconciledState = candidate;
+            reconciledStateHash = await canonicalHash(candidate);
+            reconciliationCommitId = createId('node');
+          }
+        } catch (error) {
+          throw new ModelPatchRejectedError('EQUIPMENT_RECONCILIATION_FAILED: ' + String(error));
+        }
+      }
+
+      const preConsumptionNodeId = reconciliationCommitId ?? r1NodeId;
+      const preConsumptionState = reconciledState;
+      const preConsumptionStateHash = reconciledStateHash;
+      const nextProjection = projectionImplementation.build(preConsumptionState);
       const nextPromptViewHash = await canonicalHash(nextProjection);
       const transactionId = createId('tx');
       const commits: StateCommit[] = [];
@@ -627,7 +656,7 @@ export class StateService {
           eventFormatVersion: EVENT_FORMAT_VERSION, id: modelCommitId, scope, kind: 'model',
           anchor: structuredClone(input.anchor), parentNodeId: parent.nodeId, parentStateHash: parent.stateHash,
           patch: structuredClone(canonicalPatch), patchHash: canonicalPatchHash!, reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: r1StateHash,
-          projectionBinding: { sourceKind: 'node', sourceNodeId: modelCommitId, sourceStateHash: r1StateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+          projectionBinding: { sourceKind: 'node', sourceNodeId: modelCommitId, sourceStateHash: r1StateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: r1PromptViewHash },
           transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
           ...(input.rawGenerationHash ? { rawGenerationHash: input.rawGenerationHash } : {}),
           ...(input.rawPatchPayloadHash ? { rawPatchPayloadHash: input.rawPatchPayloadHash } : {}),
@@ -637,27 +666,44 @@ export class StateService {
         });
       }
 
-      const consumptionPatch = computeProjectionConsumptionPatchForReducer(parentArtifact.value.reducerVersion, r1State, nextProjection);
-      let finalNodeId = r1NodeId;
-      let finalStateHash = r1StateHash;
-      let finalState = r1State;
-      let systemCommitId: string | null = null;
+      if (reconciliationCommitId) {
+        commits.push({
+          eventFormatVersion: EVENT_FORMAT_VERSION, id: reconciliationCommitId, scope, kind: 'system',
+          anchor: structuredClone(input.anchor), parentNodeId: r1NodeId, parentStateHash: r1StateHash,
+          patch: structuredClone(reconciliationPatch), patchHash: await canonicalHash(reconciliationPatch), reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: reconciledStateHash,
+          projectionBinding: { sourceKind: 'node', sourceNodeId: reconciliationCommitId, sourceStateHash: reconciledStateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+          transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
+          note: EQUIPMENT_RECONCILIATION_VERSION, createdAt: isoNow(),
+        });
+      }
+
+      const consumptionPatch = computeProjectionConsumptionPatchForReducer(
+        parentArtifact.value.reducerVersion,
+        preConsumptionState,
+        nextProjection,
+      );
+      let finalNodeId = preConsumptionNodeId;
+      let finalStateHash = preConsumptionStateHash;
+      let finalState = preConsumptionState;
+      let systemCommitId: string | null = reconciliationCommitId;
 
       if (consumptionPatch.length) {
-        const consumedState = reducer.normalize(applyJsonPatch(r1State, consumptionPatch));
+        const consumedState = reducer.normalize(applyJsonPatch(preConsumptionState, consumptionPatch));
         const errors = reducer.validate(consumedState);
         if (errors.length) throw new Error('Invalid projection consumption result: ' + errors.join('; '));
         const consumedStateHash = await canonicalHash(consumedState);
         systemCommitId = createId('node');
         commits.push({
           eventFormatVersion: EVENT_FORMAT_VERSION, id: systemCommitId, scope, kind: 'system',
-          anchor: structuredClone(input.anchor), parentNodeId: r1NodeId, parentStateHash: r1StateHash,
+          anchor: structuredClone(input.anchor), parentNodeId: preConsumptionNodeId, parentStateHash: preConsumptionStateHash,
           patch: structuredClone(consumptionPatch), patchHash: await canonicalHash(consumptionPatch), reducerVersion: parentArtifact.value.reducerVersion, resultStateHash: consumedStateHash,
-          projectionBinding: { sourceKind: 'node', sourceNodeId: r1NodeId, sourceStateHash: r1StateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
+          projectionBinding: { sourceKind: 'node', sourceNodeId: preConsumptionNodeId, sourceStateHash: preConsumptionStateHash, projectionVersion: input.projectionVersion, promptProtocolVersion: input.promptProtocolVersion, promptViewHash: nextPromptViewHash },
           transactionId, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, requestId: input.requestId,
           note: 'projection-consumption', createdAt: isoNow(),
         });
-        finalNodeId = systemCommitId; finalStateHash = consumedStateHash; finalState = consumedState;
+        finalNodeId = systemCommitId;
+        finalStateHash = consumedStateHash;
+        finalState = consumedState;
       } else if (!modelCommitId) {
         const binding = parentArtifact.value.projectionBinding;
         const directMatches =
