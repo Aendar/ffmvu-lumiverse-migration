@@ -15,6 +15,8 @@ interface AttemptIndex {
  * Only immutable semantic artifacts and derived materializations are cached.
  * Mutable transcript-facing records (anchors and variant indexes) deliberately
  * remain outside this class so existing race checks keep observing live values.
+ * Reuse across head/projection/history is valid only while no mutation boundary
+ * is crossed; callers must create a fresh session after a committed mutation.
  * A ResolutionSession must never outlive one logical read operation.
  */
 export class ResolutionSession {
