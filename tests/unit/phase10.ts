@@ -122,6 +122,9 @@ async function main() {
     messages.push({ id: messageId, role: 'assistant', content: `assistant ${i}`, swipeId: 0 });
   }
 
+  const indexPaths = await storage.list('chats/resolution-cache/indexes/');
+  assert(!indexPaths.some(path => path.endsWith('/materialized-tip.json')), 'state commits do not write the unused materialized-tip full-state cache');
+
   storage.resetCounts();
   const resolved = await resolver.resolve(scope, genesis.nodeId, messages);
   assert(resolved.health === 'ok', 'cached resolver preserves healthy semantic lineage');
@@ -142,6 +145,14 @@ async function main() {
   assert(await session.isNodeCommitted(current.nodeId), 'session sees committed tip');
   const committedMembershipListCalls = storage.listCalls;
   assert(committedMembershipListCalls === 1, 'committed-node membership is indexed once per request session');
+
+  storage.resetCounts();
+  const projection1 = await state.getProjectionForNode(scope, current.nodeId, session);
+  const projectionReads = storage.getCalls + storage.existsCalls;
+  const projectionLists = storage.listCalls;
+  const projection2 = await state.getProjectionForNode(scope, current.nodeId, session);
+  assert(projection1.viewHash === projection2.viewHash, 'projection stays identical when reusing a resolution session');
+  assert(storage.getCalls + storage.existsCalls === projectionReads && storage.listCalls === projectionLists, 'repeated projection in one resolution session performs no additional storage reads');
 
   storage.resetCounts();
   assert((await session.listAttemptsForVariant('v1')).length === 1, 'attempt index returns first variant');

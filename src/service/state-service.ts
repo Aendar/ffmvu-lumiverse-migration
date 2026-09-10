@@ -9,8 +9,8 @@ import { createDefaultState, createLegacyDefaultState } from '../shared/state-de
 import { AnchorStore } from '../persistence/anchor-store.js';
 import { EventStore } from '../persistence/event-store.js';
 import { Materializer } from '../persistence/materializer.js';
+import type { ResolutionSession } from '../persistence/resolution-session.js';
 import { createId, isoNow } from '../persistence/ids.js';
-import { materializedTipPath } from '../persistence/paths.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
 import { EVENT_FORMAT_VERSION, PORTABLE_SNAPSHOT_FORMAT, type BaseSnapshot, type BaseSnapshotKind, type ChatStoreRevision, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommit, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { ScopeMutex } from './scope-mutex.js';
@@ -129,11 +129,6 @@ export class StateService {
     this.store = new EventStore(storage); this.materializer = new Materializer(this.store, reducers); this.anchors = new AnchorStore(storage);
   }
 
-  private async updateMaterializedTipCache(scope: StateScope, value: MaterializedState): Promise<void> {
-    try { await this.storage.setJson(materializedTipPath(scope), value); }
-    catch { /* cache is acceleration only; committed StoreRevision remains authoritative */ }
-  }
-
   private async verifyPortableSnapshot(snapshot: PortableSnapshot): Promise<FFMVUState> {
     if (!snapshot || snapshot.format !== PORTABLE_SNAPSHOT_FORMAT) throw new Error('UNSUPPORTED_PORTABLE_SNAPSHOT_FORMAT');
     const { snapshotHash, ...payload } = snapshot;
@@ -241,7 +236,7 @@ export class StateService {
       });
 
       const result = { nodeId: baseId, stateHash, state };
-      await this.updateMaterializedTipCache(scope, result);
+
       return result;
     });
   }
@@ -292,7 +287,7 @@ export class StateService {
       const baseArtifactHash = await this.store.writeBase(base);
       const revision: ChatStoreRevision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: null, previousStoreRevisionHash: null, transactionId, committedArtifacts: [{ type: 'base', id: baseId, hash: baseArtifactHash }], semanticTipNodeId: baseId, semanticTipStateHash: stateHash, createdAt: isoNow() };
       await this.store.writeRevision(revision);
-      const result = { nodeId: baseId, stateHash, state }; await this.updateMaterializedTipCache(scope, result);
+      const result = { nodeId: baseId, stateHash, state };
       await this.anchors.putRoot({ anchorId: 'root', scope, baseNodeId: baseId, tipNodeId: baseId, updatedAt: isoNow() });
       return result;
     });
@@ -573,7 +568,7 @@ export class StateService {
       };
       const commitArtifactHash = await this.store.writeCommit(commit);
       const revision: ChatStoreRevision = { eventFormatVersion: EVENT_FORMAT_VERSION, revisionId: createId('rev'), scope, previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash, transactionId, committedArtifacts: [{ type: 'commit', id: commitId, hash: commitArtifactHash }], semanticTipNodeId: commitId, semanticTipStateHash: resultStateHash, createdAt: isoNow() };
-      await this.store.writeRevision(revision); const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState }; await this.updateMaterializedTipCache(scope, result); return result;
+      await this.store.writeRevision(revision); const result = { nodeId: commitId, stateHash: resultStateHash, state: nextState }; return result;
     });
   }
 
@@ -694,7 +689,6 @@ export class StateService {
           previousStoreRevisionId: physical.head.revisionId, previousStoreRevisionHash: physical.headHash,
           transactionId, committedArtifacts, semanticTipNodeId: finalNodeId, semanticTipStateHash: finalStateHash, createdAt: isoNow(),
         });
-        await this.updateMaterializedTipCache(scope, { nodeId: finalNodeId, stateHash: finalStateHash, state: finalState });
       }
 
       return {
@@ -708,10 +702,21 @@ export class StateService {
   }
 
   async readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null> { const revision = await this.store.resolveStoreHead(scope); if (revision.status === 'empty') return null; if (revision.status !== 'ok' || !revision.head) throw new Error('STORE_HEAD_' + revision.status.toUpperCase()); return this.materializer.materialize(scope, revision.head.semanticTipNodeId); }
-  async getProjectionForNode(scope: StateScope, nodeId: string): Promise<{ nodeId: string; stateHash: string; reducerVersion: string; sourceKind: 'node' | 'base-seed'; sourceNodeId?: string; sourceStateHash?: string; sourceBaseId?: string; projectionVersion: string; promptProtocolVersion: string; view: Record<string, unknown>; viewHash: string }> {
-    if (!await this.store.isNodeCommitted(scope, nodeId)) throw new Error('NODE_NOT_COMMITTED');
-    const target = await this.materializer.materialize(scope, nodeId);
-    const artifact = await this.store.readNode(scope, nodeId);
+  async getProjectionForNode(
+    scope: StateScope,
+    nodeId: string,
+    session?: ResolutionSession,
+  ): Promise<{ nodeId: string; stateHash: string; reducerVersion: string; sourceKind: 'node' | 'base-seed'; sourceNodeId?: string; sourceStateHash?: string; sourceBaseId?: string; projectionVersion: string; promptProtocolVersion: string; view: Record<string, unknown>; viewHash: string }> {
+    if (session && (session.scope.userId !== scope.userId || session.scope.chatId !== scope.chatId)) {
+      throw new Error('RESOLUTION_SESSION_SCOPE_MISMATCH');
+    }
+    const isCommitted = (id: string) => session ? session.isNodeCommitted(id) : this.store.isNodeCommitted(scope, id);
+    const materialize = (id: string) => session ? session.materialize(id) : this.materializer.materialize(scope, id);
+    const readNode = (id: string) => session ? session.readNode(id) : this.store.readNode(scope, id);
+
+    if (!await isCommitted(nodeId)) throw new Error('NODE_NOT_COMMITTED');
+    const target = await materialize(nodeId);
+    const artifact = await readNode(nodeId);
     const binding = artifact.value.projectionBinding;
     if (binding.sourceKind === 'base-seed') {
       if (artifact.type !== 'base' || !artifact.value.projectionSeed) throw new Error('BASE_SEED_BINDING_WITHOUT_SEED');
@@ -722,12 +727,13 @@ export class StateService {
       return { nodeId: target.nodeId, stateHash: target.stateHash, reducerVersion: artifact.value.reducerVersion, sourceKind: 'base-seed', sourceBaseId: artifact.value.id, projectionVersion: binding.projectionVersion, promptProtocolVersion: binding.promptProtocolVersion, view: structuredClone(seed.projection) as Record<string, unknown>, viewHash };
     }
     if (!binding.sourceNodeId || !binding.sourceStateHash) throw new Error('NODE_PROJECTION_BINDING_INCOMPLETE');
-    if (!await this.store.isNodeCommitted(scope, binding.sourceNodeId)) throw new Error('PROJECTION_SOURCE_NOT_COMMITTED');
-    const source = await this.materializer.materialize(scope, binding.sourceNodeId);
+    if (!await isCommitted(binding.sourceNodeId)) throw new Error('PROJECTION_SOURCE_NOT_COMMITTED');
+    const source = await materialize(binding.sourceNodeId);
     if (source.stateHash !== binding.sourceStateHash) throw new Error('PROJECTION_SOURCE_STATE_HASH_MISMATCH');
     const view = this.projections.get(binding.projectionVersion).build(source.state) as Record<string, unknown>;
     const viewHash = await canonicalHash(view);
     if (viewHash !== binding.promptViewHash) throw new Error('PROJECTION_BINDING_HASH_MISMATCH');
     return { nodeId: target.nodeId, stateHash: target.stateHash, reducerVersion: artifact.value.reducerVersion, sourceKind: 'node', sourceNodeId: source.nodeId, sourceStateHash: source.stateHash, projectionVersion: binding.projectionVersion, promptProtocolVersion: binding.promptProtocolVersion, view, viewHash };
   }
+
 }

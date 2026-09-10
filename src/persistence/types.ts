@@ -126,7 +126,6 @@ export interface ChatStoreRevision {
 }
 
 export interface MaterializedState { nodeId: string; stateHash: string; state: FFMVUState }
-export interface CheckpointRecord extends MaterializedState { eventFormatVersion: number; scope: StateScope; reducerVersion: string; createdAt: string }
 
 export interface TranscriptAttempt {
   id: string;

@@ -2,6 +2,7 @@ import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from '../persi
 import { createId, isoNow } from '../persistence/ids.js';
 import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type AnchorRecord, type PortableSnapshot, type StateScope, type TranscriptAttempt } from '../persistence/types.js';
 import { HeadResolver } from '../head-resolver.js';
+import type { ResolutionSession } from '../persistence/resolution-session.js';
 import { ModelPatchRejectedError, StateService } from '../service/state-service.js';
 import { canonicalHash } from '../shared/hashing.js';
 import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
@@ -436,12 +437,14 @@ async function resolveGuiHead(rt: UserRuntime, scope: StateScope): Promise<{
   root: import('../persistence/types.js').RootAnchorRecord;
   messages: LumiChatMessage[];
   head: import('../head-resolver.js').HeadResolution;
+  session: ResolutionSession;
 }> {
   const root = await rt.anchors.readRoot(scope);
   if (!root) throw new Error('GUI_STATE_NOT_INITIALIZED');
   const messages = await spindle.chat.getMessages(scope.chatId);
-  const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
-  return { root, messages, head };
+  const session = rt.resolver.createResolutionSession(scope);
+  const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages), session);
+  return { root, messages, head, session };
 }
 
 function sameGuiHead(
@@ -573,6 +576,7 @@ async function buildNarrativeHistoryContext(
   scope: StateScope,
   messages: LumiChatMessage[],
   currentHeadNodeId: string,
+  session: ResolutionSession,
 ): Promise<{
   timestamps: Record<string, import('../shared/recent-changes.js').NarrativeTimestamp>;
   recentChanges: import('../shared/recent-changes.js').RecentChangesEnvelope | null;
@@ -592,7 +596,7 @@ async function buildNarrativeHistoryContext(
     if (!variantId) continue;
     const anchor = await rt.anchors.read(scope, variantId);
     if (!anchor?.lastAttemptId) continue;
-    const attempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+    const attempt = await session.readAttempt(anchor.lastAttemptId);
     if (!attempt) continue;
     if (attempt.narrativeTimestamp) timestamps[message.id] = structuredClone(attempt.narrativeTimestamp);
     if (
@@ -607,9 +611,9 @@ async function buildNarrativeHistoryContext(
   let recentChanges: import('../shared/recent-changes.js').RecentChangesEnvelope | null = null;
   if (baselineNodeId && baselineNodeId !== currentHeadNodeId) {
     try {
-      if (await rt.state.store.isNodeCommitted(scope, baselineNodeId)) {
-        const before = await rt.state.materializer.materialize(scope, baselineNodeId);
-        const after = await rt.state.materializer.materialize(scope, currentHeadNodeId);
+      if (await session.isNodeCommitted(baselineNodeId)) {
+        const before = await session.materialize(baselineNodeId);
+        const after = await session.materialize(currentHeadNodeId);
         recentChanges = computeRecentChanges(before.state, after.state);
       }
     } catch (error) {
@@ -625,8 +629,8 @@ async function buildNarrativeHistoryContext(
     try {
       const materialized = [];
       for (const nodeId of boundedHistoryNodes) {
-        if (!await rt.state.store.isNodeCommitted(scope, nodeId)) continue;
-        materialized.push(await rt.state.materializer.materialize(scope, nodeId));
+        if (!await session.isNodeCommitted(nodeId)) continue;
+        materialized.push(await session.materialize(nodeId));
       }
       stateHistory = computeRecentStateHistory(
         materialized.map(item => item.state),
@@ -739,7 +743,8 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
   }
 
   const baseId = await ensureBootstrap(scope, raw);
-  let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
+  const resolutionSession = rt.resolver.createResolutionSession(scope);
+  let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw), resolutionSession);
   let continueResolvesAttemptId: string | undefined;
 
   if (head.health !== 'ok') {
@@ -767,8 +772,12 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
   }
 
+  const preMigrationNodeId = head.nodeId;
   head = await autoMigrateLegacyHead(rt, scope, head, raw);
   if (head.health !== 'ok') return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
+  const readSession = head.nodeId === preMigrationNodeId
+    ? resolutionSession
+    : rt.resolver.createResolutionSession(scope);
 
   let suppressedHistoryMessageIds: string[] = [];
   let lineageMessages = raw;
@@ -793,9 +802,9 @@ async function prepareGeneration(context: { userId: string; chatId: string; gene
     }
   }
 
-  const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
+  const projection = await rt.state.getProjectionForNode(scope, head.nodeId, readSession);
   const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-  const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId);
+  const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId, readSession);
   const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
   contexts.create({
     scope,
@@ -2366,7 +2375,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
         return;
       }
       if (!sameGuiHead(resolved.head, migratedHead)) resolved = await resolveGuiHead(rt, scope);
-      const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
+      const materialized = await resolved.session.materialize(resolved.head.nodeId);
       spindle.sendToFrontend({
         type: 'ffmvu_gui_state', ok: true, initialized: true, chatId,
         headNodeId: materialized.nodeId, headStateHash: materialized.stateHash,
