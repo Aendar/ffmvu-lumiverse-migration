@@ -4,6 +4,10 @@ import type { TranscriptAttemptStore } from './anchor-store.js';
 import type { MaterializedState, StateCommit, StateScope, TranscriptAttempt, VariantId } from './types.js';
 
 type SemanticNode = Awaited<ReturnType<EventStore['readNode']>>;
+interface AttemptIndex {
+  byVariant: Map<VariantId, TranscriptAttempt[]>;
+  byId: Map<string, TranscriptAttempt>;
+}
 
 /**
  * Request-scoped read acceleration for semantic head/projection/history work.
@@ -16,7 +20,7 @@ type SemanticNode = Awaited<ReturnType<EventStore['readNode']>>;
 export class ResolutionSession {
   private readonly nodeCache = new Map<string, SemanticNode>();
   private readonly materializedCache = new Map<string, MaterializedState>();
-  private attemptsByVariantPromise: Promise<Map<VariantId, TranscriptAttempt[]>> | null = null;
+  private attemptIndexPromise: Promise<AttemptIndex> | null = null;
   private committedNodeIdsPromise: Promise<Set<string>> | null = null;
   private committedAttemptTipPromise: Promise<CommittedAttemptTip | null> | null = null;
 
@@ -62,10 +66,11 @@ export class ResolutionSession {
   }
 
   async listAttemptsForVariant(variantId: VariantId): Promise<TranscriptAttempt[]> {
-    if (!this.attemptsByVariantPromise) {
-      this.attemptsByVariantPromise = this.buildAttemptsByVariant();
-    }
-    return (await this.attemptsByVariantPromise).get(variantId) ?? [];
+    return (await this.attemptIndex()).byVariant.get(variantId) ?? [];
+  }
+
+  async readAttempt(attemptId: string): Promise<TranscriptAttempt | null> {
+    return (await this.attemptIndex()).byId.get(attemptId) ?? null;
   }
 
   async isNodeCommitted(nodeId: string): Promise<boolean> {
@@ -82,9 +87,16 @@ export class ResolutionSession {
     return this.committedAttemptTipPromise;
   }
 
-  private async buildAttemptsByVariant(): Promise<Map<VariantId, TranscriptAttempt[]>> {
+  private attemptIndex(): Promise<AttemptIndex> {
+    if (!this.attemptIndexPromise) this.attemptIndexPromise = this.buildAttemptIndex();
+    return this.attemptIndexPromise;
+  }
+
+  private async buildAttemptIndex(): Promise<AttemptIndex> {
     const byVariant = new Map<VariantId, TranscriptAttempt[]>();
+    const byId = new Map<string, TranscriptAttempt>();
     for (const attempt of await this.attempts.listForScope(this.scope)) {
+      byId.set(attempt.id, attempt);
       const list = byVariant.get(attempt.variantId) ?? [];
       list.push(attempt);
       byVariant.set(attempt.variantId, list);
@@ -95,6 +107,6 @@ export class ResolutionSession {
         if (list[i - 1].ordinal === list[i].ordinal) throw new Error('ATTEMPT_ORDINAL_AMBIGUOUS');
       }
     }
-    return byVariant;
+    return { byVariant, byId };
   }
 }
