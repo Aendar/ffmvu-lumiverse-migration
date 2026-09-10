@@ -56,7 +56,6 @@ export class EventStore {
     throw new Error('Missing semantic node: ' + id);
   }
 
-
   async traceDescendantPath(scope: StateScope, ancestorNodeId: string, descendantNodeId: string): Promise<StateCommit[] | null> {
     if (ancestorNodeId === descendantNodeId) return [];
     const reverse: StateCommit[] = [];
@@ -100,15 +99,23 @@ export class EventStore {
       attemptId,
     };
   }
-  async isNodeCommitted(scope: StateScope, nodeId: string): Promise<boolean> {
+
+  async listCommittedNodeIds(scope: StateScope): Promise<Set<string>> {
     const prefix = `${scopeRoot(scope)}/store-revisions/`;
     const paths = (await this.storage.list(prefix)).filter(path => path.endsWith('.json'));
+    const nodeIds = new Set<string>();
     for (const path of paths) {
       const revision = await this.storage.getJson<ChatStoreRevision>(path);
       if (!revision || revision.scope.chatId !== scope.chatId || revision.scope.userId !== scope.userId) continue;
-      if (revision.committedArtifacts.some(item => item.id === nodeId && (item.type === 'base' || item.type === 'commit'))) return true;
+      for (const artifact of revision.committedArtifacts) {
+        if (artifact.type === 'base' || artifact.type === 'commit') nodeIds.add(artifact.id);
+      }
     }
-    return false;
+    return nodeIds;
+  }
+
+  async isNodeCommitted(scope: StateScope, nodeId: string): Promise<boolean> {
+    return (await this.listCommittedNodeIds(scope)).has(nodeId);
   }
 
   async resolveStoreHead(scope: StateScope): Promise<StoreHeadResolution> {
