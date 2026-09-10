@@ -67,8 +67,8 @@ async function main(): Promise<void> {
     },
   ], 'golden');
 
-  assert(golden.Mainchar.Physical_attack[0] === 54, 'model equipment write reconciles Physical_attack from both equipped weapons');
-  assert(golden.Mainchar.Sta_max[0] === 126, 'canonical stamina formula is 50 + Con*3 + Agi*2 + floor(Level*5/3)');
+  assert(golden.state.Mainchar.Physical_attack[0] === 54, 'model equipment write reconciles Physical_attack from both equipped weapons');
+  assert(golden.state.Mainchar.Sta_max[0] === 126, 'canonical stamina formula is 50 + Con*3 + Agi*2 + floor(Level*5/3)');
   assert(golden.modelCommitId !== null && golden.systemCommitId !== null, 'equipment change creates model plus deterministic system commit');
   assert(golden.committedNodeIds.length === 2, 'equipment reconciliation is atomic in the same two-node transaction when no projection consumption is needed');
 
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const unrelated = await finalize(oldState, oldScope, oldGenesis, [
     { op: 'replace', path: '/Narrative/Turn', value: 1 },
   ], 'unrelated');
-  assert(unrelated.Mainchar.Physical_attack[0] === 47, 'unrelated model turn does not retroactively repair an old derived value');
+  assert(unrelated.state.Mainchar.Physical_attack[0] === 47, 'unrelated model turn does not retroactively repair an old derived value');
   assert(unrelated.systemCommitId === null, 'unrelated model turn does not create an equipment reconciliation commit');
 
   // Core-stat invalidation also owns derived maxima and locks the chosen stamina rule.
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
     { op: 'replace', path: '/Mainchar/Constitution/0', value: 15 },
     { op: 'replace', path: '/Mainchar/Agility/0', value: 15 },
   ], 'stamina');
-  assert(stamina.Mainchar.Sta_max[0] === 126, 'core-stat model writes deterministically recalculate stamina with the approved formula');
+  assert(stamina.state.Mainchar.Sta_max[0] === 126, 'core-stat model writes deterministically recalculate stamina with the approved formula');
   assert(stamina.systemCommitId !== null, 'core-stat invalidation persists derived outputs as an explicit system commit');
 
   // Equipment core-stat bonuses are applied as a delta, matching typed GUI equip semantics.
@@ -123,8 +123,8 @@ async function main(): Promise<void> {
       },
     },
   ], 'bonus');
-  assert(bonus.Mainchar.Strength[0] === 25, 'new equipment StrBonus is applied to the stored effective core stat exactly once');
-  assert(bonus.Mainchar.Physical_attack[0] === 64, 'derived attack uses reconciled core stat plus all equipped weapon damage');
+  assert(bonus.state.Mainchar.Strength[0] === 25, 'new equipment StrBonus is applied to the stored effective core stat exactly once');
+  assert(bonus.state.Mainchar.Physical_attack[0] === 64, 'derived attack uses reconciled core stat plus all equipped weapon damage');
 
   // Direct JSONPatch has no source-owner semantics for automatic displacement;
   // an over-cap equipment result therefore fails closed before any revision is published.
@@ -150,7 +150,4 @@ async function main(): Promise<void> {
   console.log('phase11 equipment reconciliation checks passed:', passed);
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+void main();
