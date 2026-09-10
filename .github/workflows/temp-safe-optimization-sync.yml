@@ -25,6 +25,7 @@ jobs:
         run: |
           node scripts/repair-safe-optimization-script.mjs
           node scripts/apply-safe-optimization-slices.mjs
+          sed -i 's/[[:space:]]*$//' src/service/state-service.ts
       - name: Validate source, build and tests
         run: npm test
       - name: Remove temporary migration machinery
