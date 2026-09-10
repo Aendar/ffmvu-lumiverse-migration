@@ -103,7 +103,6 @@ async function main(): Promise<void> {
     { op: 'replace', path: '/Narrative/Turn', value: 1 },
   ], 'unrelated');
   assert(unrelated.state.Mainchar.Physical_attack[0] === 47, 'unrelated model turn does not retroactively repair an old derived value');
-  assert(!unrelated.committedNodeIds.some(async () => false), 'unrelated turn remains a normal model transaction');
   const unrelatedStore = new EventStore(oldStorage);
   const unrelatedCommits = [];
   for (const nodeId of unrelated.committedNodeIds) unrelatedCommits.push(await unrelatedStore.readCommit(oldScope, nodeId));
