@@ -69,15 +69,28 @@ async function main(): Promise<void> {
 
   assert(golden.state.Mainchar.Physical_attack[0] === 54, 'model equipment write reconciles Physical_attack from both equipped weapons');
   assert(golden.state.Mainchar.Sta_max[0] === 126, 'canonical stamina formula is 50 + Con*3 + Agi*2 + floor(Level*5/3)');
-  assert(golden.modelCommitId !== null && golden.systemCommitId !== null, 'equipment change creates model plus deterministic system commit');
-  assert(golden.committedNodeIds.length === 2, 'equipment reconciliation is atomic in the same two-node transaction when no projection consumption is needed');
+  assert(golden.modelCommitId !== null, 'equipment change creates a model commit');
 
   const goldenStore = new EventStore(goldenStorage);
-  const goldenHead = await goldenStore.resolveStoreHead(goldenScope);
-  assert(goldenHead.status === 'ok' && goldenHead.head?.committedArtifacts.length === 2, 'one ChatStoreRevision publishes model and equipment reconciliation together');
-  const reconciliation = await goldenStore.readCommit(goldenScope, golden.systemCommitId!);
-  assert(reconciliation.kind === 'system' && reconciliation.note === 'equipment-derived-v1', 'reconciliation is explicit versioned system evidence');
+  const committed = [];
+  for (const nodeId of golden.committedNodeIds) committed.push(await goldenStore.readCommit(goldenScope, nodeId));
+  const reconciliationCommits = committed.filter(commit => commit.note === 'equipment-derived-v1');
+  assert(reconciliationCommits.length === 1, 'equipment transaction contains exactly one versioned reconciliation commit');
+  const reconciliation = reconciliationCommits[0];
+  assert(reconciliation.kind === 'system', 'equipment reconciliation is explicit system evidence');
   assert(reconciliation.parentNodeId === golden.modelCommitId, 'reconciliation is a child of the exact model commit');
+
+  const goldenHead = await goldenStore.resolveStoreHead(goldenScope);
+  assert(goldenHead.status === 'ok' && goldenHead.head !== undefined, 'golden equipment transaction has one healthy physical head');
+  assert(goldenHead.head.committedArtifacts.length === golden.committedNodeIds.length, 'one ChatStoreRevision publishes the full model/reconciliation transaction atomically');
+  assert(goldenHead.head.committedArtifacts.every((artifact, index) => artifact.id === golden.committedNodeIds[index]), 'revision artifact order matches the returned transaction chain');
+  assert(goldenHead.head.semanticTipNodeId === golden.nodeId && goldenHead.head.semanticTipStateHash === golden.stateHash, 'revision semantic tip is the returned final reconciled state');
+
+  const consumptionCommits = committed.filter(commit => commit.note === 'projection-consumption');
+  if (consumptionCommits.length) {
+    assert(consumptionCommits.length === 1, 'projection consumption remains a single explicit system commit');
+    assert(consumptionCommits[0].parentNodeId === reconciliation.id, 'projection consumption follows equipment reconciliation in the same transaction');
+  }
 
   // Existing stale saves are intentionally not repaired by unrelated turns.
   const oldStorage = new MemoryJsonStorage();
@@ -90,7 +103,11 @@ async function main(): Promise<void> {
     { op: 'replace', path: '/Narrative/Turn', value: 1 },
   ], 'unrelated');
   assert(unrelated.state.Mainchar.Physical_attack[0] === 47, 'unrelated model turn does not retroactively repair an old derived value');
-  assert(unrelated.systemCommitId === null, 'unrelated model turn does not create an equipment reconciliation commit');
+  assert(!unrelated.committedNodeIds.some(async () => false), 'unrelated turn remains a normal model transaction');
+  const unrelatedStore = new EventStore(oldStorage);
+  const unrelatedCommits = [];
+  for (const nodeId of unrelated.committedNodeIds) unrelatedCommits.push(await unrelatedStore.readCommit(oldScope, nodeId));
+  assert(!unrelatedCommits.some(commit => commit.note === 'equipment-derived-v1'), 'unrelated model turn does not create an equipment reconciliation commit');
 
   // Core-stat invalidation also owns derived maxima and locks the chosen stamina rule.
   const staminaStorage = new MemoryJsonStorage();
@@ -102,7 +119,10 @@ async function main(): Promise<void> {
     { op: 'replace', path: '/Mainchar/Agility/0', value: 15 },
   ], 'stamina');
   assert(stamina.state.Mainchar.Sta_max[0] === 126, 'core-stat model writes deterministically recalculate stamina with the approved formula');
-  assert(stamina.systemCommitId !== null, 'core-stat invalidation persists derived outputs as an explicit system commit');
+  const staminaStore = new EventStore(staminaStorage);
+  const staminaCommits = [];
+  for (const nodeId of stamina.committedNodeIds) staminaCommits.push(await staminaStore.readCommit(staminaScope, nodeId));
+  assert(staminaCommits.some(commit => commit.note === 'equipment-derived-v1'), 'core-stat invalidation persists derived outputs as an explicit reconciliation commit');
 
   // Equipment core-stat bonuses are applied as a delta, matching typed GUI equip semantics.
   const bonusStorage = new MemoryJsonStorage();
