@@ -97,35 +97,6 @@ function htmlDetails(record: MutableRecord): string {
 
 export function setup(ctx: SpindleFrontendContextLite) {
   const removeStyle = ctx.dom.addStyle(`
-    :root {
-      --npc-c_: #F56991;
-      --npc-c0: #58DDD0;
-      --npc-c1: #45CAC1;
-      --npc-c2: #36B5AF;
-      --npc-c3: #439E9B;
-      --npc-c4: #719493;
-      --npc-c5: #FFAD68;
-      --npc-c6: #F49A68;
-      --npc-c7: #E38869;
-      --npc-c8: #CF7C6D;
-      --npc-c9: #B87874;
-      --npc-c-: #B8A6D9;
-    }
-    span[style*="--npc-color"],
-    span[style*="--npc-color"] * {
-      color: var(--npc-color) !important;
-    }
-    span[style*="--npc-color"] em {
-      color: var(--npc-color) !important;
-      filter: brightness(.84) saturate(.9);
-      opacity: .78;
-      font-style: italic;
-    }
-    font[color] em {
-      filter: brightness(.84) saturate(.9);
-      opacity: .78;
-    }
-
     .ffsm-app {
       --ffsm-accent:#00e5ff;
       --ffsm-accent-soft:#81d4fa;
@@ -624,9 +595,13 @@ export function setup(ctx: SpindleFrontendContextLite) {
     const sourceTurn = Number(portable.source?.turn) || 0;
     const sourceVersion = String(portable.reducerVersion || portable.stateSchemaVersion || 'unknown');
     const confirmed = window.confirm(
-      'Restore this portable snapshot at the current chat position?\n\n' +
-      'Chat messages, message IDs, swipes, and their text are not edited.\n' +
-      'Current FFMVU state authority from this point forward will be replaced.\n' +
+      'Restore this portable snapshot at the current chat position?\
+\
+' +
+      'Chat messages, message IDs, swipes, and their text are not edited.\
+' +
+      'Current FFMVU state authority from this point forward will be replaced.\
+' +
       'Snapshot: turn ' + sourceTurn + ' · ' + sourceVersion,
     );
     if (!confirmed) return;
