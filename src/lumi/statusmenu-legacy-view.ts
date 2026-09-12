@@ -207,6 +207,19 @@ function shadowCss(): string {
     + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:0 0 auto;padding:2px 0 0;}'
     + '.ve-snapshot-note{flex:1;min-width:0;color:var(--text-secondary);font-size:.76em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
     + '.ve-snapshot-layout>.ve-shell{flex:1 1 auto;height:auto;min-height:0;}'
+    + '.ff25-phys-layout{width:min(100%,357px);margin:0 auto;display:grid;grid-template-rows:1fr 1fr;gap:8px;min-height:344px;flex:1;}'
+    + '.ff25-phys-row{display:grid;grid-template-columns:112px 76px 76px;justify-content:start;align-items:center;gap:18px;padding-left:3px;}'
+    + '.ff25-phys-orb{position:relative;isolation:isolate;width:112px;height:112px;overflow:hidden;display:grid;place-items:center;border:1px solid var(--accent-primary);border-radius:50%;background:#052938;}'
+    + '.ff25-phys-orb-fill,.ff25-phys-meter-fill{position:absolute;z-index:-1;inset:auto 0 0;height:0;transition:height .3s ease;opacity:.82;}'
+    + '.ff25-phys-bladder{background:linear-gradient(180deg,#f4d66e,#d9aa31);}.ff25-phys-semen{background:linear-gradient(180deg,#fff,#dce9ed);}'
+    + '.ff25-phys-copy{display:grid;gap:3px;text-align:center;text-shadow:0 1px 2px #00141d;}.ff25-phys-label{color:var(--text-secondary);font-size:.62em;font-weight:700;letter-spacing:.04em;}.ff25-phys-value{color:#f3fbff;font:700 1.05em/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-unit{color:#9ac5d2;font-size:.62em;}'
+    + '.ff25-phys-meter{position:relative;isolation:isolate;width:76px;height:112px;overflow:hidden;border:1px solid rgba(0,229,255,.65);border-radius:21px;background:#052938;}.ff25-phys-meter-copy{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:13px 3px;text-align:center;text-shadow:0 1px 2px #00141d;}.ff25-phys-meter-value{color:#f3fbff;font:700 1.15em/1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-hunger{background:linear-gradient(180deg,#ffe082,#fab025);}.ff25-phys-thirst{background:linear-gradient(180deg,#82b1ff,#4272f5);}.ff25-phys-arousal{background:linear-gradient(180deg,#ff80ab,#fc8bd5);}'
+    + '.ff25-phys-dims{width:76px;height:112px;overflow:hidden;border:1px solid rgba(0,229,255,.65);border-radius:21px;background:#052938;display:grid;grid-template-rows:1fr 1fr;}.ff25-phys-dim{display:flex;align-items:center;justify-content:center;gap:2px;text-align:center;}.ff25-phys-dim+.ff25-phys-dim{border-top:1px solid var(--border-color);}.ff25-phys-dim b{color:var(--accent-primary);font-size:.72em;}.ff25-phys-dim strong{color:#f3fbff;font:700 1.05em/1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-dim small{color:#9ac5d2;font-size:.58em;}'
+    + '.ffmvu-familiar-portrait-col>.grid-group-card,.ffmvu-familiar-basic-col>.grid-group-card{height:100%;}.ffmvu-familiar-portrait-col>.grid-group-card{display:flex;flex-direction:column;}.ffmvu-familiar-portrait-col>.grid-group-card>.grid-group-content{flex:1;align-items:stretch;}.ffmvu-familiar-portrait-col .img-wrapper{height:100%;}.ffmvu-familiar-portrait-col .avatar-img{height:100%!important;max-height:306px;object-fit:contain;}'
+    + '.ffmvu-familiar-aux-wrap{padding-top:4px!important;padding-bottom:4px!important;}.ffmvu-familiar-aux{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;}.ffmvu-familiar-aux-box{min-width:0;padding:6px;border:1px solid rgba(0,229,255,.18);border-radius:4px;background:rgba(0,0,0,.16);}.ffmvu-familiar-mini-title{font-size:.82em;font-weight:700;color:var(--accent-primary);padding-bottom:3px;margin-bottom:4px;border-bottom:1px solid rgba(0,229,255,.2);}.ffmvu-familiar-fields{display:flex;flex-wrap:wrap;margin:0 -4px;}'
+    + '.ffmvu-familiar-phys-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;}.ffmvu-familiar-phys-item{min-width:0;}.ffmvu-familiar-phys-head{display:flex;justify-content:space-between;gap:5px;margin-bottom:3px;color:var(--text-secondary);font-size:.78em;}.ffmvu-familiar-phys-head strong{color:var(--text-primary);font-weight:600;}.ffmvu-familiar-phys-item .stat-bar-track{height:7px;}'
+    + '.ffmvu-familiar-full{width:100%!important;flex:1 0 100%!important;padding-top:5px!important;}.ffmvu-familiar-interior{display:grid;}.ffmvu-interior-row{display:grid;grid-template-columns:135px minmax(0,1fr);gap:12px;padding:6px 4px;border-bottom:1px dashed rgba(255,255,255,.12);}.ffmvu-interior-row:last-child{border-bottom:0;}.ffmvu-interior-label{color:var(--text-secondary);font-weight:700;}.ffmvu-interior-stack{display:grid;gap:4px;min-width:0;}.ffmvu-interior-entry{display:flex;align-items:flex-start;gap:6px;min-width:0;}.ffmvu-interior-text{flex:1;min-width:0;color:var(--text-primary);overflow-wrap:anywhere;}.ffmvu-interior-action{flex:0 0 auto;background:transparent;border:1px solid rgba(0,229,255,.28);border-radius:3px;color:var(--text-secondary);padding:1px 5px;font:inherit;font-size:.7em;cursor:pointer;}.ffmvu-interior-action:disabled{opacity:.4;cursor:not-allowed;}.ffmvu-interior-lock{color:#9aaab2;font-style:italic;}'
+    + '@media(max-width:720px){.ff25-phys-layout{min-height:auto;gap:8px;}.ff25-phys-row{grid-template-columns:104px 70px 70px;gap:14px;padding-left:2px;}.ff25-phys-orb{width:104px;height:104px;}.ff25-phys-meter,.ff25-phys-dims{width:70px;height:104px;}.ffmvu-familiar-aux{grid-template-columns:1fr;}.ffmvu-interior-row{grid-template-columns:110px minmax(0,1fr);}}'
     + VARIABLES_EDITOR_CSS;
 }
 
@@ -283,21 +296,36 @@ function bindOverview(root: ShadowRoot, state: FFMVUState): void {
   const placeholder = root.querySelector<HTMLElement>('.ff25-avatar-placeholder');
   if (placeholder) placeholder.style.display = avatar && avatar.style.display === 'block' ? 'none' : 'flex';
 
-  const hph = getPath(state, 'Narrative.Scene.HPH.player');
   const hphElement = root.getElementById('ff25-hph');
   const lower = root.getElementById('ff25-lower');
-  const hasHph = isRecord(hph);
-  if (hphElement) hphElement.style.display = hasHph ? '' : 'none';
-  if (lower) lower.classList.toggle('ff25-no-hph', !hasHph);
-  if (!hasHph) return;
+  const hphTitle = hphElement?.querySelector<HTMLElement>('.ff25-title');
+  const layout = hphElement?.querySelector<HTMLElement>('.ff25-hph-layout');
+  if (hphElement) hphElement.style.display = '';
+  if (hphTitle) hphTitle.textContent = 'Physiology';
+  if (lower) lower.classList.remove('ff25-no-hph');
+  if (layout) {
+    layout.className = 'ff25-hph-layout ff25-phys-layout';
+    layout.innerHTML = [
+      '<div class="ff25-phys-row">',
+      '<div class="ff25-phys-orb"><div class="ff25-phys-orb-fill ff25-phys-bladder" id="ff25-bladder-fill"></div><div class="ff25-phys-copy"><span class="ff25-phys-label">BLADDER</span><strong class="ff25-phys-value" id="ff25-bladder-value">—</strong></div></div>',
+      '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-hunger" id="ff25-hunger-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">HUNGER</span><strong class="ff25-phys-meter-value" id="ff25-hunger-value">—</strong></div></div>',
+      '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-thirst" id="ff25-thirst-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">THIRST</span><strong class="ff25-phys-meter-value" id="ff25-thirst-value">—</strong></div></div>',
+      '</div>',
+      '<div class="ff25-phys-row">',
+      '<div class="ff25-phys-orb"><div class="ff25-phys-orb-fill ff25-phys-semen" id="ff25-semen-fill"></div><div class="ff25-phys-copy"><span class="ff25-phys-label">SEMEN</span><strong class="ff25-phys-value" id="ff25-semen-value">—</strong><span class="ff25-phys-unit">ml</span></div></div>',
+      '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-arousal" id="ff25-arousal-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">AROUSAL</span><strong class="ff25-phys-meter-value" id="ff25-arousal-value">—</strong></div></div>',
+      '<div class="ff25-phys-dims" aria-label="Dimensions"><div class="ff25-phys-dim"><b>L:</b><strong id="ff25-length-value">—</strong><small>cm</small></div><div class="ff25-phys-dim"><b>G:</b><strong id="ff25-girth-value">—</strong><small>cm</small></div></div>',
+      '</div>',
+    ].join('');
+  }
 
   const clamp10 = (value: number | null) => value === null ? 0 : Math.max(0, Math.min(10, value));
-  const bladder = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Bladder');
-  const arousal = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Arousal');
-  const erection = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionLevel')
-    ?? numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionCapacity');
-  const semen = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenMl');
-  const semenMax = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenCapacityMl');
+  const bladder = numberAt(state, 'Mainchar.Physiology.Bladder');
+  const hunger = numberAt(state, 'Mainchar.Physiology.Hunger');
+  const thirst = numberAt(state, 'Mainchar.Physiology.Thirst');
+  const arousal = numberAt(state, 'Mainchar.Physiology.Arousal');
+  const semen = numberAt(state, 'Mainchar.Physiology.Reproductive.SemenMl');
+  const semenMax = numberAt(state, 'Mainchar.Physiology.Reproductive.SemenCapacityMl');
   const length = numberAt(state, 'Narrative.Scene.HPH.player.Penis.LengthCm');
   const girth = numberAt(state, 'Narrative.Scene.HPH.player.Penis.GirthCm');
 
@@ -311,12 +339,14 @@ function bindOverview(root: ShadowRoot, state: FFMVUState): void {
   };
 
   setHeight('ff25-bladder-fill', clamp10(bladder) * 10);
+  setHeight('ff25-hunger-fill', clamp10(hunger) * 10);
+  setHeight('ff25-thirst-fill', clamp10(thirst) * 10);
   setHeight('ff25-arousal-fill', clamp10(arousal) * 10);
-  setHeight('ff25-erection-fill', clamp10(erection) * 10);
   setHeight('ff25-semen-fill', semen !== null && semenMax !== null && semenMax > 0 ? semen / semenMax * 100 : 0);
   write('ff25-bladder-value', bladder);
+  write('ff25-hunger-value', hunger);
+  write('ff25-thirst-value', thirst);
   write('ff25-arousal-value', arousal);
-  write('ff25-erection-value', erection);
   write('ff25-semen-value', semen);
   write('ff25-length-value', length);
   write('ff25-girth-value', girth);
@@ -929,79 +959,190 @@ function familiarIdentity(state: FFMVUState, id: string, member: MutableRecord):
   return '—';
 }
 
+function familiarGroupWrapper(root: ParentNode, title: string): HTMLElement | null {
+  const target = title.trim().toLowerCase();
+  for (const header of Array.from(root.querySelectorAll('.grid-group-header')) as HTMLElement[]) {
+    if ((header.textContent || '').trim().toLowerCase() !== target) continue;
+    return header.closest('.prop-row-wrapper') as HTMLElement | null;
+  }
+  return null;
+}
+
+function removeLegacyFamiliarProfileRows(root: ParentNode): void {
+  for (const path of [
+    'Familiar.Hair_Style', 'Familiar.Personality', 'Familiar.Physical_Features',
+    'Familiar.ExSkill', 'Familiar.Bio', 'Familiar.Biography', 'Familiar.Secret',
+  ]) {
+    const bound = root.querySelector('[data-bind-fullpath="' + path + '"]') as HTMLElement | null;
+    (bound?.closest('.prop-row-wrapper') as HTMLElement | null)?.remove();
+  }
+  for (const header of Array.from(root.querySelectorAll('.nested-section-header')) as HTMLElement[]) {
+    if ((header.textContent || '').trim().toLowerCase() === 'biography') {
+      (header.closest('.prop-row-wrapper') as HTMLElement | null)?.remove();
+    }
+  }
+}
+
+function renderFamiliarPhysiology(member: MutableRecord): HTMLElement {
+  const box = document.createElement('section');
+  box.className = 'ffmvu-familiar-aux-box';
+  const title = document.createElement('div');
+  title.className = 'ffmvu-familiar-mini-title';
+  title.textContent = 'Physiology';
+  const grid = document.createElement('div');
+  grid.className = 'ffmvu-familiar-phys-grid';
+  const specs: Array<[string, string, string]> = [
+    ['Hunger', 'Physiology.Hunger', 'bar-orange'],
+    ['Thirst', 'Physiology.Thirst', 'bar-blue'],
+    ['Bladder', 'Physiology.Bladder', 'bar-yellow'],
+    ['Arousal', 'Physiology.Arousal', 'bar-pink'],
+  ];
+  for (const [label, path, colorClass] of specs) {
+    const value = numberAt(member, path);
+    const item = document.createElement('div');
+    item.className = 'ffmvu-familiar-phys-item';
+    const head = document.createElement('div');
+    head.className = 'ffmvu-familiar-phys-head';
+    const key = document.createElement('span');
+    key.textContent = label;
+    const shown = document.createElement('strong');
+    shown.textContent = shownNumber(value);
+    head.append(key, shown);
+    const track = document.createElement('div');
+    track.className = 'stat-bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'stat-bar-fill ' + colorClass;
+    fill.style.width = Math.max(0, Math.min(100, (value ?? 0) * 10)) + '%';
+    track.appendChild(fill);
+    item.append(head, track);
+    grid.appendChild(item);
+  }
+  box.append(title, grid);
+  return box;
+}
+
+function prepareFamiliarLayout(root: HTMLElement, member: MutableRecord): void {
+  removeLegacyFamiliarProfileRows(root);
+  const direct = Array.from(root.children) as HTMLElement[];
+  const portrait = direct[0];
+  const basic = direct[1];
+  portrait?.classList.add('ffmvu-familiar-portrait-col');
+  basic?.classList.add('ffmvu-familiar-basic-col');
+  const basicContent = basic?.querySelector<HTMLElement>(':scope > .grid-group-card > .grid-group-content');
+  if (!basicContent) return;
+
+  const combatHeader = Array.from(basicContent.querySelectorAll<HTMLElement>('.nested-section-header'))
+    .find(header => (header.textContent || '').trim().toLowerCase() === 'combat stats');
+  const combatWrapper = combatHeader?.closest<HTMLElement>('.prop-row-wrapper') ?? null;
+
+  const auxWrapper = document.createElement('div');
+  auxWrapper.className = 'prop-row-wrapper ffmvu-familiar-aux-wrap';
+  auxWrapper.style.width = '100%';
+  const aux = document.createElement('div');
+  aux.className = 'ffmvu-familiar-aux';
+  const familiarBox = document.createElement('section');
+  familiarBox.className = 'ffmvu-familiar-aux-box';
+  const familiarTitle = document.createElement('div');
+  familiarTitle.className = 'ffmvu-familiar-mini-title';
+  familiarTitle.textContent = 'Familiar';
+  const familiarFields = document.createElement('div');
+  familiarFields.className = 'ffmvu-familiar-fields';
+  const fieldPaths = [
+    'Familiar.Is_present', 'Familiar.Is_in_battle_team', 'Familiar.Familiar_Status',
+    'Familiar.Identity', 'Familiar.Location',
+  ];
+  fieldPaths.forEach((fieldPath, index) => {
+    const row = basicContent.querySelector<HTMLElement>('[data-bind-fullpath="' + fieldPath + '"]')
+      ?.closest<HTMLElement>('.prop-row-wrapper');
+    if (!row) return;
+    row.style.width = index < 2 ? '49%' : '100%';
+    familiarFields.appendChild(row);
+  });
+  familiarBox.append(familiarTitle, familiarFields);
+  aux.append(familiarBox, renderFamiliarPhysiology(member));
+  auxWrapper.appendChild(aux);
+  if (combatWrapper) basicContent.insertBefore(auxWrapper, combatWrapper);
+  else basicContent.appendChild(auxWrapper);
+}
+
 function renderFamiliarInterior(member: MutableRecord, familiarId: string, options: LegacyStatusViewOptions): HTMLElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'prop-row-wrapper ffmvu-familiar-full';
+  wrapper.style.width = '100%';
+  const card = document.createElement('div');
+  card.className = 'grid-group-card';
+  const heading = document.createElement('div');
+  heading.className = 'grid-group-header';
+  heading.textContent = 'Familiar Interior';
   const panel = document.createElement('div');
   panel.className = 'ffmvu-familiar-interior';
-  panel.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,229,255,.2);display:grid;gap:6px;';
-  const heading = document.createElement('div');
-  heading.textContent = 'Familiar interior';
-  heading.style.cssText = 'font-size:.88em;font-weight:bold;color:#81d4fa;';
-  panel.appendChild(heading);
+
+  const addRow = (labelText: string, content: HTMLElement) => {
+    const row = document.createElement('div');
+    row.className = 'ffmvu-interior-row';
+    const label = document.createElement('div');
+    label.className = 'ffmvu-interior-label';
+    label.textContent = labelText;
+    row.append(label, content);
+    panel.appendChild(row);
+  };
 
   const collection = (title: string, domain: 'Conditions' | 'MentalStates' | 'InnerThreads') => {
-    const box = document.createElement('div');
-    box.style.cssText = 'display:grid;gap:3px;';
-    const label = document.createElement('div');
-    label.textContent = title;
-    label.style.cssText = 'font-size:.78em;color:rgba(129,212,250,.82);';
-    box.appendChild(label);
+    const stack = document.createElement('div');
+    stack.className = 'ffmvu-interior-stack';
     const entries = Object.entries(record(member[domain]));
     if (!entries.length) {
       const empty = document.createElement('div');
+      empty.className = 'ffmvu-interior-text';
       empty.textContent = '—';
-      empty.style.cssText = 'font-size:.78em;color:rgba(224,247,250,.48);';
-      box.appendChild(empty);
-      panel.appendChild(box);
+      stack.appendChild(empty);
+      addRow(title, stack);
       return;
     }
     for (const [key, raw] of entries) {
       const entry = record(raw);
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
-      const text = document.createElement('div');
-      text.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
-      if (domain === 'InnerThreads') {
-        text.textContent = [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key;
-      } else {
-        text.textContent = [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
-      }
+      const line = document.createElement('div');
+      line.className = 'ffmvu-interior-entry';
+      const entryText = document.createElement('div');
+      entryText.className = 'ffmvu-interior-text';
+      entryText.textContent = domain === 'InnerThreads'
+        ? [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key
+        : [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
       const edit = document.createElement('button');
-      edit.type = 'button'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
-      edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+      edit.type = 'button'; edit.className = 'ffmvu-interior-action'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
       edit.addEventListener('click', () => {
         const next = window.prompt('Edit ' + title + ' entry as JSON:', JSON.stringify(entry, null, 2));
         if (next === null) return;
-        try {
-          const value = JSON.parse(next) as JsonValue;
-          options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value });
-        } catch { window.alert('Expected valid JSON.'); }
+        try { options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value: JSON.parse(next) as JsonValue }); }
+        catch { window.alert('Expected valid JSON.'); }
       });
       const resolve = document.createElement('button');
-      resolve.type = 'button'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
-      resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+      resolve.type = 'button'; resolve.className = 'ffmvu-interior-action'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
       resolve.addEventListener('click', () => {
         if (window.confirm('Resolve ' + key + '?')) options.onIntent({ type: 'variable.delete', path: ['Familiar', familiarId, domain, key] });
       });
-      row.append(text, edit, resolve);
-      box.appendChild(row);
+      line.append(entryText, edit, resolve);
+      stack.appendChild(line);
     }
-    panel.appendChild(box);
+    addRow(title, stack);
   };
 
   collection('Conditions', 'Conditions');
   collection('Mental states', 'MentalStates');
   collection('Inner threads', 'InnerThreads');
+
   const agenda = record(member.Agenda);
-  const agendaRow = document.createElement('div');
-  agendaRow.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+  const agendaStack = document.createElement('div');
+  agendaStack.className = 'ffmvu-interior-stack';
+  const agendaLine = document.createElement('div');
+  agendaLine.className = 'ffmvu-interior-entry';
   const agendaText = document.createElement('div');
-  agendaText.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
-  agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, 'Agenda —');
-  agendaRow.appendChild(agendaText);
+  agendaText.className = 'ffmvu-interior-text';
+  agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, '—');
+  agendaLine.appendChild(agendaText);
   if (Object.keys(agenda).length) {
     const edit = document.createElement('button');
-    edit.type = 'button'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
-    edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
+    edit.type = 'button'; edit.className = 'ffmvu-interior-action'; edit.textContent = 'Edit'; edit.disabled = options.mutationDisabled;
     edit.addEventListener('click', () => {
       const next = window.prompt('Edit Agenda as JSON:', JSON.stringify(agenda, null, 2));
       if (next === null) return;
@@ -1009,13 +1150,21 @@ function renderFamiliarInterior(member: MutableRecord, familiarId: string, optio
       catch { window.alert('Expected valid JSON.'); }
     });
     const resolve = document.createElement('button');
-    resolve.type = 'button'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
-    resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
+    resolve.type = 'button'; resolve.className = 'ffmvu-interior-action'; resolve.textContent = 'Resolve'; resolve.disabled = options.mutationDisabled;
     resolve.addEventListener('click', () => options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: { Status: 'resolved' } }));
-    agendaRow.append(edit, resolve);
+    agendaLine.append(edit, resolve);
   }
-  panel.appendChild(agendaRow);
-  return panel;
+  agendaStack.appendChild(agendaLine);
+  addRow('Agenda', agendaStack);
+
+  const secret = document.createElement('div');
+  secret.className = (statusNumber(member.Affection) ?? 0) >= 90 ? 'ffmvu-interior-text' : 'ffmvu-interior-text ffmvu-interior-lock';
+  secret.textContent = (statusNumber(member.Affection) ?? 0) >= 90 ? statusText(member.Secret, '—') : 'Requires 90% Affection';
+  addRow('Secret', secret);
+
+  card.append(heading, panel);
+  wrapper.appendChild(card);
+  return wrapper;
 }
 
 function renderFamiliars(shadow: ShadowRoot, options: LegacyStatusViewOptions): void {
@@ -1091,10 +1240,22 @@ function renderFamiliars(shadow: ShadowRoot, options: LegacyStatusViewOptions): 
         corePoints.style.color = 'red';
         corePoints.style.fontWeight = 'bold';
       }
+      prepareFamiliarLayout(wrapper, member);
       renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
-      const groups = wrapper.querySelectorAll<HTMLElement>('.grid-group-card');
-      const interiorHost = groups[1]?.querySelector<HTMLElement>('.grid-group-content') ?? wrapper;
-      interiorHost.appendChild(renderFamiliarInterior(member, id, options));
+      const inventory = familiarGroupWrapper(wrapper, 'Inventory');
+      const equipment = familiarGroupWrapper(wrapper, 'Equipments');
+      const interior = renderFamiliarInterior(member, id, options);
+      wrapper.appendChild(interior);
+      if (inventory) {
+        inventory.classList.add('ffmvu-familiar-full');
+        inventory.style.width = '100%';
+        wrapper.appendChild(inventory);
+      }
+      if (equipment) {
+        equipment.classList.add('ffmvu-familiar-full');
+        equipment.style.width = '100%';
+        wrapper.appendChild(equipment);
+      }
       wrapper.querySelectorAll<HTMLElement>('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
       wrapper.querySelectorAll<HTMLInputElement>('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
       wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
