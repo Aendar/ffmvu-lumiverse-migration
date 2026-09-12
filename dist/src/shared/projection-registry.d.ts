@@ -9,5 +9,7 @@ export declare class ProjectionRegistry {
     get(version: string): ProjectionImplementation;
 }
 export declare const legacyProjectionV158: ProjectionImplementation;
-export declare const currentProjectionV160: ProjectionImplementation;
+/** Frozen 1.6 projection for existing journal nodes. */
+export declare const projectionV160: ProjectionImplementation;
+export declare const currentProjectionV170: ProjectionImplementation;
 export declare function createProjectionRegistry(): ProjectionRegistry;

@@ -19,6 +19,17 @@ export interface OutfitState extends MutableRecord {
   Wardrobe: MutableRecord;
 }
 
+/** Persistent general physiology. Values are deliberately coarse (0–10). */
+export interface PhysiologyState extends MutableRecord {
+  Hunger: number;
+  Thirst: number;
+  Bladder: number;
+  Arousal: number;
+  LastPhysAt: { Date: string; Time: string };
+  /** Present only when the actor has an established reproductive capacity. */
+  Reproductive?: { SemenMl: number | null; SemenCapacityMl: number | null } & MutableRecord;
+}
+
 export interface ConditionEntry extends MutableRecord {
   State: string;
   Severity: StateSeverity;
@@ -84,15 +95,19 @@ export interface MainCharacterState extends MutableRecord {
   Ailments: MutableRecord;
   Starting_weapon_request: LabeledValue<string>;
   Starting_weapon_status: LabeledValue<string>;
+  Physiology: PhysiologyState;
 }
 
 export interface FamiliarMemberState extends MutableRecord {
-  /** Legacy fixtures may omit these; the v1.6 normalizer always supplies them. */
+  /** Legacy fixtures may omit these; the current normalizer always supplies them. */
   Outfit?: OutfitState;
   Conditions?: Record<string, ConditionEntry>;
   MentalStates?: Record<string, ConditionEntry>;
   InnerThreads?: Record<string, InnerThreadEntry>;
   Agenda?: AgendaState;
+  Physiology?: PhysiologyState;
+  /** Current arrangement only; enduring appearance stays in character sources. */
+  CurrentHairstyle?: LabeledValue<string>;
 }
 
 export interface SceneState extends MutableRecord {
@@ -132,7 +147,7 @@ export interface FFMVUState extends MutableRecord {
   GameStarted: boolean;
 }
 
-export interface LegacyMainCharacterState extends Omit<MainCharacterState, 'Conditions'> {
+export interface LegacyMainCharacterState extends Omit<MainCharacterState, 'Conditions' | 'Physiology'> {
   Mental_state: LabeledValue<string>;
 }
 
@@ -156,11 +171,14 @@ export interface LegacyFFMVUState extends Omit<FFMVUState, 'Mainchar' | 'Familia
 
 export type PromptView = MutableRecord;
 
-export const STATE_SCHEMA_VERSION = 'FFMVU-1.6.0';
+export const STATE_SCHEMA_VERSION = 'FFMVU-1.7.0';
 export const LEGACY_REDUCER_VERSION = 'FFMVU-1.5.8';
 export const LEGACY_PROJECTION_VERSION = 'FFMVU-1.5.8';
-export const CURRENT_REDUCER_VERSION = 'FFMVU-1.6.0';
-export const CURRENT_PROJECTION_VERSION = 'FFMVU-1.6.0';
+/** Frozen 1.6 semantics, retained for historic commit replay. */
+export const V160_REDUCER_VERSION = 'FFMVU-1.6.0';
+export const V160_PROJECTION_VERSION = 'FFMVU-1.6.0';
+export const CURRENT_REDUCER_VERSION = 'FFMVU-1.7.0';
+export const CURRENT_PROJECTION_VERSION = 'FFMVU-1.7.0';
 
 export const REQUIRED_WORLD_TUPLES = ['Date', 'Time', 'Location', 'Weather'] as const;
 export const REQUIRED_MAINCHAR_TUPLES = [

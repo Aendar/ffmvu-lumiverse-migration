@@ -1,4 +1,4 @@
-import { STATE_SCHEMA_VERSION } from './state-schema.js';
+import { STATE_SCHEMA_VERSION, V160_REDUCER_VERSION } from './state-schema.js';
 import { clone } from './domain/value-utils.js';
 export const LEGACY_DEFAULT_STATE = {
     World_Calc: { Factions: {}, Locations: {}, Ruins: {}, Events: {} },
@@ -39,13 +39,28 @@ export const LEGACY_DEFAULT_STATE = {
     MVUStatMenu_DB_Ver: 'FFMVU-1.5.8',
     GameStarted: false,
 };
-function createCurrentDefault() {
+function createV160Default() {
     const state = clone(LEGACY_DEFAULT_STATE);
     const mainchar = state.Mainchar;
     const narrative = state.Narrative;
     delete mainchar.Mental_state;
     mainchar.Conditions = {};
     delete narrative.Chekhov;
+    state.MVUStatMenu_DB_Ver = V160_REDUCER_VERSION;
+    return state;
+}
+export const DEFAULT_STATE_V160 = createV160Default();
+function createCurrentDefault() {
+    const state = clone(DEFAULT_STATE_V160);
+    const world = state.World;
+    const mainchar = state.Mainchar;
+    mainchar.Physiology = {
+        Hunger: 0,
+        Thirst: 0,
+        Bladder: 0,
+        Arousal: 0,
+        LastPhysAt: { Date: String(world.Date[0] ?? ''), Time: String(world.Time[0] ?? '') },
+    };
     state.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
     return state;
 }

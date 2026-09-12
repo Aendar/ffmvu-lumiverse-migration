@@ -1,6 +1,6 @@
 import type { FFMVUState, LegacyFFMVUState, LegacyNarrativeState, MutableRecord } from './state-schema.js';
-import { LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION } from './state-schema.js';
-import { createLegacyDefaultState, DEFAULT_STATE, LEGACY_DEFAULT_STATE } from './state-defaults.js';
+import { LEGACY_REDUCER_VERSION, STATE_SCHEMA_VERSION, V160_REDUCER_VERSION } from './state-schema.js';
+import { createLegacyDefaultState, DEFAULT_STATE_V160, LEGACY_DEFAULT_STATE } from './state-defaults.js';
 import { asArray, asRecord, clamp, clone, isRecord, lower, text, tupleValue, uniqueStrings } from './domain/value-utils.js';
 
 const CLOTHING_SLOTS = new Set(['Head', 'Torso', 'Legs', 'Feet', 'Extra']);
@@ -366,10 +366,11 @@ function normalizeAgenda(value: unknown): MutableRecord | undefined {
   return Object.keys(agenda).length > 1 ? agenda : undefined;
 }
 
-export function normalizeState(input: unknown): FFMVUState {
+/** Frozen 1.6 normalization, retained exactly for historic replay. */
+export function normalizeStateV160(input: unknown): FFMVUState {
   const legacy = normalizeStateV158(input);
   const raw = clone(legacy) as unknown as MutableRecord;
-  mergeDefaults(raw, clone(DEFAULT_STATE) as unknown as MutableRecord);
+  mergeDefaults(raw, clone(DEFAULT_STATE_V160) as unknown as MutableRecord);
 
   const mainchar = asRecord(raw.Mainchar);
   const narrative = asRecord(raw.Narrative);
@@ -407,6 +408,123 @@ export function normalizeState(input: unknown): FFMVUState {
     else delete memberRaw.Agenda;
   }
   raw.Familiar = familiar;
+  raw.Narrative = narrative;
+  raw.MVUStatMenu_DB_Ver = V160_REDUCER_VERSION;
+  return raw as unknown as FFMVUState;
+}
+
+const LEGACY_FAMILIAR_BIOGRAPHY_FIELDS = [
+  'Hair_Style', 'Personality', 'Physical_Features', 'ExSkill', 'Bio', 'Biography',
+] as const;
+
+function normalizePhysiology(value: unknown, date: unknown, time: unknown, legacyValue?: unknown): MutableRecord {
+  const source = asRecord(value);
+  const legacy = asRecord(legacyValue);
+  const read = (field: string): unknown => source[field] !== undefined ? source[field] : legacy[field];
+  const bounded = (field: string): number => clamp(read(field), 0, 10);
+  const last = asRecord(source.LastPhysAt ?? legacy.LastPhysAt);
+  const result: MutableRecord = {
+    Hunger: bounded('Hunger'),
+    Thirst: bounded('Thirst'),
+    Bladder: bounded('Bladder'),
+    // Ten denotes the orgasm event itself; a persisted value is always its
+    // post-event/ongoing state, capped at the pre-event handoff threshold.
+    Arousal: Math.min(9, bounded('Arousal')),
+    LastPhysAt: {
+      Date: text(last.Date).trim() || text(date).trim(),
+      Time: text(last.Time).trim() || text(time).trim(),
+    },
+  };
+  const reproductive = asRecord(source.Reproductive);
+  const legacyReproductive = asRecord(legacy.Reproductive);
+  const semenMl = source.SemenMl ?? reproductive.SemenMl ?? legacy.SemenMl ?? legacyReproductive.SemenMl;
+  const capacityMl = source.SemenCapacityMl ?? reproductive.SemenCapacityMl ?? legacy.SemenCapacityMl ?? legacyReproductive.SemenCapacityMl;
+  if (semenMl !== undefined || capacityMl !== undefined) {
+    const capacity = Number(capacityMl);
+    const normalizedCapacity = Number.isFinite(capacity) && capacity >= 0 ? capacity : null;
+    const semen = Number(semenMl);
+    const normalizedSemen = Number.isFinite(semen) && semen >= 0
+      ? (normalizedCapacity === null ? semen : Math.min(semen, normalizedCapacity))
+      : null;
+    result.Reproductive = { SemenMl: normalizedSemen, SemenCapacityMl: normalizedCapacity };
+  }
+  return result;
+}
+
+function stripRetiredErectionTracking(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripRetiredErectionTracking);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== 'ErectionCapacity' && key !== 'ErectionLevel')
+      .map(([key, child]) => [key, stripRetiredErectionTracking(child)]),
+  );
+}
+
+function legacyHphPhysiology(value: unknown, actorId: string, player = false): MutableRecord {
+  const hph = asRecord(value);
+  const aliases = player
+    ? ['player', 'mainchar', 'user', '{{user}}']
+    : [actorId, 'familiar:' + actorId];
+  for (const alias of aliases) {
+    const physiology = asRecord(asRecord(hph[alias]).Physiology);
+    if (Object.keys(physiology).length) return physiology;
+  }
+  return {};
+}
+
+function normalizeHph(value: unknown): MutableRecord | undefined {
+  const normalized: MutableRecord = {};
+  for (const [ownerId, ownerRaw] of Object.entries(asRecord(value))) {
+    const owner = asRecord(ownerRaw);
+    const next: MutableRecord = {};
+    for (const field of ['Penis', 'Scrotum', 'Sex']) {
+      if (owner[field] !== undefined) next[field] = stripRetiredErectionTracking(owner[field]);
+    }
+    if (Object.keys(next).length) normalized[ownerId] = next;
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
+/** Current 1.7 normalization: general physiology is persistent; HPH is geometry only. */
+export function normalizeState(input: unknown): FFMVUState {
+  const v160 = normalizeStateV160(input);
+  const raw = clone(v160) as unknown as MutableRecord;
+  const world = asRecord(raw.World);
+  const date = tupleValue(world.Date);
+  const time = tupleValue(world.Time);
+  const narrative = asRecord(raw.Narrative);
+  const scene = asRecord(narrative.Scene);
+  const mainchar = asRecord(raw.Mainchar);
+  mainchar.Physiology = normalizePhysiology(
+    mainchar.Physiology,
+    date,
+    time,
+    legacyHphPhysiology(scene.HPH, 'player', true),
+  );
+
+  const familiar = asRecord(raw.Familiar);
+  for (const [familiarId, memberRaw] of Object.entries(familiar)) {
+    if (!isRecord(memberRaw)) continue;
+    for (const field of LEGACY_FAMILIAR_BIOGRAPHY_FIELDS) delete memberRaw[field];
+    if (memberRaw.CurrentHairstyle !== undefined) {
+      const current = text(tupleValue(memberRaw.CurrentHairstyle)).trim();
+      if (current) memberRaw.CurrentHairstyle = [current, 'Current Hairstyle'];
+      else delete memberRaw.CurrentHairstyle;
+    }
+    memberRaw.Physiology = normalizePhysiology(
+      memberRaw.Physiology,
+      date,
+      time,
+      legacyHphPhysiology(scene.HPH, familiarId),
+    );
+  }
+  raw.Familiar = familiar;
+
+  const hph = normalizeHph(scene.HPH);
+  if (hph) scene.HPH = hph;
+  else delete scene.HPH;
+  narrative.Scene = scene;
   raw.Narrative = narrative;
   raw.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
   return raw as unknown as FFMVUState;

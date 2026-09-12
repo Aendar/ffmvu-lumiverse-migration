@@ -161,7 +161,7 @@ export class StateService {
             const reducerVersion = input.reducerVersion ?? CURRENT_REDUCER_VERSION;
             const projectionVersion = input.projectionVersion ?? CURRENT_PROJECTION_VERSION;
             const promptProtocolVersion = input.promptProtocolVersion ?? 'ffmvu-model-state-v1';
-            const stateSchemaVersion = input.stateSchemaVersion ?? (reducerVersion === LEGACY_REDUCER_VERSION ? LEGACY_REDUCER_VERSION : STATE_SCHEMA_VERSION);
+            const stateSchemaVersion = input.stateSchemaVersion ?? reducerVersion;
             const reducer = this.reducers.get(reducerVersion);
             const state = reducer.normalize(input.state ?? (reducerVersion === LEGACY_REDUCER_VERSION ? createLegacyDefaultState() : createDefaultState()));
             const errors = reducer.validate(state);
@@ -252,7 +252,7 @@ export class StateService {
                 gameDate: String(materialized.state.World.Date?.[0] ?? ''),
                 gameTime: String(materialized.state.World.Time?.[0] ?? ''),
             },
-            stateSchemaVersion: artifact.value.reducerVersion === LEGACY_REDUCER_VERSION ? LEGACY_REDUCER_VERSION : STATE_SCHEMA_VERSION,
+            stateSchemaVersion: artifact.value.reducerVersion,
             reducerVersion: artifact.value.reducerVersion,
             state: structuredClone(materialized.state),
             stateHash: materialized.stateHash,
@@ -293,13 +293,13 @@ export class StateService {
     }
     /**
      * Verify a portable snapshot exactly as exported, then stage it as a new
-     * current-chat checkpoint. Legacy snapshots are upgraded deterministically
+     * current-chat checkpoint. Pre-current snapshots are upgraded deterministically
      * to the current schema before staging; their original hashes remain
      * provenance and are never rewritten.
      */
     async stagePortableSnapshotCheckpoint(scope, snapshot, transcriptBoundary, requestId) {
         const normalized = await this.verifyPortableSnapshot(snapshot);
-        if (snapshot.reducerVersion === LEGACY_REDUCER_VERSION) {
+        if (snapshot.reducerVersion !== CURRENT_REDUCER_VERSION) {
             const reducer = this.reducers.get(CURRENT_REDUCER_VERSION);
             const migrated = reducer.normalize(normalized);
             const errors = reducer.validate(migrated);
@@ -348,7 +348,7 @@ export class StateService {
         });
     }
     /**
-     * Stage the active legacy semantic state as a current-schema checkpoint.
+     * Stage an active pre-current semantic state as a current-schema checkpoint.
      * The source node is semantic authority; the latest physical journal tip is
      * used only as the previous StoreRevision link.
      */
@@ -359,7 +359,7 @@ export class StateService {
         if (parent.stateHash !== input.expectedParentStateHash)
             throw new Error('CHECKPOINT_MIGRATION_STALE_HEAD');
         const artifact = await this.store.readNode(scope, input.parentNodeId);
-        if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
+        if (artifact.value.reducerVersion === CURRENT_REDUCER_VERSION)
             throw new Error('CHECKPOINT_MIGRATION_NOT_REQUIRED');
         const reducer = this.reducers.get(CURRENT_REDUCER_VERSION);
         const migrated = reducer.normalize(parent.state);
@@ -384,7 +384,7 @@ export class StateService {
         });
     }
     /**
-     * Upgrade one legacy head to the current schema without involving the UI,
+     * Upgrade one pre-current head to the current schema without involving the UI,
      * a copied snapshot, or an LLM. The resulting migration commit preserves
      * the existing transcript/variant lineage just like any other system state
      * transition.
@@ -396,7 +396,7 @@ export class StateService {
         if (parent.stateHash !== input.expectedParentStateHash)
             throw new Error('AUTO_MIGRATION_STALE_HEAD');
         const artifact = await this.store.readNode(scope, input.parentNodeId);
-        if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
+        if (artifact.value.reducerVersion === CURRENT_REDUCER_VERSION)
             throw new Error('AUTO_MIGRATION_NOT_REQUIRED');
         const reducer = this.reducers.get(CURRENT_REDUCER_VERSION);
         const target = reducer.normalize(parent.state);
@@ -412,7 +412,7 @@ export class StateService {
             kind: 'migration',
             anchor: structuredClone(input.anchor),
             requestId: input.requestId,
-            note: 'automatic-schema-upgrade-v1.6',
+            note: 'automatic-schema-upgrade-v1.7',
             reducerVersion: CURRENT_REDUCER_VERSION,
             projectionVersion: CURRENT_PROJECTION_VERSION,
             promptProtocolVersion: 'ffmvu-model-state-v1',

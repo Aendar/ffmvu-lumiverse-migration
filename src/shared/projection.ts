@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord, PromptView } from './state-schema.js';
-import { normalizeState, normalizeStateV158 } from './state-normalize.js';
+import { normalizeState, normalizeStateV158, normalizeStateV160 } from './state-normalize.js';
 import { asArray, asRecord, clone, isRecord, lower, text, tupleValue } from './domain/value-utils.js';
 
 function recordTurn(record: unknown): number {
@@ -173,9 +173,8 @@ function addIndexes(view: PromptView, state: FFMVUState, selected: ReturnType<ty
 export interface BuildPromptViewOptions { consumeAudit?: boolean }
 export interface PreparedProjection { state: FFMVUState; view: PromptView }
 
-/** Current v1.6 projection: no Chekhov or generic NPC thought store. */
-export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
-  const state = normalizeState(input);
+/** Shared v1.6+ projection behavior: no Chekhov or generic NPC thought store. */
+function buildModernPromptView(state: FFMVUState, options: BuildPromptViewOptions): PreparedProjection {
   const selected = selectActors(state);
   const { narrative, scene, context } = selected;
   const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
@@ -185,6 +184,16 @@ export function buildPromptView(input: unknown, options: BuildPromptViewOptions 
   if (scene.Changed) addIndexes(view, state, selected, false);
   if (options.consumeAudit) narrative.Scene.Changed = false;
   return { state, view };
+}
+
+/** Frozen 1.6 projection for existing journal nodes. */
+export function buildPromptViewV160(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  return buildModernPromptView(normalizeStateV160(input), options);
+}
+
+/** Current 1.7 projection. */
+export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  return buildModernPromptView(normalizeState(input), options);
 }
 
 /** Frozen v1.5.8 projection, retained so historic commits replay byte-for-byte. */

@@ -26,7 +26,7 @@ import { DiagnosticTraceStore } from './diagnostic-trace.js';
 declare const spindle: SpindleApiLite;
 
 const BRIDGE_VERSION = '0.13.25';
-const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
+const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.17 · Bounded Render + Physiology Separation';
 const CONFIG_PATH = 'bridge-config.json';
 interface BridgeConfig { enabled: boolean }
 interface UserRuntime {
@@ -262,7 +262,6 @@ async function buildDiagnosticSnapshot(userId: string, chatId: string): Promise<
             return {
               ownerId,
               shape: valueShape(owner),
-              physiology: valueShape(record.Physiology),
               penis: valueShape(record.Penis),
               scrotum: valueShape(record.Scrotum),
               sex: valueShape(record.Sex),
@@ -528,7 +527,7 @@ async function bindStagedCheckpointRoot(
 }
 
 /**
- * Legacy schema upgrades are checkpoint rebases at the exact current transcript
+ * Pre-current schema upgrades are checkpoint rebases at the exact current transcript
  * prefix. This preserves every message/swipe byte while avoiding dependence on
  * a possibly detached physical tip or stale VariantId anchor.
  */
@@ -540,7 +539,7 @@ async function autoMigrateLegacyHead(
 ): Promise<import('../head-resolver.js').HeadResolution> {
   if (head.health !== 'ok') return head;
   const artifact = await rt.state.store.readNode(scope, head.nodeId);
-  if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION) return head;
+  if (artifact.value.reducerVersion === CURRENT_REDUCER_VERSION) return head;
 
   const transcript = toHostTranscript(messages);
   const last = transcript.at(-1);

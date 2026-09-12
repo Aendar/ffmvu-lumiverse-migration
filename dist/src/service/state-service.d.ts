@@ -112,19 +112,19 @@ export declare class StateService {
     importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     /**
      * Verify a portable snapshot exactly as exported, then stage it as a new
-     * current-chat checkpoint. Legacy snapshots are upgraded deterministically
+     * current-chat checkpoint. Pre-current snapshots are upgraded deterministically
      * to the current schema before staging; their original hashes remain
      * provenance and are never rewritten.
      */
     stagePortableSnapshotCheckpoint(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary, requestId?: string): Promise<MaterializedState>;
     /**
-     * Stage the active legacy semantic state as a current-schema checkpoint.
+     * Stage an active pre-current semantic state as a current-schema checkpoint.
      * The source node is semantic authority; the latest physical journal tip is
      * used only as the previous StoreRevision link.
      */
     stageLegacyMigrationCheckpoint(scope: StateScope, input: StageLegacyMigrationCheckpointInput): Promise<MaterializedState>;
     /**
-     * Upgrade one legacy head to the current schema without involving the UI,
+     * Upgrade one pre-current head to the current schema without involving the UI,
      * a copied snapshot, or an LLM. The resulting migration commit preserves
      * the existing transcript/variant lineage just like any other system state
      * transition.

@@ -8,7 +8,7 @@ import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
-import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from '../shared/state-schema.js';
+import { CURRENT_REDUCER_VERSION } from '../shared/state-schema.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
 import { computeRecentStateHistory } from '../shared/state-history.js';
 import { assertGuiIntent } from '../shared/domain/gui-intents.js';
@@ -21,7 +21,7 @@ import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
 const BRIDGE_VERSION = '0.13.25';
-const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
+const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.17 · Bounded Render + Physiology Separation';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
 const contexts = new AttemptContextRegistry();
@@ -248,7 +248,6 @@ async function buildDiagnosticSnapshot(userId, chatId) {
                     return {
                         ownerId,
                         shape: valueShape(owner),
-                        physiology: valueShape(record.Physiology),
                         penis: valueShape(record.Penis),
                         scrotum: valueShape(record.Scrotum),
                         sex: valueShape(record.Sex),
@@ -494,7 +493,7 @@ async function bindStagedCheckpointRoot(rt, scope, prior, staged, boundary) {
     return verified;
 }
 /**
- * Legacy schema upgrades are checkpoint rebases at the exact current transcript
+ * Pre-current schema upgrades are checkpoint rebases at the exact current transcript
  * prefix. This preserves every message/swipe byte while avoiding dependence on
  * a possibly detached physical tip or stale VariantId anchor.
  */
@@ -502,7 +501,7 @@ async function autoMigrateLegacyHead(rt, scope, head, messages) {
     if (head.health !== 'ok')
         return head;
     const artifact = await rt.state.store.readNode(scope, head.nodeId);
-    if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
+    if (artifact.value.reducerVersion === CURRENT_REDUCER_VERSION)
         return head;
     const transcript = toHostTranscript(messages);
     const last = transcript.at(-1);

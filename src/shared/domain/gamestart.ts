@@ -70,6 +70,10 @@ export function applyGameStartPayload(inputState: FFMVUState, payloadInput: Game
   tupleSet(world, 'Time', payload.time, 'Time');
   tupleSet(world, 'Weather', payload.weather, 'Weather');
   tupleSet(world, 'Location', payload.location, 'Location');
+  const physiology = mc.Physiology;
+  if (physiology && typeof physiology === 'object' && !Array.isArray(physiology)) {
+    (physiology as Record<string, unknown>).LastPhysAt = { Date: payload.date, Time: payload.time };
+  }
   tupleSet(mc, 'Name', payload.name, 'Name');
   tupleSet(mc, 'Age', payload.age, 'Age');
   tupleSet(mc, 'Gender', payload.gender, 'Gender');
