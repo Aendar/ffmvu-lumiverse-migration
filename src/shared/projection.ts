@@ -191,9 +191,33 @@ export function buildPromptViewV160(input: unknown, options: BuildPromptViewOpti
   return buildModernPromptView(normalizeStateV160(input), options);
 }
 
-/** Current 1.7 projection. */
+/** Current 1.7 projection. Filtering is temporarily disabled so MODEL_STATE receives every persistent record. */
 export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
-  return buildModernPromptView(normalizeState(input), options);
+  const prepared = buildModernPromptView(normalizeState(input), options);
+  const { state, view } = prepared;
+  const narrative = state.Narrative;
+  const viewNarrative = asRecord(view.Narrative);
+  const meta = asRecord(view.ProjectionMeta);
+
+  view.World_Calc = clone(state.World_Calc);
+  view.Familiar = clone(state.Familiar);
+  viewNarrative.NPCs = clone(narrative.NPCs);
+  viewNarrative.Relationships = clone(narrative.Relationships);
+  viewNarrative.GM_Notes = clone(narrative.GM_Notes);
+  viewNarrative.WorldSim = clone(narrative.WorldSim);
+
+  meta.FilteringDisabled = true;
+  meta.FamiliarColdCount = 0;
+  meta.NPCColdCount = 0;
+  meta.RelationshipProjectedCount = Object.keys(asRecord(narrative.Relationships)).length;
+  meta.WorldSimThreadProjectedCount = Object.keys(asRecord(narrative.WorldSim.Threads)).length;
+  meta.WorldSimPressureProjectedCount = Object.keys(asRecord(narrative.WorldSim.Pressures)).length;
+  meta.WorldSimColdCount = 0;
+  delete meta.NPCIndex;
+  delete meta.FamiliarIndex;
+  delete meta.GMNotesIndex;
+
+  return prepared;
 }
 
 /** Frozen v1.5.8 projection, retained so historic commits replay byte-for-byte. */
