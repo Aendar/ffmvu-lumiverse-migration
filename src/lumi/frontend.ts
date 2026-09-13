@@ -117,7 +117,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     }
     .ffsm-app.open {
       display:block;
-      height:520px;
+      height:550px;
       min-height:0;
       pointer-events:auto;
     }
@@ -309,7 +309,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
     }
     .ffsm-diagnostic-note { color:var(--lumiverse-text-muted);font-size:9px;line-height:1.35; }
     @media (max-width:560px) {
-      .ffsm-app.open { height:46vh;min-height:280px;max-height:520px; }
+      .ffsm-app.open { height:46vh;min-height:0;max-height:550px; }
       .ffsm-grid2,.ffsm-grid3,.ffsm-formgrid { grid-template-columns:1fr; }
       .ffsm-head { flex-direction:column; }
       .ffsm-head-actions { justify-content:flex-start; }
@@ -372,7 +372,7 @@ export function setup(ctx: SpindleFrontendContextLite) {
   let snapshotExportNotice = '';
 
   const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
-  const DEFAULT_PANEL_HEIGHT = 520;
+  const DEFAULT_PANEL_HEIGHT = 550;
   let panelHeight = (() => {
     try {
       const stored = Number(window.localStorage.getItem(PANEL_HEIGHT_KEY));
@@ -384,8 +384,13 @@ export function setup(ctx: SpindleFrontendContextLite) {
 
   function clampPanelHeight(value: number): number {
     const minimum = 280;
-    const maximum = Math.max(minimum, window.innerHeight - 110);
-    return Math.round(Math.max(minimum, Math.min(maximum, value)));
+    // The panel grows upward from the composer; use its actual anchor.
+    const anchorBottom = Number.parseFloat(window.getComputedStyle(app).bottom);
+    const anchor = app.offsetParent instanceof HTMLElement
+      ? app.offsetParent.getBoundingClientRect().top + app.offsetParent.clientHeight - (Number.isFinite(anchorBottom) ? anchorBottom : 0)
+      : window.innerHeight - 110;
+    const maximum = Math.max(1, Math.min(window.innerHeight - 16, anchor - 16));
+    return Math.round(Math.min(maximum, Math.max(Math.min(minimum, maximum), value)));
   }
 
   function applyPanelHeight(): void {
