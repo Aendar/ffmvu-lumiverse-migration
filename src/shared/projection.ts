@@ -1,5 +1,5 @@
 import type { FFMVUState, MutableRecord, PromptView } from './state-schema.js';
-import { normalizeState, normalizeStateV158 } from './state-normalize.js';
+import { normalizeState, normalizeStateV158, normalizeStateV160 } from './state-normalize.js';
 import { asArray, asRecord, clone, isRecord, lower, text, tupleValue } from './domain/value-utils.js';
 
 function recordTurn(record: unknown): number {
@@ -173,9 +173,8 @@ function addIndexes(view: PromptView, state: FFMVUState, selected: ReturnType<ty
 export interface BuildPromptViewOptions { consumeAudit?: boolean }
 export interface PreparedProjection { state: FFMVUState; view: PromptView }
 
-/** Current v1.6 projection: no Chekhov or generic NPC thought store. */
-export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
-  const state = normalizeState(input);
+/** Shared v1.6+ projection behavior: no Chekhov or generic NPC thought store. */
+function buildModernPromptView(state: FFMVUState, options: BuildPromptViewOptions): PreparedProjection {
   const selected = selectActors(state);
   const { narrative, scene, context } = selected;
   const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
@@ -185,6 +184,40 @@ export function buildPromptView(input: unknown, options: BuildPromptViewOptions 
   if (scene.Changed) addIndexes(view, state, selected, false);
   if (options.consumeAudit) narrative.Scene.Changed = false;
   return { state, view };
+}
+
+/** Frozen 1.6 projection for existing journal nodes. */
+export function buildPromptViewV160(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  return buildModernPromptView(normalizeStateV160(input), options);
+}
+
+/** Current 1.7 projection. Filtering is temporarily disabled so MODEL_STATE receives every persistent record. */
+export function buildPromptView(input: unknown, options: BuildPromptViewOptions = {}): PreparedProjection {
+  const prepared = buildModernPromptView(normalizeState(input), options);
+  const { state, view } = prepared;
+  const narrative = state.Narrative;
+  const viewNarrative = asRecord(view.Narrative);
+  const meta = asRecord(view.ProjectionMeta);
+
+  view.World_Calc = clone(state.World_Calc);
+  view.Familiar = clone(state.Familiar);
+  viewNarrative.NPCs = clone(narrative.NPCs);
+  viewNarrative.Relationships = clone(narrative.Relationships);
+  viewNarrative.GM_Notes = clone(narrative.GM_Notes);
+  viewNarrative.WorldSim = clone(narrative.WorldSim);
+
+  meta.FilteringDisabled = true;
+  meta.FamiliarColdCount = 0;
+  meta.NPCColdCount = 0;
+  meta.RelationshipProjectedCount = Object.keys(asRecord(narrative.Relationships)).length;
+  meta.WorldSimThreadProjectedCount = Object.keys(asRecord(narrative.WorldSim.Threads)).length;
+  meta.WorldSimPressureProjectedCount = Object.keys(asRecord(narrative.WorldSim.Pressures)).length;
+  meta.WorldSimColdCount = 0;
+  delete meta.NPCIndex;
+  delete meta.FamiliarIndex;
+  delete meta.GMNotesIndex;
+
+  return prepared;
 }
 
 /** Frozen v1.5.8 projection, retained so historic commits replay byte-for-byte. */

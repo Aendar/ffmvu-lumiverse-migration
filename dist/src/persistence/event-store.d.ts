@@ -33,6 +33,7 @@ export declare class EventStore {
     }>;
     traceDescendantPath(scope: StateScope, ancestorNodeId: string, descendantNodeId: string): Promise<StateCommit[] | null>;
     resolveCommittedAttemptTip(scope: StateScope): Promise<CommittedAttemptTip | null>;
+    listCommittedNodeIds(scope: StateScope): Promise<Set<string>>;
     isNodeCommitted(scope: StateScope, nodeId: string): Promise<boolean>;
     resolveStoreHead(scope: StateScope): Promise<StoreHeadResolution>;
 }

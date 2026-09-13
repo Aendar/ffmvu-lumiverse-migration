@@ -8,7 +8,7 @@ import { buildModelPatchAuthorizationView } from '../shared/patch-policy.js';
 import { resolveContinueJsonPatchEvidence, resolveFinalJsonPatchEvidence } from '../shared/model-output.js';
 import { createProjectionRegistry } from '../shared/projection-registry.js';
 import { createReducerRegistry } from '../shared/reducer-registry.js';
-import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from '../shared/state-schema.js';
+import { CURRENT_REDUCER_VERSION } from '../shared/state-schema.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../shared/recent-changes.js';
 import { computeRecentStateHistory } from '../shared/state-history.js';
 import { assertGuiIntent } from '../shared/domain/gui-intents.js';
@@ -21,7 +21,7 @@ import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
 const BRIDGE_VERSION = '0.13.25';
-const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.12 · State Ownership + Familiar Interior';
+const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.17 · Bounded Render + Physiology Separation';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
 const contexts = new AttemptContextRegistry();
@@ -248,7 +248,6 @@ async function buildDiagnosticSnapshot(userId, chatId) {
                     return {
                         ownerId,
                         shape: valueShape(owner),
-                        physiology: valueShape(record.Physiology),
                         penis: valueShape(record.Penis),
                         scrotum: valueShape(record.Scrotum),
                         sex: valueShape(record.Sex),
@@ -422,8 +421,9 @@ async function resolveGuiHead(rt, scope) {
     if (!root)
         throw new Error('GUI_STATE_NOT_INITIALIZED');
     const messages = await spindle.chat.getMessages(scope.chatId);
-    const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages));
-    return { root, messages, head };
+    const session = rt.resolver.createResolutionSession(scope);
+    const head = await rt.resolver.resolve(scope, root.baseNodeId, toHostTranscript(messages), session);
+    return { root, messages, head, session };
 }
 function sameGuiHead(a, b) {
     return a.health === 'ok' && b.health === 'ok' &&
@@ -493,7 +493,7 @@ async function bindStagedCheckpointRoot(rt, scope, prior, staged, boundary) {
     return verified;
 }
 /**
- * Legacy schema upgrades are checkpoint rebases at the exact current transcript
+ * Pre-current schema upgrades are checkpoint rebases at the exact current transcript
  * prefix. This preserves every message/swipe byte while avoiding dependence on
  * a possibly detached physical tip or stale VariantId anchor.
  */
@@ -501,7 +501,7 @@ async function autoMigrateLegacyHead(rt, scope, head, messages) {
     if (head.health !== 'ok')
         return head;
     const artifact = await rt.state.store.readNode(scope, head.nodeId);
-    if (artifact.value.reducerVersion !== LEGACY_REDUCER_VERSION)
+    if (artifact.value.reducerVersion === CURRENT_REDUCER_VERSION)
         return head;
     const transcript = toHostTranscript(messages);
     const last = transcript.at(-1);
@@ -530,7 +530,7 @@ async function autoMigrateLegacyHead(rt, scope, head, messages) {
     });
     return verified;
 }
-async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId) {
+async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNodeId, session) {
     const timestamps = {};
     let baselineNodeId = null;
     const historyNodeIds = [];
@@ -547,7 +547,7 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
         const anchor = await rt.anchors.read(scope, variantId);
         if (!anchor?.lastAttemptId)
             continue;
-        const attempt = await rt.attempts.read(scope, anchor.lastAttemptId);
+        const attempt = await session.readAttempt(anchor.lastAttemptId);
         if (!attempt)
             continue;
         if (attempt.narrativeTimestamp)
@@ -562,9 +562,9 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
     let recentChanges = null;
     if (baselineNodeId && baselineNodeId !== currentHeadNodeId) {
         try {
-            if (await rt.state.store.isNodeCommitted(scope, baselineNodeId)) {
-                const before = await rt.state.materializer.materialize(scope, baselineNodeId);
-                const after = await rt.state.materializer.materialize(scope, currentHeadNodeId);
+            if (await session.isNodeCommitted(baselineNodeId)) {
+                const before = await session.materialize(baselineNodeId);
+                const after = await session.materialize(currentHeadNodeId);
                 recentChanges = computeRecentChanges(before.state, after.state);
             }
         }
@@ -581,9 +581,9 @@ async function buildNarrativeHistoryContext(rt, scope, messages, currentHeadNode
         try {
             const materialized = [];
             for (const nodeId of boundedHistoryNodes) {
-                if (!await rt.state.store.isNodeCommitted(scope, nodeId))
+                if (!await session.isNodeCommitted(nodeId))
                     continue;
-                materialized.push(await rt.state.materializer.materialize(scope, nodeId));
+                materialized.push(await session.materialize(nodeId));
             }
             stateHistory = computeRecentStateHistory(materialized.map(item => item.state), { maxTracks: 12, maxChangesPerPath: 3 });
         }
@@ -686,7 +686,8 @@ async function prepareGeneration(context, targetMessageId) {
         }
     }
     const baseId = await ensureBootstrap(scope, raw);
-    let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw));
+    const resolutionSession = rt.resolver.createResolutionSession(scope);
+    let head = await rt.resolver.resolve(scope, baseId, toHostTranscript(raw), resolutionSession);
     let continueResolvesAttemptId;
     if (head.health !== 'ok') {
         const recoverableHealth = head.health === 'stopped_uncommitted' || head.health === 'failed_patch';
@@ -712,9 +713,13 @@ async function prepareGeneration(context, targetMessageId) {
         continueResolvesAttemptId = lastAttempt.id;
         head = { health: 'ok', nodeId: lastAttempt.baseNodeId, stateHash: lastAttempt.baseStateHash, variantId: continueSnapshot.variantId };
     }
+    const preMigrationNodeId = head.nodeId;
     head = await autoMigrateLegacyHead(rt, scope, head, raw);
     if (head.health !== 'ok')
         return { ok: false, reason: `${head.health}: ${head.reason ?? 'head unresolved after automatic schema migration'}` };
+    const readSession = head.nodeId === preMigrationNodeId
+        ? resolutionSession
+        : rt.resolver.createResolutionSession(scope);
     let suppressedHistoryMessageIds = [];
     let lineageMessages = raw;
     const activeRoot = await rt.anchors.readRoot(scope);
@@ -736,9 +741,9 @@ async function prepareGeneration(context, targetMessageId) {
             }
         }
     }
-    const projection = await rt.state.getProjectionForNode(scope, head.nodeId);
+    const projection = await rt.state.getProjectionForNode(scope, head.nodeId, readSession);
     const frozenAuthorization = buildModelPatchAuthorizationView(projection.view);
-    const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId);
+    const historyContext = await buildNarrativeHistoryContext(rt, scope, lineageMessages, head.nodeId, readSession);
     const diagnosticNoPatchProbe = !isContinue && noPatchProbeUsers.has(context.userId);
     contexts.create({
         scope,
@@ -2259,7 +2264,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
             }
             if (!sameGuiHead(resolved.head, migratedHead))
                 resolved = await resolveGuiHead(rt, scope);
-            const materialized = await rt.state.materializer.materialize(scope, resolved.head.nodeId);
+            const materialized = await resolved.session.materialize(resolved.head.nodeId);
             spindle.sendToFrontend({
                 type: 'ffmvu_gui_state', ok: true, initialized: true, chatId,
                 headNodeId: materialized.nodeId, headStateHash: materialized.stateHash,

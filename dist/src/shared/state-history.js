@@ -60,6 +60,13 @@ function actorSignals(state) {
         addCollectionSignals(out, 'Outfit', actorId, asRecord(actor.Outfit).Worn);
         addCollectionSignals(out, 'Buffs', actorId, actor.Buffs);
         addCollectionSignals(out, 'Ailments', actorId, actor.Ailments);
+        const physiology = asRecord(actor.Physiology);
+        for (const field of ['Hunger', 'Thirst', 'Bladder', 'Arousal']) {
+            addSignal(out, `Physiology.${actorId}.${field}`, physiology[field], 9, field);
+        }
+        const reproductive = asRecord(physiology.Reproductive);
+        if (reproductive.SemenMl !== undefined)
+            addSignal(out, `Physiology.${actorId}.SemenMl`, reproductive.SemenMl, 8, 'Semen');
     }
     for (const key of MAINCHAR_STAT_KEYS) {
         addSignal(out, `Stats.player.${key}`, tupleValue(state.Mainchar[key]), 7, key);

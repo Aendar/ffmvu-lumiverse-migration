@@ -5,6 +5,6 @@ export declare class Materializer {
     private readonly store;
     private readonly reducers;
     constructor(store: EventStore, reducers: ReducerRegistry);
-    materialize(scope: StateScope, nodeId: string): Promise<MaterializedState>;
+    materialize(scope: StateScope, nodeId: string, cache?: Map<string, MaterializedState>): Promise<MaterializedState>;
     private materializeInner;
 }

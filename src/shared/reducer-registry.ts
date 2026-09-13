@@ -1,7 +1,7 @@
 import type { FFMVUState } from './state-schema.js';
-import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION } from './state-schema.js';
-import { normalizeState, normalizeStateV158 } from './state-normalize.js';
-import { validateState, validateStateV158 } from './state-validate.js';
+import { CURRENT_REDUCER_VERSION, LEGACY_REDUCER_VERSION, V160_REDUCER_VERSION } from './state-schema.js';
+import { normalizeState, normalizeStateV158, normalizeStateV160 } from './state-normalize.js';
+import { validateState, validateStateV158, validateStateV160 } from './state-validate.js';
 
 export interface ReducerImplementation {
   readonly version: string;
@@ -30,7 +30,14 @@ export const legacyReducerV158: ReducerImplementation = {
   validate: validateStateV158,
 };
 
-export const currentReducerV160: ReducerImplementation = {
+/** Frozen 1.6 implementation for existing journal nodes. */
+export const reducerV160: ReducerImplementation = {
+  version: V160_REDUCER_VERSION,
+  normalize: normalizeStateV160,
+  validate: validateStateV160,
+};
+
+export const currentReducerV170: ReducerImplementation = {
   version: CURRENT_REDUCER_VERSION,
   normalize: normalizeState,
   validate: validateState,
@@ -39,6 +46,7 @@ export const currentReducerV160: ReducerImplementation = {
 export function createReducerRegistry(): ReducerRegistry {
   const registry = new ReducerRegistry();
   registry.register(legacyReducerV158);
-  registry.register(currentReducerV160);
+  registry.register(reducerV160);
+  registry.register(currentReducerV170);
   return registry;
 }

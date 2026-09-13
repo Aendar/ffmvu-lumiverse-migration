@@ -5,6 +5,7 @@ import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { buildModelPatchAuthorizationView } from '../../src/shared/patch-policy.js';
 import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type StateScope } from '../../src/persistence/types.js';
+import { V160_PROJECTION_VERSION, V160_REDUCER_VERSION } from '../../src/shared/state-schema.js';
 
 let passed = 0;
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error('ASSERT: ' + message); passed += 1; }
@@ -45,10 +46,11 @@ async function main() {
   const automaticNode = await service.store.readNode(automaticScope, automatic.nodeId);
   assert(
     automaticNode.type === 'commit' && automaticNode.value.kind === 'migration'
-      && automaticNode.value.note === 'automatic-schema-upgrade-v1.6'
-      && automaticNode.value.reducerVersion === 'FFMVU-1.6.0'
-      && automatic.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0'
-      && !('Mental_state' in automatic.state.Mainchar) && !('Chekhov' in automatic.state.Narrative),
+      && automaticNode.value.note === 'automatic-schema-upgrade-v1.7'
+      && automaticNode.value.reducerVersion === 'FFMVU-1.7.0'
+      && automatic.state.MVUStatMenu_DB_Ver === 'FFMVU-1.7.0'
+      && !('Mental_state' in automatic.state.Mainchar) && !('Chekhov' in automatic.state.Narrative)
+      && automatic.state.Mainchar.Physiology.LastPhysAt.Time === '08:00',
     'legacy schema upgrade is deterministic and requires no user-supplied migration draft',
   );
 
@@ -79,10 +81,10 @@ async function main() {
   assert(
     stagedMigrationNode.type === 'base' &&
     stagedMigrationNode.value.kind === 'fork' &&
-    stagedMigrationNode.value.reducerVersion === 'FFMVU-1.6.0' &&
+    stagedMigrationNode.value.reducerVersion === 'FFMVU-1.7.0' &&
     stagedMigrationNode.value.transcriptBoundary?.throughMessageId === checkpointBoundary.throughMessageId &&
     stagedMigrationNode.value.provenance?.source === 'schema-migration-checkpoint' &&
-    stagedMigration.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0' &&
+    stagedMigration.state.MVUStatMenu_DB_Ver === 'FFMVU-1.7.0' &&
     !('Mental_state' in stagedMigration.state.Mainchar) &&
     !('Chekhov' in stagedMigration.state.Narrative),
     'legacy checkpoint stages deterministic current-schema authority without preserving retired fields',
@@ -128,14 +130,67 @@ async function main() {
   );
   assert(
     stagedRestoreNode.type === 'base' &&
-    stagedRestoreNode.value.reducerVersion === 'FFMVU-1.6.0' &&
+    stagedRestoreNode.value.reducerVersion === 'FFMVU-1.7.0' &&
     stagedRestoreNode.value.provenance?.source === 'portable-snapshot-checkpoint' &&
     stagedRestoreNode.value.provenance?.sourceSnapshotHash === legacyPortable.snapshotHash &&
     stagedRestoreNode.value.provenance?.sourceStateHash === legacyPortable.stateHash &&
-    stagedRestore.state.MVUStatMenu_DB_Ver === 'FFMVU-1.6.0' &&
+    stagedRestore.state.MVUStatMenu_DB_Ver === 'FFMVU-1.7.0' &&
     !('Mental_state' in stagedRestore.state.Mainchar) &&
     !('Chekhov' in stagedRestore.state.Narrative),
-    'legacy portable restore verifies original snapshot then stages migrated v1.6 state with original hashes in provenance',
+    'legacy portable restore verifies original snapshot then stages migrated v1.7 state with original hashes in provenance',
+  );
+
+  const v160Scope: StateScope = { userId: 'u', chatId: 'v160-physiology-cleanup' };
+  const v160State = createDefaultState();
+  delete (v160State.Mainchar as Record<string, unknown>).Physiology;
+  v160State.Familiar.evelyn = {
+    Name: ['Эвелин', 'Name'],
+    Hair_Style: ['длинные чёрные волосы, коса', 'Hair Style'],
+    Personality: ['сдержанная', 'Personality'],
+    Physical_Features: ['высокая', 'Physical Feature'],
+    ExSkill: ['магия', 'Ex Skill'],
+    Bio: ['устаревший профиль', 'Bio'],
+    Biography: ['дубликат', 'Biography'],
+  };
+  (v160State.Narrative.Scene as any).HPH = {
+    player: {
+      Physiology: {
+        ErectionCapacity: 10, ErectionLevel: 8, Bladder: 5, Arousal: 7,
+        SemenMl: 12, SemenCapacityMl: 20, LastPhysAt: { Date: '1 июня', Time: '06:00' },
+      },
+      Penis: { LengthCm: 24, GirthCm: 17, Position: 'supported', ErectionLevel: 8 },
+      Scrotum: { Position: 'between thighs' },
+      Sex: { Active: true },
+    },
+  };
+  const v160Base = await service.createGenesis(v160Scope, {
+    state: v160State,
+    reducerVersion: V160_REDUCER_VERSION,
+    projectionVersion: V160_PROJECTION_VERSION,
+  });
+  const v170 = await service.autoMigrateLegacyState(v160Scope, {
+    parentNodeId: v160Base.nodeId,
+    expectedParentStateHash: v160Base.stateHash,
+    anchor: { lineageAnchorId: 'root' },
+    requestId: 'v160-physiology-cleanup',
+  });
+  const migratedFamiliar = v170.state.Familiar.evelyn as Record<string, unknown>;
+  const migratedHph = (v170.state.Narrative.Scene.HPH as Record<string, any>).player;
+  assert(
+    v170.state.Mainchar.Physiology.Hunger === 0 &&
+      v170.state.Mainchar.Physiology.Bladder === 5 && v170.state.Mainchar.Physiology.Arousal === 7 &&
+      v170.state.Mainchar.Physiology.LastPhysAt.Time === '06:00' &&
+      v170.state.Mainchar.Physiology.Reproductive?.SemenMl === 12 &&
+      v170.state.Mainchar.Physiology.Reproductive?.SemenCapacityMl === 20 &&
+      (migratedFamiliar.Physiology as any).Thirst === 0 &&
+      !('Hair_Style' in migratedFamiliar) && !('Personality' in migratedFamiliar) &&
+      !('Physical_Features' in migratedFamiliar) && !('ExSkill' in migratedFamiliar) &&
+      !('Bio' in migratedFamiliar) && !('Biography' in migratedFamiliar) &&
+      !('CurrentHairstyle' in migratedFamiliar) &&
+      migratedHph.Physiology === undefined && migratedHph.ErectionCapacity === undefined && migratedHph.ErectionLevel === undefined &&
+      migratedHph.Penis.LengthCm === 24 && migratedHph.Penis.ErectionLevel === undefined &&
+      migratedHph.Scrotum.Position === 'between thighs' && migratedHph.Sex.Active === true,
+    'v1.6 migration moves physiology to persistent actors, removes redundant familiar profile fields without guessing a hairstyle, and preserves only HPH geometry',
   );
 
   const source2: StateScope = { userId: 'u', chatId: 'source2' };

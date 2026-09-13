@@ -1,6 +1,6 @@
 import type { FFMVUState, PromptView } from './state-schema.js';
-import { CURRENT_PROJECTION_VERSION, LEGACY_PROJECTION_VERSION } from './state-schema.js';
-import { buildPromptView, buildPromptViewV158 } from './projection.js';
+import { CURRENT_PROJECTION_VERSION, LEGACY_PROJECTION_VERSION, V160_PROJECTION_VERSION } from './state-schema.js';
+import { buildPromptView, buildPromptViewV158, buildPromptViewV160 } from './projection.js';
 
 export interface ProjectionImplementation {
   readonly version: string;
@@ -27,7 +27,13 @@ export const legacyProjectionV158: ProjectionImplementation = {
   build: state => buildPromptViewV158(state, { consumeAudit: false }).view,
 };
 
-export const currentProjectionV160: ProjectionImplementation = {
+/** Frozen 1.6 projection for existing journal nodes. */
+export const projectionV160: ProjectionImplementation = {
+  version: V160_PROJECTION_VERSION,
+  build: state => buildPromptViewV160(state, { consumeAudit: false }).view,
+};
+
+export const currentProjectionV170: ProjectionImplementation = {
   version: CURRENT_PROJECTION_VERSION,
   build: state => buildPromptView(state, { consumeAudit: false }).view,
 };
@@ -35,6 +41,7 @@ export const currentProjectionV160: ProjectionImplementation = {
 export function createProjectionRegistry(): ProjectionRegistry {
   const registry = new ProjectionRegistry();
   registry.register(legacyProjectionV158);
-  registry.register(currentProjectionV160);
+  registry.register(projectionV160);
+  registry.register(currentProjectionV170);
   return registry;
 }

@@ -166,13 +166,9 @@ async function main() {
   assert(!Object.prototype.hasOwnProperty.call(hphGenesis.state.Narrative.Scene, 'HPH'), 'legacy reducer/default remains byte-compatible and does not pre-initialize HPH');
   const hphFrozen = await hphState.getProjectionForNode(hphScope, hphGenesis.nodeId);
   const hphOwner = {
-    Physiology: {
-      Bladder: 0, Arousal: 0, SemenMl: null, SemenCapacityMl: null,
-      ErectionCapacity: 10, LastPhysAt: { Date: '1 июня', Time: '06:00' },
-    },
-    Penis: null,
-    Scrotum: null,
-    Sex: null,
+    Penis: { LengthCm: 24, GirthCm: 17, Position: 'supported by the wearer' },
+    Scrotum: { Position: 'between the thighs' },
+    Sex: { Active: false },
   };
   const hphResult = await hphState.finalizeModelAttempt(hphScope, {
     expectedParentNodeId: hphGenesis.nodeId,
@@ -186,6 +182,7 @@ async function main() {
     rawPatchPayloadHash: 'raw-hph-child-only',
   });
   assert(Boolean((hphResult.state.Narrative.Scene.HPH as any)?.player), 'first HPH owner add succeeds even when legacy state lacks the HPH container');
+  assert((hphResult.state.Narrative.Scene.HPH as any)?.player.Physiology === undefined, 'HPH owner keeps geometry without a persistent physiology subsystem');
   const hphCommit = await new EventStore(hphStorage).readCommit(hphScope, hphResult.modelCommitId!);
   assert(hphCommit.patch.length === 2
     && hphCommit.patch[0].op === 'add'

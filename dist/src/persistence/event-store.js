@@ -83,17 +83,23 @@ export class EventStore {
             attemptId,
         };
     }
-    async isNodeCommitted(scope, nodeId) {
+    async listCommittedNodeIds(scope) {
         const prefix = `${scopeRoot(scope)}/store-revisions/`;
         const paths = (await this.storage.list(prefix)).filter(path => path.endsWith('.json'));
+        const nodeIds = new Set();
         for (const path of paths) {
             const revision = await this.storage.getJson(path);
             if (!revision || revision.scope.chatId !== scope.chatId || revision.scope.userId !== scope.userId)
                 continue;
-            if (revision.committedArtifacts.some(item => item.id === nodeId && (item.type === 'base' || item.type === 'commit')))
-                return true;
+            for (const artifact of revision.committedArtifacts) {
+                if (artifact.type === 'base' || artifact.type === 'commit')
+                    nodeIds.add(artifact.id);
+            }
         }
-        return false;
+        return nodeIds;
+    }
+    async isNodeCommitted(scope, nodeId) {
+        return (await this.listCommittedNodeIds(scope)).has(nodeId);
     }
     async resolveStoreHead(scope) {
         const prefix = `${scopeRoot(scope)}/store-revisions/`;
