@@ -595,13 +595,9 @@ export function setup(ctx: SpindleFrontendContextLite) {
     const sourceTurn = Number(portable.source?.turn) || 0;
     const sourceVersion = String(portable.reducerVersion || portable.stateSchemaVersion || 'unknown');
     const confirmed = window.confirm(
-      'Restore this portable snapshot at the current chat position?\
-\
-' +
-      'Chat messages, message IDs, swipes, and their text are not edited.\
-' +
-      'Current FFMVU state authority from this point forward will be replaced.\
-' +
+      'Restore this portable snapshot at the current chat position?\n\n' +
+      'Chat messages, message IDs, swipes, and their text are not edited.\n' +
+      'Current FFMVU state authority from this point forward will be replaced.\n' +
       'Snapshot: turn ' + sourceTurn + ' · ' + sourceVersion,
     );
     if (!confirmed) return;
