@@ -85,6 +85,8 @@ export function assertModelPatchAuthorization(baseState, operations, authorizati
     const routingSegments = new Set(['Hot', 'Warm', 'Candidates', 'ColdCount', 'ActiveCount', 'ArchiveCount', 'AuditDue']);
     const newNpcIds = [];
     const nextNpcOps = [];
+    const currentTurn = Math.max(0, Math.trunc(Number(baseState.Narrative.Turn) || 0));
+    let turnWriteCount = 0;
     for (const operation of operations) {
         const parts = pointerParts(operation.path);
         if (!parts.length)
@@ -112,9 +114,18 @@ export function assertModelPatchAuthorization(baseState, operations, authorizati
             continue;
         }
         if (parts[0] === 'Familiar') {
+            const familiarId = parts[1];
+            const exists = hasOwn(baseState.Familiar, familiarId);
             authorizeProjectedCollection(operation, parts, baseState.Familiar, authorization.familiarIds, 'Familiar', 1);
-            if (!hasOwn(baseState.Familiar, parts[1]))
-                deny('model-created Familiar is not authorized by v0.5');
+            if (!exists) {
+                if (!hasOwn(baseState.Narrative.NPCs, familiarId))
+                    deny('new Familiar must promote an existing Narrative.NPCs actor: ' + familiarId);
+                if (!authorization.npcIds.includes(familiarId))
+                    deny('Familiar source NPC omitted from frozen projection: ' + familiarId);
+                if (!('value' in operation) || !isRecord(operation.value) || operation.value.ID !== familiarId) {
+                    deny('new Familiar must preserve the source NPC stable ID as both record key and Familiar.ID: ' + familiarId);
+                }
+            }
             authorizeFamiliarInterior(operation, parts, baseState);
             continue;
         }
@@ -123,6 +134,15 @@ export function assertModelPatchAuthorization(baseState, operations, authorizati
         if (parts[1] === 'Turn') {
             if (parts.length !== 2)
                 deny('Narrative.Turn must be written as one scalar');
+            turnWriteCount += 1;
+            if (turnWriteCount > 1)
+                deny('Narrative.Turn may be written at most once per model patch');
+            if (!['add', 'replace'].includes(operation.op) || !('value' in operation) || typeof operation.value !== 'number' || !Number.isInteger(operation.value)) {
+                deny('Narrative.Turn must be an integer add/replace value');
+            }
+            if (operation.value < currentTurn || operation.value > currentTurn + 1) {
+                deny('Narrative.Turn must stay unchanged or advance by exactly one; current=' + currentTurn + ', got=' + operation.value);
+            }
             continue;
         }
         if (parts[1] === 'NextNpcId') {
