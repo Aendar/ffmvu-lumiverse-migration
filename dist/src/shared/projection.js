@@ -1,4 +1,4 @@
-import { normalizeState, normalizeStateV158 } from './state-normalize.js';
+import { normalizeState, normalizeStateV158, normalizeStateV160 } from './state-normalize.js';
 import { asArray, asRecord, clone, isRecord, lower, text, tupleValue } from './domain/value-utils.js';
 function recordTurn(record) {
     if (!isRecord(record))
@@ -166,9 +166,8 @@ function addIndexes(view, state, selected, includeChekhov, chekhovActive) {
         });
     }
 }
-/** Current v1.6 projection: no Chekhov or generic NPC thought store. */
-export function buildPromptView(input, options = {}) {
-    const state = normalizeState(input);
+/** Shared v1.6+ projection behavior: no Chekhov or generic NPC thought store. */
+function buildModernPromptView(state, options) {
     const selected = selectActors(state);
     const { narrative, scene, context } = selected;
     const noteCandidates = pickCandidates(narrative.GM_Notes.Active, context, 6, 1);
@@ -180,6 +179,14 @@ export function buildPromptView(input, options = {}) {
     if (options.consumeAudit)
         narrative.Scene.Changed = false;
     return { state, view };
+}
+/** Frozen 1.6 projection for existing journal nodes. */
+export function buildPromptViewV160(input, options = {}) {
+    return buildModernPromptView(normalizeStateV160(input), options);
+}
+/** Current 1.7 projection. */
+export function buildPromptView(input, options = {}) {
+    return buildModernPromptView(normalizeState(input), options);
 }
 /** Frozen v1.5.8 projection, retained so historic commits replay byte-for-byte. */
 export function buildPromptViewV158(input, options = {}) {

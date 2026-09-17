@@ -60,14 +60,18 @@ function main(): void {
   const historyB = structuredClone(historyA);
   historyB.Narrative.Turn = 124;
   historyB.Mainchar.Inventory.silver = { Name: 'Серебро', Type: 'Money', Qty: 48, Desc: '' };
+  historyB.Mainchar.Physiology.Thirst = 3;
   const historyC = structuredClone(historyB);
   historyC.Narrative.Turn = 127;
   historyC.Mainchar.Inventory.silver = { Name: 'Серебро', Type: 'Money', Qty: 37, Desc: '' };
+  historyC.Mainchar.Physiology.Thirst = 5;
   const stateTrail = computeRecentStateHistory([historyA, historyB, historyC]);
   const silverTrail = stateTrail?.tracks.find(track => track.path === 'Inventory.player.silver.Qty');
   assert(silverTrail?.current === 37 && silverTrail.changes.length === 2, 'state trail keeps current scalar plus bounded prior changes');
   assert(silverTrail?.changes[0]?.turn === 127 && silverTrail.changes[0]?.from === 48 && silverTrail.changes[0]?.to === 37, 'state trail orders the newest change first with Narrative.Turn');
   assert(silverTrail?.changes[1]?.turn === 124 && silverTrail.changes[1]?.from === 51 && silverTrail.changes[1]?.to === 48, 'state trail retains the earlier scalar transition');
+  const thirstTrail = stateTrail?.tracks.find(track => track.path === 'Physiology.player.Thirst');
+  assert(thirstTrail?.current === 5 && thirstTrail.changes.length === 2, 'physiology changes enter the bounded state trail without a separate physiology audit');
 
   const messages: LumiLlmMessage[] = [
     { role: 'system', content: 'system' },

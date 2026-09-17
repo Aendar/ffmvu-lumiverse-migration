@@ -1,5 +1,5 @@
 import type { FFMVUState, LegacyFFMVUState, MutableRecord } from './state-schema.js';
-import { STATE_SCHEMA_VERSION } from './state-schema.js';
+import { STATE_SCHEMA_VERSION, V160_REDUCER_VERSION } from './state-schema.js';
 import { clone } from './domain/value-utils.js';
 
 export const LEGACY_DEFAULT_STATE: LegacyFFMVUState = {
@@ -42,13 +42,30 @@ export const LEGACY_DEFAULT_STATE: LegacyFFMVUState = {
   GameStarted: false,
 };
 
-function createCurrentDefault(): FFMVUState {
+function createV160Default(): FFMVUState {
   const state = clone(LEGACY_DEFAULT_STATE) as unknown as MutableRecord;
   const mainchar = state.Mainchar as MutableRecord;
   const narrative = state.Narrative as MutableRecord;
   delete mainchar.Mental_state;
   mainchar.Conditions = {};
   delete narrative.Chekhov;
+  state.MVUStatMenu_DB_Ver = V160_REDUCER_VERSION;
+  return state as unknown as FFMVUState;
+}
+
+export const DEFAULT_STATE_V160: FFMVUState = createV160Default();
+
+function createCurrentDefault(): FFMVUState {
+  const state = clone(DEFAULT_STATE_V160) as unknown as MutableRecord;
+  const world = state.World as MutableRecord;
+  const mainchar = state.Mainchar as MutableRecord;
+  mainchar.Physiology = {
+    Hunger: 0,
+    Thirst: 0,
+    Bladder: 0,
+    Arousal: 0,
+    LastPhysAt: { Date: String((world.Date as unknown[])[0] ?? ''), Time: String((world.Time as unknown[])[0] ?? '') },
+  };
   state.MVUStatMenu_DB_Ver = STATE_SCHEMA_VERSION;
   return state as unknown as FFMVUState;
 }

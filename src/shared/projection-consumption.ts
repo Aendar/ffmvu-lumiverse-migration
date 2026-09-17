@@ -1,9 +1,9 @@
 import type { JsonPatchOperation } from './json-patch.js';
 import type { FFMVUState, MutableRecord, PromptView } from './state-schema.js';
-import { LEGACY_REDUCER_VERSION } from './state-schema.js';
+import { LEGACY_REDUCER_VERSION, V160_REDUCER_VERSION } from './state-schema.js';
 import { asRecord } from './domain/value-utils.js';
 
-/** v1.6 has no audit subsystem: only clear the one-turn scene-change cache. */
+/** v1.6+ has no audit subsystem: only clear the one-turn scene-change cache. */
 export function computeProjectionConsumptionPatch(state: FFMVUState, _nextProjection: PromptView): JsonPatchOperation[] {
   if (state.Narrative.Scene.Changed === false) return [];
   return [{ op: 'replace', path: '/Narrative/Scene/Changed', value: false }];
@@ -27,7 +27,7 @@ export function computeProjectionConsumptionPatchForReducer(
   state: FFMVUState,
   nextProjection: PromptView,
 ): JsonPatchOperation[] {
-  return reducerVersion === LEGACY_REDUCER_VERSION
-    ? computeProjectionConsumptionPatchV158(state, nextProjection)
-    : computeProjectionConsumptionPatch(state, nextProjection);
+  if (reducerVersion === LEGACY_REDUCER_VERSION) return computeProjectionConsumptionPatchV158(state, nextProjection);
+  if (reducerVersion === V160_REDUCER_VERSION) return computeProjectionConsumptionPatch(state, nextProjection);
+  return computeProjectionConsumptionPatch(state, nextProjection);
 }

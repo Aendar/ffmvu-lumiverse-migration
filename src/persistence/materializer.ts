@@ -10,13 +10,23 @@ export class Materializer {
     private readonly reducers: ReducerRegistry,
   ) {}
 
-  async materialize(scope: StateScope, nodeId: string): Promise<MaterializedState> {
+  async materialize(
+    scope: StateScope,
+    nodeId: string,
+    cache?: Map<string, MaterializedState>,
+  ): Promise<MaterializedState> {
     const visiting = new Set<string>();
-    const result = await this.materializeInner(scope, nodeId, visiting);
-    return result;
+    return this.materializeInner(scope, nodeId, visiting, cache);
   }
 
-  private async materializeInner(scope: StateScope, nodeId: string, visiting: Set<string>): Promise<MaterializedState> {
+  private async materializeInner(
+    scope: StateScope,
+    nodeId: string,
+    visiting: Set<string>,
+    cache?: Map<string, MaterializedState>,
+  ): Promise<MaterializedState> {
+    const cached = cache?.get(nodeId);
+    if (cached) return cached;
     if (visiting.has(nodeId)) throw new Error('Semantic DAG cycle detected at ' + nodeId);
     visiting.add(nodeId);
     try {
@@ -28,10 +38,12 @@ export class Materializer {
         if (errors.length) throw new Error('Invalid BaseSnapshot: ' + errors.join('; '));
         const hash = await canonicalHash(state);
         if (hash !== node.value.stateHash) throw new Error('BaseSnapshot state hash mismatch: ' + nodeId);
-        return { nodeId, stateHash: hash, state };
+        const result = { nodeId, stateHash: hash, state };
+        cache?.set(nodeId, result);
+        return result;
       }
 
-      const parent = await this.materializeInner(scope, node.value.parentNodeId, visiting);
+      const parent = await this.materializeInner(scope, node.value.parentNodeId, visiting, cache);
       if (parent.stateHash !== node.value.parentStateHash) throw new Error('Commit parent hash mismatch: ' + nodeId);
       const reducer = this.reducers.get(node.value.reducerVersion);
       const state = reducer.normalize(applyJsonPatch(parent.state, node.value.patch));
@@ -39,7 +51,9 @@ export class Materializer {
       if (errors.length) throw new Error('Invalid StateCommit result: ' + errors.join('; '));
       const hash = await canonicalHash(state);
       if (hash !== node.value.resultStateHash) throw new Error('Commit result hash mismatch: ' + nodeId);
-      return { nodeId, stateHash: hash, state };
+      const result = { nodeId, stateHash: hash, state };
+      cache?.set(nodeId, result);
+      return result;
     } finally {
       visiting.delete(nodeId);
     }

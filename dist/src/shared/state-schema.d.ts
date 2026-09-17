@@ -17,6 +17,22 @@ export interface OutfitState extends MutableRecord {
     Worn: MutableRecord;
     Wardrobe: MutableRecord;
 }
+/** Persistent general physiology. Values are deliberately coarse (0–10). */
+export interface PhysiologyState extends MutableRecord {
+    Hunger: number;
+    Thirst: number;
+    Bladder: number;
+    Arousal: number;
+    LastPhysAt: {
+        Date: string;
+        Time: string;
+    };
+    /** Present only when the actor has an established reproductive capacity. */
+    Reproductive?: {
+        SemenMl: number | null;
+        SemenCapacityMl: number | null;
+    } & MutableRecord;
+}
 export interface ConditionEntry extends MutableRecord {
     State: string;
     Severity: StateSeverity;
@@ -79,14 +95,18 @@ export interface MainCharacterState extends MutableRecord {
     Ailments: MutableRecord;
     Starting_weapon_request: LabeledValue<string>;
     Starting_weapon_status: LabeledValue<string>;
+    Physiology: PhysiologyState;
 }
 export interface FamiliarMemberState extends MutableRecord {
-    /** Legacy fixtures may omit these; the v1.6 normalizer always supplies them. */
+    /** Legacy fixtures may omit these; the current normalizer always supplies them. */
     Outfit?: OutfitState;
     Conditions?: Record<string, ConditionEntry>;
     MentalStates?: Record<string, ConditionEntry>;
     InnerThreads?: Record<string, InnerThreadEntry>;
     Agenda?: AgendaState;
+    Physiology?: PhysiologyState;
+    /** Current arrangement only; enduring appearance stays in character sources. */
+    CurrentHairstyle?: LabeledValue<string>;
 }
 export interface SceneState extends MutableRecord {
     Focus: string;
@@ -130,7 +150,7 @@ export interface FFMVUState extends MutableRecord {
     MVUStatMenu_DB_Ver: string;
     GameStarted: boolean;
 }
-export interface LegacyMainCharacterState extends Omit<MainCharacterState, 'Conditions'> {
+export interface LegacyMainCharacterState extends Omit<MainCharacterState, 'Conditions' | 'Physiology'> {
     Mental_state: LabeledValue<string>;
 }
 export interface LegacyNarrativeState extends MutableRecord {
@@ -158,10 +178,13 @@ export interface LegacyFFMVUState extends Omit<FFMVUState, 'Mainchar' | 'Familia
     Narrative: LegacyNarrativeState;
 }
 export type PromptView = MutableRecord;
-export declare const STATE_SCHEMA_VERSION = "FFMVU-1.6.0";
+export declare const STATE_SCHEMA_VERSION = "FFMVU-1.7.0";
 export declare const LEGACY_REDUCER_VERSION = "FFMVU-1.5.8";
 export declare const LEGACY_PROJECTION_VERSION = "FFMVU-1.5.8";
-export declare const CURRENT_REDUCER_VERSION = "FFMVU-1.6.0";
-export declare const CURRENT_PROJECTION_VERSION = "FFMVU-1.6.0";
+/** Frozen 1.6 semantics, retained for historic commit replay. */
+export declare const V160_REDUCER_VERSION = "FFMVU-1.6.0";
+export declare const V160_PROJECTION_VERSION = "FFMVU-1.6.0";
+export declare const CURRENT_REDUCER_VERSION = "FFMVU-1.7.0";
+export declare const CURRENT_PROJECTION_VERSION = "FFMVU-1.7.0";
 export declare const REQUIRED_WORLD_TUPLES: readonly ["Date", "Time", "Location", "Weather"];
 export declare const REQUIRED_MAINCHAR_TUPLES: readonly ["Name", "Age", "Gender", "Race", "Occupation", "Level", "Strength", "Agility", "Constitution", "Intelligence", "Wisdom", "Charisma"];

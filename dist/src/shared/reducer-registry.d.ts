@@ -10,5 +10,7 @@ export declare class ReducerRegistry {
     get(version: string): ReducerImplementation;
 }
 export declare const legacyReducerV158: ReducerImplementation;
-export declare const currentReducerV160: ReducerImplementation;
+/** Frozen 1.6 implementation for existing journal nodes. */
+export declare const reducerV160: ReducerImplementation;
+export declare const currentReducerV170: ReducerImplementation;
 export declare function createReducerRegistry(): ReducerRegistry;

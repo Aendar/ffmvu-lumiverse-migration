@@ -96,10 +96,12 @@ equal(prepared.state.Narrative.Scene.Changed, false, 'returned state consumes Sc
 
 const projectionRegistry = createProjectionRegistry();
 assert(Boolean(projectionRegistry.get('FFMVU-1.5.8')), 'legacy projection registered by explicit version');
-assert(Boolean(projectionRegistry.get('FFMVU-1.6.0')), 'current projection registered by explicit version');
+assert(Boolean(projectionRegistry.get('FFMVU-1.6.0')), 'frozen v1.6 projection registered by explicit version');
+assert(Boolean(projectionRegistry.get('FFMVU-1.7.0')), 'current projection registered by explicit version');
 const reducerRegistry = createReducerRegistry();
 assert(Boolean(reducerRegistry.get('FFMVU-1.5.8')), 'legacy reducer registered by explicit version');
-assert(Boolean(reducerRegistry.get('FFMVU-1.6.0')), 'current reducer registered by explicit version');
+assert(Boolean(reducerRegistry.get('FFMVU-1.6.0')), 'frozen v1.6 reducer registered by explicit version');
+assert(Boolean(reducerRegistry.get('FFMVU-1.7.0')), 'current reducer registered by explicit version');
 
 assert(normalizeClock('6:07') === '06:07', 'clock normalizes H:MM');
 const started = applyGameStartPayload(createDefaultState(), {
@@ -112,6 +114,9 @@ equal(started.Mainchar.Hp_max[0], 71, 'GameStart HP formula parity');
 equal(started.Mainchar.Sta_max[0], 126, 'GameStart stamina formula parity');
 equal(started.Mainchar.Mp_max[0], 38, 'GameStart MP formula parity');
 equal(started.Mainchar.Starting_weapon_status[0], 'pending', 'starting weapon one-shot status parity');
+equal(started.Mainchar.Physiology.LastPhysAt, { Date: 'Day 2', Time: '06:07' }, 'GameStart anchors physiology to the canonical world clock');
+const eventArousal = normalizeState({ ...base, Mainchar: { ...base.Mainchar, Physiology: { ...base.Mainchar.Physiology, Arousal: 10 } } });
+assert(eventArousal.Mainchar.Physiology.Arousal === 9 && validateState(eventArousal).length === 0, 'Arousal=10 is normalized away from persistent state after its event boundary');
 
 const trace = new DiagnosticTraceStore(2);
 trace.append('u', { at: '1', kind: 'internal', event: 'a' });

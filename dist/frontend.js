@@ -879,13 +879,96 @@ function describe(raw) {
 function ownerRefForId(state, ownerId) {
     return statusOwnerById(state, ownerId).ref;
 }
+// Runtime layout corrections; the frozen legacy export remains unchanged.
+const STATUS_LAYOUT_CSS = `
+  :host { container-type:inline-size; }
+  .tab-nav { flex:0 0 auto; }
+  .tab-btn { padding:10px 17px; white-space:nowrap; }
+  .tab-content { flex:1 1 auto; height:auto; min-height:0; scrollbar-gutter:stable; }
+  .ff25-grid { grid-template-columns:minmax(245px,29%) minmax(0,1fr); grid-template-areas:"left right" "quests quests"; }
+  .ff25-left { grid-template-columns:minmax(0,1fr); grid-template-rows:auto 1fr; gap:10px; }
+  .ff25-right { grid-template-rows:auto 1fr; gap:10px; }
+  .ff25-lower { grid-template-columns:minmax(0,1fr) minmax(330px,1fr); gap:10px; }
+  .ff25-card { padding:10px; }
+  .ff25-title { padding-bottom:5px; margin-bottom:7px; }
+  .ff25-stat-list { min-height:104px; }
+  .ff25-world .ff25-row { padding:5px 0; }
+  .ff25-character .ff25-rows { flex:0 0 auto; justify-content:flex-start; }
+  .ff25-row { font-size:15px; line-height:1.35; padding:6px 0; }
+  .ff25-avatar-shell { width:min(100%,270px); }
+  .ff25-avatar-image,.ff25-avatar-placeholder { height:auto; aspect-ratio:3/4; max-height:none; object-fit:contain; }
+  .ff25-phys-layout { width:100%; }
+  .ff25-phys-orb { width:112px; height:112px; }
+  .ff25-phys-meter,.ff25-phys-dims { width:76px; height:112px; }
+  .ff25-phys-dim { flex-wrap:wrap; }
+  .ff25-phys-dim strong { font-size:18px; }
+  .ff25-phys-row { grid-template-columns:112px 76px 76px; justify-content:center; gap:14px; padding-left:0; }
+  .ff25-phys-copy,.ff25-phys-meter-copy { text-shadow:0 1px 2px #00141d,0 0 4px #00141d; }
+  .ff25-phys-copy strong,.ff25-phys-unit,.ff25-phys-meter-value { background:rgba(0,20,32,.72); border-radius:4px; padding:2px 4px; }
+  .ffmvu-familiar-sheet { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,3fr); gap:8px; width:100%; min-width:0; align-items:start; }
+  .ffmvu-familiar-sheet>.prop-row-wrapper { width:auto!important; min-width:0; padding:0; }
+  .ffmvu-familiar-full { grid-column:1/-1; }
+  .ffmvu-familiar-portrait-col>.grid-group-card,.ffmvu-familiar-basic-col>.grid-group-card { height:auto; margin-top:0; }
+  .ffmvu-familiar-portrait-col .img-wrapper { width:100%!important; height:auto; display:block!important; }
+  .ffmvu-familiar-portrait-col .avatar-img { height:auto!important; max-height:none; aspect-ratio:3/4; object-fit:contain; }
+  .ffmvu-familiar-portrait-col .grid-group-content { margin:0; }
+  .ffmvu-familiar-portrait-col .prop-row-wrapper { padding:0; }
+  .ffmvu-familiar-basic-col>.grid-group-card>.grid-group-content { display:grid; grid-template-columns:repeat(15,minmax(0,1fr)); gap:2px 12px; margin:0; }
+  .ffmvu-familiar-basic-col .ffmvu-familiar-field { width:auto!important; min-width:0; padding:0; grid-column:span 5; }
+  .ffmvu-familiar-basic-col .ffmvu-familiar-combat { grid-column:span 3; }
+  .ffmvu-familiar-basic-col .ffmvu-familiar-section,.ffmvu-familiar-aux-wrap { grid-column:1/-1; min-width:0; padding:0!important; }
+  .ffmvu-familiar-basic-col .prop-row { display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px; font-size:14px; line-height:1.35; align-items:start; padding:3px 0; }
+  .ffmvu-familiar-basic-col .prop-label { margin:0; padding:0; }
+  .ffmvu-familiar-basic-col .prop-val { text-align:right; overflow-wrap:anywhere; }
+  .ffmvu-familiar-basic-col .nested-section-header { margin:6px 0 3px; }
+  .ffmvu-familiar-aux { margin:4px 0; }
+  .ffmvu-familiar-mini-title { font-size:14px; }
+  .ffmvu-familiar-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 8px; margin:0; }
+  .ffmvu-familiar-fields>.prop-row-wrapper { width:auto!important; min-width:0; padding:0; grid-column:1/-1; }
+  .ffmvu-familiar-fields>.prop-row-wrapper:nth-child(-n+2) { grid-column:span 1; }
+  .ffmvu-familiar-phys-grid { gap:10px 12px; padding-top:4px; }
+  .ffmvu-familiar-phys-head { font-size:14px; }
+  .ffmvu-interior-row { grid-template-columns:125px minmax(0,1fr); gap:12px; }
+  .ffmvu-interior-entry { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:6px; padding:4px 0; }
+  .ffmvu-interior-entry+.ffmvu-interior-entry { border-top:1px solid rgba(129,212,250,.16); }
+  .ffmvu-interior-text { font-size:15px; line-height:1.45; }
+  .ffmvu-interior-action { font-size:12px; min-height:26px; padding:3px 6px; align-self:start; }
+  @container (max-width:1000px) {
+    .ff25-grid { grid-template-columns:minmax(200px,27%) minmax(0,1fr); }
+    .ff25-lower { grid-template-columns:minmax(0,1fr); }
+    .ff25-phys-layout { width:min(100%,340px); }
+    .ffmvu-familiar-sheet { grid-template-columns:minmax(0,1fr) minmax(0,3fr); }
+    .ffmvu-familiar-basic-col>.grid-group-card>.grid-group-content { gap:2px 8px; }
+    .ffmvu-familiar-basic-col .ffmvu-familiar-combat { grid-column:span 5; }
+    .ffmvu-familiar-aux { grid-template-columns:1fr; }
+  }
+  @container (max-width:400px) {
+    .ff25-phys-row { grid-template-columns:96px 64px 64px; gap:10px; }
+    .ff25-phys-orb { width:96px; height:96px; }
+    .ff25-phys-meter,.ff25-phys-dims { width:64px; height:96px; }
+  }
+  @container (max-width:650px) {
+    .ff25-grid { grid-template-columns:1fr; grid-template-areas:"left" "right" "quests"; }
+    .ff25-left { grid-template-columns:minmax(0,1fr); grid-template-rows:auto; }
+    .ff25-right { grid-template-rows:auto; }
+    .ff25-avatar-shell { width:min(75%,240px); }
+    .ffmvu-familiar-sheet { grid-template-columns:minmax(0,1fr); }
+    .ffmvu-familiar-sheet>.ffmvu-familiar-portrait-col { width:min(70%,240px)!important; justify-self:center; }
+    .ffmvu-familiar-basic-col>.grid-group-card>.grid-group-content { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .ffmvu-familiar-basic-col .ffmvu-familiar-field { grid-column:span 1; }
+    .ffmvu-interior-row { grid-template-columns:minmax(0,1fr); gap:2px; }
+    .ffmvu-interior-entry { grid-template-columns:minmax(0,1fr) auto; }
+    .ffmvu-interior-text { grid-column:1/-1; }
+    .ffmvu-interior-action { justify-self:start; }
+  }
+`;
 function shadowCss() {
     return LEGACY_STATUS_CSS
         .replace(/:root\s*\{/g, ':host {')
         .replace(/\bbody\s*\{/g, '.status-body {')
         + '\n'
         + ':host{display:block;width:100%;height:100%;min-height:0;color:#e0f7fa;position:relative;overflow:hidden;}'
-        + '.status-body{position:absolute;top:0;left:50%;width:100%;height:128.205128%;min-height:0;padding:0!important;color:var(--text-primary)!important;transform:translateX(-50%) scale(.78);transform-origin:top center;}'
+        + '.status-body{position:absolute;top:0;left:50%;width:100%;height:calc(100% / .85);min-height:0;padding:0!important;color:var(--text-primary)!important;transform:translateX(-50%) scale(.85);transform-origin:top center;}'
         + '.status-container{height:100%;min-height:0!important;color:var(--text-primary)!important;}'
         + '.tab-content{min-height:0;}'
         + '.prop-val,.ff25-value,.entry-title,.detail-val{color:var(--text-primary)!important;}'
@@ -894,6 +977,20 @@ function shadowCss() {
         + '.ve-snapshot-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:0 0 auto;padding:2px 0 0;}'
         + '.ve-snapshot-note{flex:1;min-width:0;color:var(--text-secondary);font-size:.76em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
         + '.ve-snapshot-layout>.ve-shell{flex:1 1 auto;height:auto;min-height:0;}'
+        + '.ff25-phys-layout{width:min(100%,357px);margin:0 auto;display:grid;grid-template-rows:1fr 1fr;gap:8px;min-height:272px;flex:0 0 auto;}'
+        + '.ff25-phys-row{display:grid;grid-template-columns:112px 76px 76px;justify-content:start;align-items:center;gap:18px;padding-left:3px;}'
+        + '.ff25-phys-orb{position:relative;isolation:isolate;width:112px;height:112px;overflow:hidden;display:grid;place-items:center;border:1px solid var(--accent-primary);border-radius:50%;background:#052938;}'
+        + '.ff25-phys-orb-fill,.ff25-phys-meter-fill{position:absolute;z-index:-1;inset:auto 0 0;height:0;transition:height .3s ease;opacity:.82;}'
+        + '.ff25-phys-bladder{background:linear-gradient(180deg,#f4d66e,#d9aa31);}.ff25-phys-semen{background:linear-gradient(180deg,#fff,#dce9ed);}'
+        + '.ff25-phys-copy{display:grid;gap:3px;text-align:center;text-shadow:0 1px 2px #00141d;}.ff25-phys-label{color:var(--text-secondary);font-size:12px;font-weight:700;letter-spacing:0;}.ff25-phys-value{color:#f3fbff;font:700 20px/1.1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-unit{color:#c4e7f0;font-size:11px;}'
+        + '.ff25-phys-meter{position:relative;isolation:isolate;width:76px;height:112px;overflow:hidden;border:1px solid rgba(0,229,255,.65);border-radius:21px;background:#052938;}.ff25-phys-meter-copy{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:13px 3px;text-align:center;text-shadow:0 1px 2px #00141d;}.ff25-phys-meter-value{color:#f3fbff;font:700 22px/1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-hunger{background:linear-gradient(180deg,#ffe082,#fab025);}.ff25-phys-thirst{background:linear-gradient(180deg,#82b1ff,#4272f5);}.ff25-phys-arousal{background:linear-gradient(180deg,#ff80ab,#fc8bd5);}'
+        + '.ff25-phys-dims{width:76px;height:112px;overflow:hidden;border:1px solid rgba(0,229,255,.65);border-radius:21px;background:#052938;display:grid;grid-template-rows:1fr 1fr;}.ff25-phys-dim{display:flex;align-items:center;justify-content:center;gap:2px;text-align:center;}.ff25-phys-dim+.ff25-phys-dim{border-top:1px solid var(--border-color);}.ff25-phys-dim b{color:var(--accent-primary);font-size:14px;}.ff25-phys-dim strong{color:#f3fbff;font:700 20px/1 ui-monospace,SFMono-Regular,Consolas,monospace;}.ff25-phys-dim small{color:#c4e7f0;font-size:11px;}'
+        + '.ffmvu-familiar-portrait-col>.grid-group-card,.ffmvu-familiar-basic-col>.grid-group-card{height:100%;}.ffmvu-familiar-portrait-col>.grid-group-card{display:flex;flex-direction:column;}.ffmvu-familiar-portrait-col>.grid-group-card>.grid-group-content{flex:1;align-items:stretch;}.ffmvu-familiar-portrait-col .img-wrapper{height:100%;}.ffmvu-familiar-portrait-col .avatar-img{height:100%!important;max-height:306px;object-fit:contain;}'
+        + '.ffmvu-familiar-aux-wrap{padding-top:4px!important;padding-bottom:4px!important;}.ffmvu-familiar-aux{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;}.ffmvu-familiar-aux-box{min-width:0;padding:6px;border:1px solid rgba(0,229,255,.18);border-radius:4px;background:rgba(0,0,0,.16);}.ffmvu-familiar-mini-title{font-size:.82em;font-weight:700;color:var(--accent-primary);padding-bottom:3px;margin-bottom:4px;border-bottom:1px solid rgba(0,229,255,.2);}.ffmvu-familiar-fields{display:flex;flex-wrap:wrap;margin:0 -4px;}'
+        + '.ffmvu-familiar-phys-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;}.ffmvu-familiar-phys-item{min-width:0;}.ffmvu-familiar-phys-head{display:flex;justify-content:space-between;gap:5px;margin-bottom:3px;color:var(--text-secondary);font-size:.78em;}.ffmvu-familiar-phys-head strong{color:var(--text-primary);font-weight:600;}.ffmvu-familiar-phys-item .stat-bar-track{height:7px;}'
+        + '.ffmvu-familiar-full{width:100%!important;flex:1 0 100%!important;padding-top:5px!important;}.ffmvu-familiar-interior{display:grid;}.ffmvu-interior-row{display:grid;grid-template-columns:135px minmax(0,1fr);gap:12px;padding:6px 4px;border-bottom:1px dashed rgba(255,255,255,.12);}.ffmvu-interior-row:last-child{border-bottom:0;}.ffmvu-interior-label{color:var(--text-secondary);font-weight:700;}.ffmvu-interior-stack{display:grid;gap:4px;min-width:0;}.ffmvu-interior-entry{display:flex;align-items:flex-start;gap:6px;min-width:0;}.ffmvu-interior-text{flex:1;min-width:0;color:var(--text-primary);overflow-wrap:anywhere;}.ffmvu-interior-action{flex:0 0 auto;background:transparent;border:1px solid rgba(0,229,255,.28);border-radius:3px;color:var(--text-secondary);padding:1px 5px;font:inherit;font-size:.7em;cursor:pointer;}.ffmvu-interior-action:disabled{opacity:.4;cursor:not-allowed;}.ffmvu-interior-lock{color:#9aaab2;font-style:italic;}'
+        + '@media(max-width:720px){.ff25-phys-layout{min-height:auto;gap:8px;}.ff25-phys-row{grid-template-columns:104px 70px 70px;gap:14px;padding-left:2px;}.ff25-phys-orb{width:104px;height:104px;}.ff25-phys-meter,.ff25-phys-dims{width:70px;height:104px;}.ffmvu-familiar-aux{grid-template-columns:1fr;}.ffmvu-interior-row{grid-template-columns:110px minmax(0,1fr);}}'
+        + STATUS_LAYOUT_CSS
         + VARIABLES_EDITOR_CSS;
 }
 function bindValues(root, data) {
@@ -978,23 +1075,38 @@ function bindOverview(root, state) {
     const placeholder = root.querySelector('.ff25-avatar-placeholder');
     if (placeholder)
         placeholder.style.display = avatar && avatar.style.display === 'block' ? 'none' : 'flex';
-    const hph = getPath(state, 'Narrative.Scene.HPH.player');
     const hphElement = root.getElementById('ff25-hph');
     const lower = root.getElementById('ff25-lower');
-    const hasHph = isRecord(hph);
+    const hphTitle = hphElement?.querySelector('.ff25-title');
+    const layout = hphElement?.querySelector('.ff25-hph-layout');
     if (hphElement)
-        hphElement.style.display = hasHph ? '' : 'none';
+        hphElement.style.display = '';
+    if (hphTitle)
+        hphTitle.textContent = 'Physiology';
     if (lower)
-        lower.classList.toggle('ff25-no-hph', !hasHph);
-    if (!hasHph)
-        return;
+        lower.classList.remove('ff25-no-hph');
+    if (layout) {
+        layout.className = 'ff25-hph-layout ff25-phys-layout';
+        layout.innerHTML = [
+            '<div class="ff25-phys-row">',
+            '<div class="ff25-phys-orb"><div class="ff25-phys-orb-fill ff25-phys-bladder" id="ff25-bladder-fill"></div><div class="ff25-phys-copy"><span class="ff25-phys-label">BLADDER</span><strong class="ff25-phys-value" id="ff25-bladder-value">—</strong></div></div>',
+            '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-hunger" id="ff25-hunger-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">HUNGER</span><strong class="ff25-phys-meter-value" id="ff25-hunger-value">—</strong></div></div>',
+            '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-thirst" id="ff25-thirst-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">THIRST</span><strong class="ff25-phys-meter-value" id="ff25-thirst-value">—</strong></div></div>',
+            '</div>',
+            '<div class="ff25-phys-row">',
+            '<div class="ff25-phys-orb"><div class="ff25-phys-orb-fill ff25-phys-semen" id="ff25-semen-fill"></div><div class="ff25-phys-copy"><span class="ff25-phys-label">SEMEN</span><strong class="ff25-phys-value" id="ff25-semen-value">—</strong><span class="ff25-phys-unit">ml</span></div></div>',
+            '<div class="ff25-phys-meter"><div class="ff25-phys-meter-fill ff25-phys-arousal" id="ff25-arousal-fill"></div><div class="ff25-phys-meter-copy"><span class="ff25-phys-label">AROUSAL</span><strong class="ff25-phys-meter-value" id="ff25-arousal-value">—</strong></div></div>',
+            '<div class="ff25-phys-dims" aria-label="Dimensions"><div class="ff25-phys-dim"><b>L:</b><strong id="ff25-length-value">—</strong><small>cm</small></div><div class="ff25-phys-dim"><b>G:</b><strong id="ff25-girth-value">—</strong><small>cm</small></div></div>',
+            '</div>',
+        ].join('');
+    }
     const clamp10 = (value) => value === null ? 0 : Math.max(0, Math.min(10, value));
-    const bladder = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Bladder');
-    const arousal = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.Arousal');
-    const erection = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionLevel')
-        ?? numberAt(state, 'Narrative.Scene.HPH.player.Physiology.ErectionCapacity');
-    const semen = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenMl');
-    const semenMax = numberAt(state, 'Narrative.Scene.HPH.player.Physiology.SemenCapacityMl');
+    const bladder = numberAt(state, 'Mainchar.Physiology.Bladder');
+    const hunger = numberAt(state, 'Mainchar.Physiology.Hunger');
+    const thirst = numberAt(state, 'Mainchar.Physiology.Thirst');
+    const arousal = numberAt(state, 'Mainchar.Physiology.Arousal');
+    const semen = numberAt(state, 'Mainchar.Physiology.Reproductive.SemenMl');
+    const semenMax = numberAt(state, 'Mainchar.Physiology.Reproductive.SemenCapacityMl');
     const length = numberAt(state, 'Narrative.Scene.HPH.player.Penis.LengthCm');
     const girth = numberAt(state, 'Narrative.Scene.HPH.player.Penis.GirthCm');
     const write = (id, value) => {
@@ -1008,12 +1120,14 @@ function bindOverview(root, state) {
             element.style.height = Math.max(0, Math.min(100, pct)) + '%';
     };
     setHeight('ff25-bladder-fill', clamp10(bladder) * 10);
+    setHeight('ff25-hunger-fill', clamp10(hunger) * 10);
+    setHeight('ff25-thirst-fill', clamp10(thirst) * 10);
     setHeight('ff25-arousal-fill', clamp10(arousal) * 10);
-    setHeight('ff25-erection-fill', clamp10(erection) * 10);
     setHeight('ff25-semen-fill', semen !== null && semenMax !== null && semenMax > 0 ? semen / semenMax * 100 : 0);
     write('ff25-bladder-value', bladder);
+    write('ff25-hunger-value', hunger);
+    write('ff25-thirst-value', thirst);
     write('ff25-arousal-value', arousal);
-    write('ff25-erection-value', erection);
     write('ff25-semen-value', semen);
     write('ff25-length-value', length);
     write('ff25-girth-value', girth);
@@ -1623,54 +1737,178 @@ function familiarIdentity(state, id, member) {
     }
     return '—';
 }
+function familiarGroupWrapper(root, title) {
+    const target = title.trim().toLowerCase();
+    for (const header of Array.from(root.querySelectorAll('.grid-group-header'))) {
+        if ((header.textContent || '').trim().toLowerCase() !== target)
+            continue;
+        return header.closest('.prop-row-wrapper');
+    }
+    return null;
+}
+function removeLegacyFamiliarProfileRows(root) {
+    for (const path of [
+        'Familiar.Hair_Style', 'Familiar.Personality', 'Familiar.Physical_Features',
+        'Familiar.ExSkill', 'Familiar.Bio', 'Familiar.Biography', 'Familiar.Secret',
+    ]) {
+        const bound = root.querySelector('[data-bind-fullpath="' + path + '"]');
+        bound?.closest('.prop-row-wrapper')?.remove();
+    }
+    for (const header of Array.from(root.querySelectorAll('.nested-section-header'))) {
+        if ((header.textContent || '').trim().toLowerCase() === 'biography') {
+            header.closest('.prop-row-wrapper')?.remove();
+        }
+    }
+}
+function renderFamiliarPhysiology(member) {
+    const box = document.createElement('section');
+    box.className = 'ffmvu-familiar-aux-box';
+    const title = document.createElement('div');
+    title.className = 'ffmvu-familiar-mini-title';
+    title.textContent = 'Physiology';
+    const grid = document.createElement('div');
+    grid.className = 'ffmvu-familiar-phys-grid';
+    const specs = [
+        ['Hunger', 'Physiology.Hunger', 'bar-orange'],
+        ['Thirst', 'Physiology.Thirst', 'bar-blue'],
+        ['Bladder', 'Physiology.Bladder', 'bar-yellow'],
+        ['Arousal', 'Physiology.Arousal', 'bar-pink'],
+    ];
+    for (const [label, path, colorClass] of specs) {
+        const value = numberAt(member, path);
+        const item = document.createElement('div');
+        item.className = 'ffmvu-familiar-phys-item';
+        const head = document.createElement('div');
+        head.className = 'ffmvu-familiar-phys-head';
+        const key = document.createElement('span');
+        key.textContent = label;
+        const shown = document.createElement('strong');
+        shown.textContent = shownNumber(value);
+        head.append(key, shown);
+        const track = document.createElement('div');
+        track.className = 'stat-bar-track';
+        const fill = document.createElement('div');
+        fill.className = 'stat-bar-fill ' + colorClass;
+        fill.style.width = Math.max(0, Math.min(100, (value ?? 0) * 10)) + '%';
+        track.appendChild(fill);
+        item.append(head, track);
+        grid.appendChild(item);
+    }
+    box.append(title, grid);
+    return box;
+}
+function prepareFamiliarLayout(root, member) {
+    removeLegacyFamiliarProfileRows(root);
+    const direct = Array.from(root.children);
+    const portrait = direct[0];
+    const basic = direct[1];
+    root.classList.add('ffmvu-familiar-sheet');
+    portrait?.classList.add('ffmvu-familiar-portrait-col');
+    portrait?.querySelector('.grid-group-header')?.remove();
+    basic?.classList.add('ffmvu-familiar-basic-col');
+    const basicContent = basic?.querySelector(':scope > .grid-group-card > .grid-group-content');
+    if (!basicContent)
+        return;
+    let section = '';
+    for (const row of Array.from(basicContent.children)) {
+        const heading = row.querySelector('.nested-section-header');
+        if (heading && !row.querySelector('.grid-group-card')) {
+            section = (heading.textContent || '').trim().toLowerCase();
+            row.classList.add('ffmvu-familiar-section');
+        }
+        else if (row.querySelector(':scope > .prop-row,:scope > .stat-bar-box')) {
+            row.classList.add('ffmvu-familiar-field');
+            if (section === 'combat stats')
+                row.classList.add('ffmvu-familiar-combat');
+        }
+    }
+    const combatHeader = Array.from(basicContent.querySelectorAll('.nested-section-header'))
+        .find(header => (header.textContent || '').trim().toLowerCase() === 'combat stats');
+    const combatWrapper = combatHeader?.closest('.prop-row-wrapper') ?? null;
+    const auxWrapper = document.createElement('div');
+    auxWrapper.className = 'prop-row-wrapper ffmvu-familiar-aux-wrap';
+    auxWrapper.style.width = '100%';
+    const aux = document.createElement('div');
+    aux.className = 'ffmvu-familiar-aux';
+    const familiarBox = document.createElement('section');
+    familiarBox.className = 'ffmvu-familiar-aux-box';
+    const familiarTitle = document.createElement('div');
+    familiarTitle.className = 'ffmvu-familiar-mini-title';
+    familiarTitle.textContent = 'Familiar';
+    const familiarFields = document.createElement('div');
+    familiarFields.className = 'ffmvu-familiar-fields';
+    const fieldPaths = [
+        'Familiar.Is_present', 'Familiar.Is_in_battle_team', 'Familiar.Familiar_Status',
+        'Familiar.Identity', 'Familiar.Location',
+    ];
+    fieldPaths.forEach((fieldPath, index) => {
+        const row = basicContent.querySelector('[data-bind-fullpath="' + fieldPath + '"]')
+            ?.closest('.prop-row-wrapper');
+        if (!row)
+            return;
+        row.style.width = index < 2 ? '49%' : '100%';
+        familiarFields.appendChild(row);
+    });
+    familiarBox.append(familiarTitle, familiarFields);
+    aux.append(familiarBox, renderFamiliarPhysiology(member));
+    auxWrapper.appendChild(aux);
+    if (combatWrapper)
+        basicContent.insertBefore(auxWrapper, combatWrapper);
+    else
+        basicContent.appendChild(auxWrapper);
+}
 function renderFamiliarInterior(member, familiarId, options) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'prop-row-wrapper ffmvu-familiar-full';
+    wrapper.style.width = '100%';
+    const card = document.createElement('div');
+    card.className = 'grid-group-card';
+    const heading = document.createElement('div');
+    heading.className = 'grid-group-header';
+    heading.textContent = 'Familiar Interior';
     const panel = document.createElement('div');
     panel.className = 'ffmvu-familiar-interior';
-    panel.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,229,255,.2);display:grid;gap:6px;';
-    const heading = document.createElement('div');
-    heading.textContent = 'Familiar interior';
-    heading.style.cssText = 'font-size:.88em;font-weight:bold;color:#81d4fa;';
-    panel.appendChild(heading);
-    const collection = (title, domain) => {
-        const box = document.createElement('div');
-        box.style.cssText = 'display:grid;gap:3px;';
+    const addRow = (labelText, content) => {
+        const row = document.createElement('div');
+        row.className = 'ffmvu-interior-row';
         const label = document.createElement('div');
-        label.textContent = title;
-        label.style.cssText = 'font-size:.78em;color:rgba(129,212,250,.82);';
-        box.appendChild(label);
+        label.className = 'ffmvu-interior-label';
+        label.textContent = labelText;
+        row.append(label, content);
+        panel.appendChild(row);
+    };
+    const collection = (title, domain) => {
+        const stack = document.createElement('div');
+        stack.className = 'ffmvu-interior-stack';
         const entries = Object.entries(record(member[domain]));
         if (!entries.length) {
             const empty = document.createElement('div');
+            empty.className = 'ffmvu-interior-text';
             empty.textContent = '—';
-            empty.style.cssText = 'font-size:.78em;color:rgba(224,247,250,.48);';
-            box.appendChild(empty);
-            panel.appendChild(box);
+            stack.appendChild(empty);
+            addRow(title, stack);
             return;
         }
         for (const [key, raw] of entries) {
             const entry = record(raw);
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
-            const text = document.createElement('div');
-            text.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
-            if (domain === 'InnerThreads') {
-                text.textContent = [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key;
-            }
-            else {
-                text.textContent = [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
-            }
+            const line = document.createElement('div');
+            line.className = 'ffmvu-interior-entry';
+            const entryText = document.createElement('div');
+            entryText.className = 'ffmvu-interior-text';
+            entryText.textContent = domain === 'InnerThreads'
+                ? [statusText(entry.Subject, ''), statusText(entry.Stance, ''), statusText(entry.Tension, '')].filter(Boolean).join(' · ') || key
+                : [statusText(entry.State, key), statusText(entry.Severity, '')].filter(Boolean).join(' · ');
             const edit = document.createElement('button');
             edit.type = 'button';
+            edit.className = 'ffmvu-interior-action';
             edit.textContent = 'Edit';
             edit.disabled = options.mutationDisabled;
-            edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
             edit.addEventListener('click', () => {
                 const next = window.prompt('Edit ' + title + ' entry as JSON:', JSON.stringify(entry, null, 2));
                 if (next === null)
                     return;
                 try {
-                    const value = JSON.parse(next);
-                    options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value });
+                    options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, domain, key], value: JSON.parse(next) });
                 }
                 catch {
                     window.alert('Expected valid JSON.');
@@ -1678,34 +1916,36 @@ function renderFamiliarInterior(member, familiarId, options) {
             });
             const resolve = document.createElement('button');
             resolve.type = 'button';
+            resolve.className = 'ffmvu-interior-action';
             resolve.textContent = 'Resolve';
             resolve.disabled = options.mutationDisabled;
-            resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
             resolve.addEventListener('click', () => {
                 if (window.confirm('Resolve ' + key + '?'))
                     options.onIntent({ type: 'variable.delete', path: ['Familiar', familiarId, domain, key] });
             });
-            row.append(text, edit, resolve);
-            box.appendChild(row);
+            line.append(entryText, edit, resolve);
+            stack.appendChild(line);
         }
-        panel.appendChild(box);
+        addRow(title, stack);
     };
     collection('Conditions', 'Conditions');
     collection('Mental states', 'MentalStates');
     collection('Inner threads', 'InnerThreads');
     const agenda = record(member.Agenda);
-    const agendaRow = document.createElement('div');
-    agendaRow.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:.78em;';
+    const agendaStack = document.createElement('div');
+    agendaStack.className = 'ffmvu-interior-stack';
+    const agendaLine = document.createElement('div');
+    agendaLine.className = 'ffmvu-interior-entry';
     const agendaText = document.createElement('div');
-    agendaText.style.cssText = 'flex:1;min-width:0;color:var(--text-primary,#e0f7fa);overflow-wrap:anywhere;';
-    agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, 'Agenda —');
-    agendaRow.appendChild(agendaText);
+    agendaText.className = 'ffmvu-interior-text';
+    agendaText.textContent = statusText(agenda.CurrentGoal ?? agenda.NextAction, '—');
+    agendaLine.appendChild(agendaText);
     if (Object.keys(agenda).length) {
         const edit = document.createElement('button');
         edit.type = 'button';
+        edit.className = 'ffmvu-interior-action';
         edit.textContent = 'Edit';
         edit.disabled = options.mutationDisabled;
-        edit.style.cssText = 'font-size:.72em;padding:1px 5px;';
         edit.addEventListener('click', () => {
             const next = window.prompt('Edit Agenda as JSON:', JSON.stringify(agenda, null, 2));
             if (next === null)
@@ -1719,14 +1959,21 @@ function renderFamiliarInterior(member, familiarId, options) {
         });
         const resolve = document.createElement('button');
         resolve.type = 'button';
+        resolve.className = 'ffmvu-interior-action';
         resolve.textContent = 'Resolve';
         resolve.disabled = options.mutationDisabled;
-        resolve.style.cssText = 'font-size:.72em;padding:1px 5px;';
         resolve.addEventListener('click', () => options.onIntent({ type: 'variable.set', path: ['Familiar', familiarId, 'Agenda'], value: { Status: 'resolved' } }));
-        agendaRow.append(edit, resolve);
+        agendaLine.append(edit, resolve);
     }
-    panel.appendChild(agendaRow);
-    return panel;
+    agendaStack.appendChild(agendaLine);
+    addRow('Agenda', agendaStack);
+    const secret = document.createElement('div');
+    secret.className = (statusNumber(member.Affection) ?? 0) >= 90 ? 'ffmvu-interior-text' : 'ffmvu-interior-text ffmvu-interior-lock';
+    secret.textContent = (statusNumber(member.Affection) ?? 0) >= 90 ? statusText(member.Secret, '—') : 'Requires 90% Affection';
+    addRow('Secret', secret);
+    card.append(heading, panel);
+    wrapper.appendChild(card);
+    return wrapper;
 }
 function renderFamiliars(shadow, options) {
     const container = shadow.getElementById('blk-blk-1770140160072');
@@ -1796,7 +2043,6 @@ function renderFamiliars(shadow, options) {
             anchor.style.cssText = 'height:0;margin:0;padding:0;width:100%;flex-basis:100%;flex-shrink:0;';
             container.appendChild(anchor);
             const wrapper = document.createElement('div');
-            wrapper.style.display = 'contents';
             wrapper.appendChild(template.content.cloneNode(true));
             container.appendChild(wrapper);
             bindValues(wrapper, member);
@@ -1811,10 +2057,22 @@ function renderFamiliars(shadow, options) {
                 corePoints.style.color = 'red';
                 corePoints.style.fontWeight = 'bold';
             }
+            prepareFamiliarLayout(wrapper, member);
             renderNestedLists(shadow, wrapper, member, { kind: 'familiar', id }, options);
-            const groups = wrapper.querySelectorAll('.grid-group-card');
-            const interiorHost = groups[1]?.querySelector('.grid-group-content') ?? wrapper;
-            interiorHost.appendChild(renderFamiliarInterior(member, id, options));
+            const inventory = familiarGroupWrapper(wrapper, 'Inventory');
+            const equipment = familiarGroupWrapper(wrapper, 'Equipments');
+            const interior = renderFamiliarInterior(member, id, options);
+            wrapper.appendChild(interior);
+            if (inventory) {
+                inventory.classList.add('ffmvu-familiar-full');
+                inventory.style.width = '100%';
+                wrapper.appendChild(inventory);
+            }
+            if (equipment) {
+                equipment.classList.add('ffmvu-familiar-full');
+                equipment.style.width = '100%';
+                wrapper.appendChild(equipment);
+            }
             wrapper.querySelectorAll('.img-edit-btn[data-save-root="Familiar"]').forEach(button => { button.dataset.ffmvuFamiliarId = id; });
             wrapper.querySelectorAll('.ar-checkbox-input').forEach(input => { input.dataset.ffmvuFamiliarId = id; });
             wireCheckboxes(wrapper, options.onIntent, options.mutationDisabled);
@@ -2275,35 +2533,6 @@ function htmlDetails(record) {
 }
 export function setup(ctx) {
     const removeStyle = ctx.dom.addStyle(`
-    :root {
-      --npc-c_: #F56991;
-      --npc-c0: #58DDD0;
-      --npc-c1: #45CAC1;
-      --npc-c2: #36B5AF;
-      --npc-c3: #439E9B;
-      --npc-c4: #719493;
-      --npc-c5: #FFAD68;
-      --npc-c6: #F49A68;
-      --npc-c7: #E38869;
-      --npc-c8: #CF7C6D;
-      --npc-c9: #B87874;
-      --npc-c-: #B8A6D9;
-    }
-    span[style*="--npc-color"],
-    span[style*="--npc-color"] * {
-      color: var(--npc-color) !important;
-    }
-    span[style*="--npc-color"] em {
-      color: var(--npc-color) !important;
-      filter: brightness(.84) saturate(.9);
-      opacity: .78;
-      font-style: italic;
-    }
-    font[color] em {
-      filter: brightness(.84) saturate(.9);
-      opacity: .78;
-    }
-
     .ffsm-app {
       --ffsm-accent:#00e5ff;
       --ffsm-accent-soft:#81d4fa;
@@ -2324,7 +2553,7 @@ export function setup(ctx) {
     }
     .ffsm-app.open {
       display:block;
-      height:520px;
+      height:550px;
       min-height:0;
       pointer-events:auto;
     }
@@ -2516,7 +2745,7 @@ export function setup(ctx) {
     }
     .ffsm-diagnostic-note { color:var(--lumiverse-text-muted);font-size:9px;line-height:1.35; }
     @media (max-width:560px) {
-      .ffsm-app.open { height:46vh;min-height:280px;max-height:520px; }
+      .ffsm-app.open { height:46vh;min-height:0;max-height:550px; }
       .ffsm-grid2,.ffsm-grid3,.ffsm-formgrid { grid-template-columns:1fr; }
       .ffsm-head { flex-direction:column; }
       .ffsm-head-actions { justify-content:flex-start; }
@@ -2559,6 +2788,7 @@ export function setup(ctx) {
     let variablesSearch = '';
     let notice = '';
     let panelOpen = false;
+    let stateRequestInFlight = false;
     let portableImportOpen = false;
     let portableImportText = '';
     let legacyImportOpen = false;
@@ -2572,7 +2802,7 @@ export function setup(ctx) {
     let snapshotExportAction = null;
     let snapshotExportNotice = '';
     const PANEL_HEIGHT_KEY = 'ffmvu.statusmenu.panelHeight.v1';
-    const DEFAULT_PANEL_HEIGHT = 520;
+    const DEFAULT_PANEL_HEIGHT = 550;
     let panelHeight = (() => {
         try {
             const stored = Number(window.localStorage.getItem(PANEL_HEIGHT_KEY));
@@ -2584,8 +2814,13 @@ export function setup(ctx) {
     })();
     function clampPanelHeight(value) {
         const minimum = 280;
-        const maximum = Math.max(minimum, window.innerHeight - 110);
-        return Math.round(Math.max(minimum, Math.min(maximum, value)));
+        // The panel grows upward from the composer; use its actual anchor.
+        const anchorBottom = Number.parseFloat(window.getComputedStyle(app).bottom);
+        const anchor = app.offsetParent instanceof HTMLElement
+            ? app.offsetParent.getBoundingClientRect().top + app.offsetParent.clientHeight - (Number.isFinite(anchorBottom) ? anchorBottom : 0)
+            : window.innerHeight - 110;
+        const maximum = Math.max(1, Math.min(window.innerHeight - 16, anchor - 16));
+        return Math.round(Math.min(maximum, Math.max(Math.min(minimum, maximum), value)));
     }
     function applyPanelHeight() {
         panelHeight = clampPanelHeight(panelHeight);
@@ -2671,6 +2906,7 @@ export function setup(ctx) {
         if (diagnosticsOpen) {
             panelOpen = true;
             syncPanelVisibility();
+            requestState();
             requestDiagnostics();
         }
         else {
@@ -2687,9 +2923,13 @@ export function setup(ctx) {
     function requestState() {
         if (!activeChatId) {
             snapshot = null;
+            stateRequestInFlight = false;
             render();
             return;
         }
+        if (!panelOpen || stateRequestInFlight)
+            return;
+        stateRequestInFlight = true;
         ctx.sendToBackend({ type: 'ffmvu_gui_get_state', chatId: activeChatId });
     }
     async function copyJson(value) {
@@ -3420,7 +3660,6 @@ export function setup(ctx) {
         const gender = textInput('Male');
         const race = textInput('Human');
         const occupation = textInput('Adventurer');
-        const mental = textInput('Calm');
         const level = textInput('1', 'number');
         level.min = '1';
         level.max = '140';
@@ -3431,7 +3670,7 @@ export function setup(ctx) {
         const charisma = textInput('85', 'number');
         charisma.min = '80';
         charisma.max = '100';
-        grid.append(field('Date', date), field('Time', time), field('Weather', weather), field('Location', location), field('Name', name), field('Age', age), field('Gender', gender), field('Race', race), field('Occupation', occupation), field('Mental state', mental), field('Level', level), field('EXP', exp), field('Core points', core), field('Charisma (80–100)', charisma));
+        grid.append(field('Date', date), field('Time', time), field('Weather', weather), field('Location', location), field('Name', name), field('Age', age), field('Gender', gender), field('Race', race), field('Occupation', occupation), field('Level', level), field('EXP', exp), field('Core points', core), field('Charisma (80–100)', charisma));
         form.appendChild(grid);
         const statsCard = make('div', 'ffsm-card');
         statsCard.style.marginTop = '9px';
@@ -3502,7 +3741,6 @@ export function setup(ctx) {
                     gender: gender.value.trim() || 'Male',
                     race: race.value.trim() || 'Human',
                     occupation: occupation.value.trim() || 'Adventurer',
-                    mental: mental.value.trim() || 'Calm',
                     charisma: Number(charisma.value),
                     level: Number(level.value),
                     exp: Number(exp.value),
@@ -3626,6 +3864,8 @@ export function setup(ctx) {
         frame.append(resizeGrip(), content);
         const state = activeState();
         if (state && snapshot?.ok && snapshot.initialized) {
+            if (notice)
+                content.appendChild(make('div', 'ffsm-notice', notice));
             content.appendChild(renderLegacyStatusMenu({
                 state,
                 activeTab,
@@ -3741,10 +3981,9 @@ export function setup(ctx) {
         if (payload?.type === 'ffmvu_gui_state') {
             if (payload.chatId !== activeChatId)
                 return;
+            stateRequestInFlight = false;
             snapshot = payload;
             busy = false;
-            if (snapshot.ok && snapshot.initialized)
-                notice = '';
             render();
             return;
         }
@@ -3879,6 +4118,7 @@ export function setup(ctx) {
             return;
         activeChatId = next;
         snapshot = null;
+        stateRequestInFlight = false;
         busy = false;
         notice = '';
         activeTab = 'overview';

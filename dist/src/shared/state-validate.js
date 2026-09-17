@@ -107,8 +107,8 @@ function validateAgenda(value, path, errors) {
 export function validateStateV158(state) {
     return [...new Set(validateCommonState(state))];
 }
-/** Current state validation. Normalization removes resolved and empty entries first. */
-export function validateState(state) {
+/** Frozen 1.6 validation, retained exactly for historic replay. */
+export function validateStateV160(state) {
     const errors = validateCommonState(state);
     if (!isRecord(state))
         return [...new Set(errors)];
@@ -143,6 +143,74 @@ export function validateState(state) {
         validateInnerThreadCollection(raw.InnerThreads, 'Familiar.' + id + '.InnerThreads', 2, errors);
         validateAgenda(raw.Agenda, 'Familiar.' + id + '.Agenda', errors);
     }
+    return [...new Set(errors)];
+}
+function validatePhysiology(value, path, errors) {
+    if (!isRecord(value)) {
+        errors.push(path + ' is not an object');
+        return;
+    }
+    for (const field of ['Hunger', 'Thirst', 'Bladder', 'Arousal']) {
+        const number = Number(value[field]);
+        const upper = field === 'Arousal' ? 9 : 10;
+        if (!Number.isFinite(number) || number < 0 || number > upper)
+            errors.push(path + '.' + field + ' must be a finite 0–' + upper + ' number');
+    }
+    const last = asRecord(value.LastPhysAt);
+    if (!text(last.Date).trim() || !text(last.Time).trim())
+        errors.push(path + '.LastPhysAt must contain Date and Time');
+    if (value.Reproductive !== undefined) {
+        const reproductive = asRecord(value.Reproductive);
+        for (const field of ['SemenMl', 'SemenCapacityMl']) {
+            if (reproductive[field] !== null && (!Number.isFinite(Number(reproductive[field])) || Number(reproductive[field]) < 0)) {
+                errors.push(path + '.Reproductive.' + field + ' must be null or a non-negative number');
+            }
+        }
+        const semen = reproductive.SemenMl;
+        const capacity = reproductive.SemenCapacityMl;
+        if (semen !== null && capacity !== null && Number(semen) > Number(capacity)) {
+            errors.push(path + '.Reproductive.SemenMl cannot exceed SemenCapacityMl');
+        }
+    }
+}
+function validateHphGeometry(value, path, errors) {
+    if (value === undefined)
+        return;
+    if (!isRecord(value)) {
+        errors.push(path + ' is not an object');
+        return;
+    }
+    for (const [ownerId, owner] of Object.entries(value)) {
+        if (!isRecord(owner)) {
+            errors.push(path + '.' + ownerId + ' is not an object');
+            continue;
+        }
+        for (const field of ['Physiology', 'ErectionCapacity', 'ErectionLevel']) {
+            if (owner[field] !== undefined)
+                errors.push(path + '.' + ownerId + '.' + field + ' is retired; HPH stores geometry only');
+        }
+    }
+}
+/** Current 1.7 validation. Normalization removes retired state before validation. */
+export function validateState(state) {
+    const errors = validateStateV160(state);
+    if (!isRecord(state))
+        return [...new Set(errors)];
+    const mainchar = asRecord(state.Mainchar);
+    validatePhysiology(mainchar.Physiology, 'Mainchar.Physiology', errors);
+    for (const [id, raw] of Object.entries(asRecord(state.Familiar))) {
+        if (!isRecord(raw))
+            continue;
+        validatePhysiology(raw.Physiology, 'Familiar.' + id + '.Physiology', errors);
+        if (raw.CurrentHairstyle !== undefined && !isLabeledTuple(raw.CurrentHairstyle)) {
+            errors.push('Familiar.' + id + '.CurrentHairstyle is not a labeled tuple');
+        }
+        for (const field of ['Hair_Style', 'Personality', 'Physical_Features', 'ExSkill', 'Bio', 'Biography']) {
+            if (raw[field] !== undefined)
+                errors.push('Familiar.' + id + '.' + field + ' is retired; use character sources or CurrentHairstyle');
+        }
+    }
+    validateHphGeometry(asRecord(state.Narrative).Scene && asRecord(asRecord(state.Narrative).Scene).HPH, 'Narrative.Scene.HPH', errors);
     return [...new Set(errors)];
 }
 export function assertValidState(state) {

@@ -5,6 +5,7 @@ import type { ReducerRegistry } from '../shared/reducer-registry.js';
 import { AnchorStore } from '../persistence/anchor-store.js';
 import { EventStore } from '../persistence/event-store.js';
 import { Materializer } from '../persistence/materializer.js';
+import type { ResolutionSession } from '../persistence/resolution-session.js';
 import type { JsonStoragePort } from '../persistence/storage-port.js';
 import { type BaseSnapshotKind, type CommitAnchor, type MaterializedState, type PortableSnapshot, type ProjectionSeed, type StateCommitKind, type StateScope, type TranscriptBaseBoundary } from '../persistence/types.js';
 import { type GameStartPayload } from '../shared/domain/gamestart.js';
@@ -94,7 +95,6 @@ export declare class StateService {
     readonly anchors: AnchorStore;
     private readonly mutex;
     constructor(storage: JsonStoragePort, reducers: ReducerRegistry, projections: ProjectionRegistry);
-    private updateMaterializedTipCache;
     private verifyPortableSnapshot;
     /**
      * Append a new semantic base to an existing physical journal without binding
@@ -112,19 +112,19 @@ export declare class StateService {
     importPortableSnapshot(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary): Promise<MaterializedState>;
     /**
      * Verify a portable snapshot exactly as exported, then stage it as a new
-     * current-chat checkpoint. Legacy snapshots are upgraded deterministically
+     * current-chat checkpoint. Pre-current snapshots are upgraded deterministically
      * to the current schema before staging; their original hashes remain
      * provenance and are never rewritten.
      */
     stagePortableSnapshotCheckpoint(scope: StateScope, snapshot: PortableSnapshot, transcriptBoundary?: TranscriptBaseBoundary, requestId?: string): Promise<MaterializedState>;
     /**
-     * Stage the active legacy semantic state as a current-schema checkpoint.
+     * Stage an active pre-current semantic state as a current-schema checkpoint.
      * The source node is semantic authority; the latest physical journal tip is
      * used only as the previous StoreRevision link.
      */
     stageLegacyMigrationCheckpoint(scope: StateScope, input: StageLegacyMigrationCheckpointInput): Promise<MaterializedState>;
     /**
-     * Upgrade one legacy head to the current schema without involving the UI,
+     * Upgrade one pre-current head to the current schema without involving the UI,
      * a copied snapshot, or an LLM. The resulting migration commit preserves
      * the existing transcript/variant lineage just like any other system state
      * transition.
@@ -134,7 +134,7 @@ export declare class StateService {
     commitPatch(scope: StateScope, input: CommitPatchInput): Promise<MaterializedState>;
     finalizeModelAttempt(scope: StateScope, input: FinalizeModelAttemptInput): Promise<FinalizeModelAttemptResult>;
     readLatestCommittedTransactionTip(scope: StateScope): Promise<MaterializedState | null>;
-    getProjectionForNode(scope: StateScope, nodeId: string): Promise<{
+    getProjectionForNode(scope: StateScope, nodeId: string, session?: ResolutionSession): Promise<{
         nodeId: string;
         stateHash: string;
         reducerVersion: string;
