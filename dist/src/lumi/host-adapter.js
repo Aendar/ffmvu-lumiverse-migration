@@ -25,7 +25,7 @@ export function suppressChatHistoryBySourceIds(messages, excludedSourceMessageId
     const excluded = new Set(excludedSourceMessageIds.map(String));
     return messages.filter(message => !(message.__isChatHistory === true && message.sourceMessageId && excluded.has(String(message.sourceMessageId))));
 }
-const HISTORICAL_STATE_BLOCK = /<UpdateVariable\\b[^>]*>[\\s\\S]*?<\\/UpdateVariable>/gi;
+const HISTORICAL_STATE_BLOCK = /<UpdateVariable\b[^>]*>[\s\S]*?<\/UpdateVariable>/gi;
 /**
  * Historical assistant prose remains narrative evidence, but its embedded
  * machine-state block is never prompt authority. MODEL_STATE/STATE_TRAIL own
