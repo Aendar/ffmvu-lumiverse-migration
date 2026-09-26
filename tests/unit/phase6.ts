@@ -4,13 +4,40 @@ import { createProjectionRegistry } from '../../src/shared/projection-registry.j
 import { createReducerRegistry } from '../../src/shared/reducer-registry.js';
 import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { buildModelPatchAuthorizationView } from '../../src/shared/patch-policy.js';
-import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type StateScope } from '../../src/persistence/types.js';
+import { ACTIVE_PREFIX_FINGERPRINT_VERSION, LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION, type StateScope } from '../../src/persistence/types.js';
+import { activePrefixHash } from '../../src/transcript-fingerprint.js';
 import { V160_PROJECTION_VERSION, V160_REDUCER_VERSION } from '../../src/shared/state-schema.js';
 
 let passed = 0;
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error('ASSERT: ' + message); passed += 1; }
 
 async function main() {
+  const fingerprintA = [
+    { id: 'u1', role: 'user', content: 'same', swipes: ['same'], swipeId: 0 },
+    { id: 'a1', role: 'assistant', content: 'stable', swipes: ['stable', 'stable'], swipeId: 0 },
+  ];
+  const fingerprintB = structuredClone(fingerprintA);
+  fingerprintB[1]!.swipeId = 1;
+  assert(
+    await activePrefixHash(fingerprintA, 'a1') === await activePrefixHash(fingerprintB, 'a1'),
+    'v2 transcript boundary ignores swipe-index metadata when active content is unchanged',
+  );
+  assert(
+    await activePrefixHash(fingerprintA, 'a1', LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION) !==
+      await activePrefixHash(fingerprintB, 'a1', LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION),
+    'v1 transcript boundary remains byte-compatible with legacy swipe-index-sensitive hashes',
+  );
+  const fingerprintEdited = structuredClone(fingerprintB);
+  fingerprintEdited[1]!.swipes![1] = 'changed';
+  assert(
+    await activePrefixHash(fingerprintB, 'a1') !== await activePrefixHash(fingerprintEdited, 'a1'),
+    'v2 transcript boundary still detects active-content edits',
+  );
+  assert(
+    ACTIVE_PREFIX_FINGERPRINT_VERSION === 'ffmvu-active-prefix-v2',
+    'new transcript boundaries are written with v2',
+  );
+
   const storage = new MemoryJsonStorage();
   const service = new StateService(storage, createReducerRegistry(), createProjectionRegistry());
   const source: StateScope = { userId: 'u', chatId: 'source' };

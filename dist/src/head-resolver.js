@@ -1,6 +1,6 @@
 import { activePrefixHash } from './transcript-fingerprint.js';
 import { ResolutionSession } from './persistence/resolution-session.js';
-import { ACTIVE_PREFIX_FINGERPRINT_VERSION } from './persistence/types.js';
+import { ACTIVE_PREFIX_FINGERPRINT_VERSION, LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION } from './persistence/types.js';
 export class HeadResolver {
     eventStore;
     materializer;
@@ -29,11 +29,13 @@ export class HeadResolver {
             const base = baseNode.value;
             let startIndex = 0;
             if (base.transcriptBoundary) {
-                if (base.transcriptBoundary.fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION)
+                const fingerprintVersion = base.transcriptBoundary.fingerprintVersion;
+                if (fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION &&
+                    fingerprintVersion !== LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION)
                     return this.bad('base_boundary_dirty', base, 'unsupported boundary fingerprint version', session);
                 let actual;
                 try {
-                    actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId);
+                    actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId, fingerprintVersion);
                 }
                 catch (error) {
                     return this.bad('base_boundary_dirty', base, String(error), session);

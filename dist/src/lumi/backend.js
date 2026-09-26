@@ -15,12 +15,12 @@ import { assertGuiIntent } from '../shared/domain/gui-intents.js';
 import { validateGameStartPayload } from '../shared/domain/gamestart.js';
 import { activePrefixHash } from '../transcript-fingerprint.js';
 import { AttemptContextRegistry, EarlyGenerationRegistry } from './attempt-context.js';
-import { filterTranscriptForGeneration, suppressChatHistoryBySourceIds, swipeObservations, toHostTranscript } from './host-adapter.js';
+import { filterTranscriptForGeneration, stripHistoricalStateBlocks, suppressChatHistoryBySourceIds, swipeObservations, toHostTranscript } from './host-adapter.js';
 import { injectFrozenModelState } from './model-state-injector.js';
 import { injectNarrativeHistoryContext } from './history-metadata.js';
 import { UserStorageJsonAdapter } from './user-storage-adapter.js';
 import { DiagnosticTraceStore } from './diagnostic-trace.js';
-const BRIDGE_VERSION = '0.13.25';
+const BRIDGE_VERSION = '0.13.26';
 const PRESET_VERSION = 'FF5.2_MAX_MVU_v0.4.17 · Bounded Render + Physiology Separation';
 const CONFIG_PATH = 'bridge-config.json';
 const runtimes = new Map();
@@ -464,7 +464,7 @@ async function bindStagedCheckpointRoot(rt, scope, prior, staged, boundary) {
         const boundaryIndex = currentMessages.findIndex(message => String(message.id) === boundary.throughMessageId);
         if (boundaryIndex < 0)
             throw new Error('CHECKPOINT_BOUNDARY_MESSAGE_MISSING');
-        const actualHash = await activePrefixHash(toHostTranscript(currentMessages), boundary.throughMessageId);
+        const actualHash = await activePrefixHash(toHostTranscript(currentMessages), boundary.throughMessageId, boundary.fingerprintVersion);
         if (actualHash !== boundary.activePrefixHash)
             throw new Error('CHECKPOINT_TRANSCRIPT_CHANGED');
         verificationMessages = currentMessages.slice(0, boundaryIndex + 1);
@@ -1775,7 +1775,7 @@ const interceptorHandler = async (messages, context) => {
         generationType: pending.generationType,
         messageCount: messages.length,
     });
-    const promptMessages = suppressChatHistoryBySourceIds(messages, pending.suppressedHistoryMessageIds ?? []);
+    const promptMessages = stripHistoricalStateBlocks(suppressChatHistoryBySourceIds(messages, pending.suppressedHistoryMessageIds ?? []));
     const injected = injectFrozenModelState(promptMessages, pending.projectionView);
     pending.injectionMode = injected.mode;
     const historyMessages = injectNarrativeHistoryContext(injected.messages, pending.assistantNarrativeTimestamps ?? {}, pending.recentChanges ?? null, pending.stateHistory ?? null);

@@ -7,3 +7,4 @@ export declare function swipeObservations(message: LumiChatMessage): Array<{
 }>;
 export declare function filterTranscriptForGeneration(messages: LumiChatMessage[], generationType: string, targetMessageId?: string): LumiChatMessage[];
 export declare function suppressChatHistoryBySourceIds(messages: LumiLlmMessage[], excludedSourceMessageIds: readonly string[]): LumiLlmMessage[];
+export declare function stripHistoricalStateBlocks(messages: LumiLlmMessage[]): LumiLlmMessage[];

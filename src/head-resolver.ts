@@ -3,7 +3,7 @@ import { AnchorStore, TranscriptAttemptStore, VariantIndexStore } from './persis
 import type { EventStore } from './persistence/event-store.js';
 import type { Materializer } from './persistence/materializer.js';
 import { ResolutionSession } from './persistence/resolution-session.js';
-import { ACTIVE_PREFIX_FINGERPRINT_VERSION, type BaseSnapshot, type StateCommit, type StateScope, type VariantId } from './persistence/types.js';
+import { ACTIVE_PREFIX_FINGERPRINT_VERSION, LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION, type BaseSnapshot, type StateCommit, type StateScope, type VariantId } from './persistence/types.js';
 
 export type HeadHealth = 'ok' | 'unreconciled' | 'diverged_history' | 'base_boundary_dirty' | 'stopped_uncommitted' | 'failed_patch' | 'store_error';
 export interface HeadResolution { health: HeadHealth; nodeId: string; stateHash: string; variantId?: VariantId; reason?: string }
@@ -30,9 +30,13 @@ export class HeadResolver {
       const base = baseNode.value;
       let startIndex = 0;
       if (base.transcriptBoundary) {
-        if (base.transcriptBoundary.fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION) return this.bad('base_boundary_dirty', base, 'unsupported boundary fingerprint version', session);
+        const fingerprintVersion = base.transcriptBoundary.fingerprintVersion;
+        if (
+          fingerprintVersion !== ACTIVE_PREFIX_FINGERPRINT_VERSION &&
+          fingerprintVersion !== LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION
+        ) return this.bad('base_boundary_dirty', base, 'unsupported boundary fingerprint version', session);
         let actual: string;
-        try { actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId); } catch (error) { return this.bad('base_boundary_dirty', base, String(error), session); }
+        try { actual = await activePrefixHash(messages, base.transcriptBoundary.throughMessageId, fingerprintVersion); } catch (error) { return this.bad('base_boundary_dirty', base, String(error), session); }
         if (actual !== base.transcriptBoundary.activePrefixHash) return this.bad('base_boundary_dirty', base, 'active prefix hash mismatch', session);
         const boundaryIndex = messages.findIndex(item => item.id === base.transcriptBoundary!.throughMessageId); if (boundaryIndex < 0) return this.bad('base_boundary_dirty', base, 'boundary message missing', session); startIndex = boundaryIndex + 1;
       }

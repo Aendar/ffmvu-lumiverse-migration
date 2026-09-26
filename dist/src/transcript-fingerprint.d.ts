@@ -7,4 +7,4 @@ export interface HostTranscriptMessage {
     swipeDates?: string[];
 }
 export declare function activeMessageContent(message: HostTranscriptMessage): string;
-export declare function activePrefixHash(messages: HostTranscriptMessage[], throughMessageId: string): Promise<string>;
+export declare function activePrefixHash(messages: HostTranscriptMessage[], throughMessageId: string, fingerprintVersion?: string): Promise<string>;

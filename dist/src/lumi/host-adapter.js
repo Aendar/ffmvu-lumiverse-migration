@@ -25,4 +25,21 @@ export function suppressChatHistoryBySourceIds(messages, excludedSourceMessageId
     const excluded = new Set(excludedSourceMessageIds.map(String));
     return messages.filter(message => !(message.__isChatHistory === true && message.sourceMessageId && excluded.has(String(message.sourceMessageId))));
 }
+const HISTORICAL_STATE_BLOCK = /<UpdateVariable\\b[^>]*>[\\s\\S]*?<\\/UpdateVariable>/gi;
+/**
+ * Historical assistant prose remains narrative evidence, but its embedded
+ * machine-state block is never prompt authority. MODEL_STATE/STATE_TRAIL own
+ * structured state for the next generation, including after rejected patches.
+ */
+export function stripHistoricalStateBlocks(messages) {
+    return messages.map(message => {
+        if (message.__isChatHistory !== true ||
+            message.role !== 'assistant' ||
+            typeof message.content !== 'string' ||
+            !message.content.includes('<UpdateVariable'))
+            return message;
+        const content = message.content.replace(HISTORICAL_STATE_BLOCK, '');
+        return content === message.content ? message : { ...message, content };
+    });
+}
 //# sourceMappingURL=host-adapter.js.map

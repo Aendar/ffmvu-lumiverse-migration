@@ -2,7 +2,7 @@ import { createDefaultState } from '../../src/shared/state-defaults.js';
 import { computeRecentChanges, narrativeTimestampFromState } from '../../src/shared/recent-changes.js';
 import { computeRecentStateHistory } from '../../src/shared/state-history.js';
 import { injectNarrativeHistoryContext } from '../../src/lumi/history-metadata.js';
-import { suppressChatHistoryBySourceIds } from '../../src/lumi/host-adapter.js';
+import { stripHistoricalStateBlocks, suppressChatHistoryBySourceIds } from '../../src/lumi/host-adapter.js';
 let passed = 0;
 function assert(value, message) {
     if (!value)
@@ -88,6 +88,22 @@ function main() {
     const forkFiltered = suppressChatHistoryBySourceIds(forkPrompt, ['greeting', 'pre-user']);
     assert(forkFiltered.length === 2, 'portable fork removes only explicitly bounded pre-import chat-history messages');
     assert(forkFiltered[0]?.role === 'system' && forkFiltered[1]?.sourceMessageId === 'post-user', 'portable fork preserves preset/system context and post-import chat history');
+    const statefulHistory = [
+        { role: 'system', content: 'preset' },
+        {
+            role: 'assistant',
+            content: '<gametxt>Visible prose stays exact.</gametxt>\\n<UpdateVariable><UpdateAnalysis>State updated.</UpdateAnalysis><JSONPatch>[{"op":"replace","path":"/Narrative/Turn","value":99}]</JSONPatch></UpdateVariable>',
+            __isChatHistory: true,
+            sourceMessageId: 'failed-assistant',
+        },
+        { role: 'user', content: 'next turn', __isChatHistory: true, sourceMessageId: 'u-next' },
+        { role: 'assistant', content: '<UpdateVariable>not history authority</UpdateVariable>', sourceMessageId: 'live-non-history' },
+    ];
+    const sanitizedHistory = stripHistoricalStateBlocks(statefulHistory);
+    assert(sanitizedHistory[1]?.content === '<gametxt>Visible prose stays exact.</gametxt>\\n', 'historical assistant machine state is removed without rewriting visible prose bytes');
+    assert(!String(sanitizedHistory[1]?.content).includes('JSONPatch') &&
+        sanitizedHistory[2]?.content === statefulHistory[2]?.content &&
+        sanitizedHistory[3]?.content === statefulHistory[3]?.content, 'sanitizer removes only historical assistant state blocks and leaves user/live messages untouched');
     console.log(`phase7 narrative history tests passed: ${passed}`);
 }
 main();

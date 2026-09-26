@@ -3,7 +3,8 @@ import type { FFMVUState, PromptView } from '../shared/state-schema.js';
 import type { NarrativeTimestamp } from '../shared/recent-changes.js';
 
 export const EVENT_FORMAT_VERSION = 2;
-export const ACTIVE_PREFIX_FINGERPRINT_VERSION = 'ffmvu-active-prefix-v1';
+export const LEGACY_ACTIVE_PREFIX_FINGERPRINT_VERSION = 'ffmvu-active-prefix-v1';
+export const ACTIVE_PREFIX_FINGERPRINT_VERSION = 'ffmvu-active-prefix-v2';
 
 export interface StateScope { userId: string; chatId: string }
 export type VariantId = string;
